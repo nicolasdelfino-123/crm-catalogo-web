@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -e
+SCRIPT_PATH="$(readlink -f "$0")"
+cd "$(dirname "$SCRIPT_PATH")/backend"
+if [ ! -d .venv ]; then python3 -m venv .venv; fi
+.venv/bin/pip install -q -r requirements.txt
+if [ ! -f instance/crm.db ]; then .venv/bin/python seed.py; fi
+exec .venv/bin/python app.py
