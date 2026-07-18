@@ -54,7 +54,6 @@ const LABEL = {
   first_month: "1er mes",
   second_month: "2do mes",
   third_month: "3er mes",
-  recurring: "Recurrente",
   pending: "Pendiente",
   in_progress: "En curso",
   completed: "Completada",
@@ -125,20 +124,25 @@ const addCalendarMonths = (isoDate, months = 1) => {
   return `${targetYear}-${String(targetMonth).padStart(2, "0")}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
 };
 const addCalendarMonth = (isoDate) => addCalendarMonths(isoDate, 1);
-const stageForSignupDate = (signupDate) => {
+const stageForDates = (signupDate, renewalDate) => {
   if (!signupDate) return "first_month";
-  const today = new Date().toISOString().slice(0, 10);
-  const monthOne = addCalendarMonths(signupDate, 1);
-  const monthTwo = addCalendarMonths(signupDate, 2);
-  const monthThree = addCalendarMonths(signupDate, 3);
-  if (today < monthOne) return "first_month";
-  if (today < monthTwo) return "second_month";
-  if (today < monthThree) return "third_month";
-  return "recurring";
+  const reference = renewalDate || new Date().toISOString().slice(0, 10);
+  const [signupYear, signupMonth] = signupDate.split("-").map(Number);
+  const [referenceYear, referenceMonth] = reference.split("-").map(Number);
+  let elapsedMonths = Math.max(0, (referenceYear - signupYear) * 12 + referenceMonth - signupMonth);
+  if (reference < addCalendarMonths(signupDate, elapsedMonths)) {
+    elapsedMonths = Math.max(0, elapsedMonths - 1);
+  }
+  const monthNumber = Math.max(1, renewalDate ? elapsedMonths : elapsedMonths + 1);
+  return [null, "first_month", "second_month", "third_month"][monthNumber] || `month_${monthNumber}`;
+};
+const stageLabel = (value) => {
+  const monthNumber = Number(value?.match(/^month_(\d+)$/)?.[1]);
+  return monthNumber ? `${monthNumber}.º mes` : LABEL[value] || value || "Sin definir";
 };
 const badge = (value) => (
-  <span className={`badge ${value}`}>
-    {LABEL[value] || value || "Sin definir"}
+  <span className={`badge ${value} ${/^month_\d+$/.test(value || "") ? "third_month" : ""}`}>
+    {stageLabel(value)}
   </span>
 );
 function IconButton({ label, children, ...props }) {
@@ -347,11 +351,12 @@ function ClientForm({ client, onClose, onSaved }) {
       const updated = { ...v, [e.target.name]: value };
       if (e.target.name === "signup_date") {
         updated.next_renewal_date = addCalendarMonth(value);
-        updated.service_stage = stageForSignupDate(value);
+        updated.service_stage = stageForDates(value, updated.next_renewal_date);
         updated.service_stage_manual = false;
       }
-      if (e.target.name === "service_stage") {
-        updated.service_stage_manual = true;
+      if (e.target.name === "next_renewal_date") {
+        updated.service_stage = stageForDates(updated.signup_date, value);
+        updated.service_stage_manual = false;
       }
       return updated;
     });
@@ -483,17 +488,7 @@ function ClientForm({ client, onClose, onSaved }) {
               </label>
               <label>
                 Etapa
-                <select
-                  name="service_stage"
-                  value={form.service_stage}
-                  onChange={change}
-                >
-                  <option value="onboarding">Inicio</option>
-                  <option value="first_month">1er mes</option>
-                  <option value="second_month">2do mes</option>
-                  <option value="third_month">3er mes</option>
-                  <option value="recurring">Recurrente</option>
-                </select>
+                <input value={stageLabel(stageForDates(form.signup_date, form.next_renewal_date))} readOnly />
               </label>
               <label>
                 País *
@@ -1532,6 +1527,52 @@ function AcquisitionModal({ onClose }) {
   );
 }
 
+function DeleteClientModal({ client, onClose, onConfirm }) {
+  const [deleting, setDeleting] = useState(false);
+  useEffect(() => {
+    const close = (event) => event.key === "Escape" && !deleting && onClose();
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [deleting, onClose]);
+  async function confirmDelete() {
+    setDeleting(true);
+    try {
+      await onConfirm();
+    } finally {
+      setDeleting(false);
+    }
+  }
+  return (
+    <div className="modal-layer">
+      <section className="acquisition-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-client-title">
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">Confirmar eliminación</span>
+            <h2 id="delete-client-title">¿Eliminar a {client.name}?</h2>
+          </div>
+          <IconButton label="Cerrar" onClick={onClose} disabled={deleting}><X /></IconButton>
+        </div>
+        <div className="acquisition-body">
+          <p>El cliente <strong>{client.business_name}</strong> dejará de aparecer en la tabla general.</p>
+          <div className="form-actions">
+            <button type="button" className="secondary" onClick={onClose} disabled={deleting}>Cancelar</button>
+            <button
+              type="button"
+              className="primary"
+              style={{ background: "var(--red)" }}
+              onClick={confirmDelete}
+              disabled={deleting}
+            >
+              <Trash2 size={17} />
+              {deleting ? "Eliminando..." : "Eliminar cliente"}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function Clients() {
   const [data, setData] = useState({ items: [], pagination: {} });
   const [query, setQuery] = useState("");
@@ -1541,6 +1582,7 @@ function Clients() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(null);
+  const [clientToDelete, setClientToDelete] = useState(null);
   const [toast, setToast] = useState("");
   const [sort, setSort] = useState({ by: "name", dir: "asc" });
   const load = useCallback(async () => {
@@ -1564,6 +1606,17 @@ function Clients() {
       by,
       dir: s.by === by && s.dir === "asc" ? "desc" : "asc",
     }));
+  }
+  async function deleteClient() {
+    try {
+      await api(`/clients/${clientToDelete.id}`, { method: "DELETE" });
+      setClientToDelete(null);
+      await load();
+      setToast("Cliente eliminado de la tabla general");
+    } catch (error) {
+      alert(error.message);
+      throw error;
+    }
   }
   return (
     <section className="page clients-page">
@@ -1709,6 +1762,15 @@ function Clients() {
                       <span>{c.publications_count} publ.</span>
                     </td>
                     <td>
+                      <IconButton
+                        label={`Eliminar a ${c.name}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setClientToDelete(c);
+                        }}
+                      >
+                        <Trash2 />
+                      </IconButton>
                       <IconButton label="Ver detalle">
                         <ChevronRight />
                       </IconButton>
@@ -1734,6 +1796,15 @@ function Clients() {
                     <small>{c.business_name}</small>
                   </span>
                   {badge(c.status)}
+                  <IconButton
+                    label={`Eliminar a ${c.name}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setClientToDelete(c);
+                    }}
+                  >
+                    <Trash2 />
+                  </IconButton>
                 </div>
                 <dl>
                   <div>
@@ -1781,6 +1852,13 @@ function Clients() {
       )}
       {toast && <Toast message={toast} onClose={() => setToast("")} />}
       {showAcquisition && <AcquisitionModal onClose={() => setShowAcquisition(false)} />}
+      {clientToDelete && (
+        <DeleteClientModal
+          client={clientToDelete}
+          onClose={() => setClientToDelete(null)}
+          onConfirm={deleteClient}
+        />
+      )}
     </section>
   );
 }

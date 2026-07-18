@@ -32,25 +32,40 @@ def add_calendar_months(value, months):
 
 
 def advance_service_stage(client, today=None):
-    """Sincroniza etapas mensuales sin adelantar clientes antes de la fecha."""
+    """Sincroniza la etapa con el mes indicado por la próxima renovación."""
     today = today or date.today()
-    tracked = {"first_month", "second_month", "third_month", "recurring"}
-    if client.service_stage_manual or not client.signup_date or client.service_stage not in tracked:
+    if not client.signup_date:
         return False
     original = client.service_stage
-    if today < add_calendar_months(client.signup_date, 1):
-        client.service_stage = "first_month"
-    elif today < add_calendar_months(client.signup_date, 2):
-        client.service_stage = "second_month"
-    elif today < add_calendar_months(client.signup_date, 3):
-        client.service_stage = "third_month"
-    else:
-        client.service_stage = "recurring"
-    return client.service_stage != original
+    original_renewal = client.next_renewal_date
+    latest_paid_period = max(
+        (
+            payment.due_date
+            for payment in client.payments
+            if payment.status == "paid" and payment.payment_type == "monthly" and payment.due_date
+        ),
+        default=None,
+    )
+    if latest_paid_period and (
+        not client.next_renewal_date or client.next_renewal_date <= latest_paid_period
+    ):
+        client.next_renewal_date = add_calendar_months(latest_paid_period, 1)
+    reference_date = client.next_renewal_date or today
+    elapsed_months = max(0, (reference_date.year - client.signup_date.year) * 12 + reference_date.month - client.signup_date.month)
+    if reference_date < add_calendar_months(client.signup_date, elapsed_months):
+        elapsed_months = max(0, elapsed_months - 1)
+    month_number = max(1, elapsed_months if client.next_renewal_date else elapsed_months + 1)
+    stages = {1: "first_month", 2: "second_month", 3: "third_month"}
+    client.service_stage = stages.get(month_number, f"month_{month_number}")
+    client.service_stage_manual = False
+    return client.service_stage != original or client.next_renewal_date != original_renewal
 
 
 def sync_service_stages(clients):
-    changed = any(advance_service_stage(client) for client in clients)
+    # No usar any(): se detiene en el primer True y deja clientes sin sincronizar.
+    changed = False
+    for client in clients:
+        changed = advance_service_stage(client) or changed
     if changed:
         db.session.commit()
 
@@ -79,6 +94,34 @@ def apply_client(client, data):
             setattr(client, field, max(0, int(data[field] or 0)))
     if "service_stage_manual" in data:
         client.service_stage_manual = bool(data["service_stage_manual"])
+    if "signup_date" in data or "next_renewal_date" in data:
+        advance_service_stage(client)
+
+
+def record_client_metric(client):
+    """Guarda los contadores de la ficha en la evolución del día."""
+    metric = ClientMetric.query.filter_by(
+        client_id=client.id, recorded_at=date.today()
+    ).order_by(ClientMetric.id.desc()).first()
+    if metric is None:
+        metric = ClientMetric(client=client, recorded_at=date.today())
+        db.session.add(metric)
+    metric.followers_count = client.followers_count or 0
+    metric.publications_count = client.publications_count or 0
+
+
+def advance_renewal_after_payment(payment):
+    """Al pagar una mensualidad, abre el período siguiente del cliente."""
+    if payment.payment_type != "monthly":
+        return
+    client = payment.client
+    paid_period = payment.due_date or client.next_renewal_date
+    if not paid_period:
+        return
+    next_renewal = add_calendar_months(paid_period, 1)
+    if not client.next_renewal_date or next_renewal > client.next_renewal_date:
+        client.next_renewal_date = next_renewal
+    advance_service_stage(client)
 
 
 def generate_schedule(client):
@@ -118,6 +161,8 @@ def clients_create():
     try:
         data = request.get_json() or {}; client = Client(); apply_client(client, data)
         db.session.add(client); db.session.flush()
+        if "followers_count" in data or "publications_count" in data:
+            record_client_metric(client)
         if data.get("generate_schedule", True): generate_schedule(client)
         db.session.commit(); return ok(client.detail(), "Cliente creado", 201)
     except (ValueError, TypeError) as exc:
@@ -136,7 +181,13 @@ def clients_detail(client_id):
 def clients_update(client_id):
     client = Client.query.get_or_404(client_id)
     try:
-        apply_client(client, request.get_json() or {}); db.session.commit(); return ok(client.detail(), "Cliente actualizado")
+        data = request.get_json() or {}
+        previous_counts = (client.followers_count or 0, client.publications_count or 0)
+        apply_client(client, data)
+        current_counts = (client.followers_count or 0, client.publications_count or 0)
+        if current_counts != previous_counts:
+            record_client_metric(client)
+        db.session.commit(); return ok(client.detail(), "Cliente actualizado")
     except (ValueError, TypeError) as exc:
         db.session.rollback(); return error(str(exc), 422)
 
@@ -198,13 +249,16 @@ def payments_create(client_id):
         due_date = parse_date(data.get("due_date")) or client.next_renewal_date or add_calendar_months(client.signup_date, 1)
         payment = Payment(client=client, amount=amount, currency=data.get("currency", client.currency), payment_type=data.get("payment_type", "monthly"), period_year=data.get("period_year"), period_month=data.get("period_month"), due_date=due_date, status=data.get("status", "pending"), payment_method=data.get("payment_method"), notes=data.get("notes"))
         if payment.status == "paid": payment.paid_at = datetime.utcnow()
-        db.session.add(payment); db.session.commit(); return ok(payment.to_dict(), "Pago registrado", 201)
+        db.session.add(payment)
+        if payment.status == "paid": advance_renewal_after_payment(payment)
+        db.session.commit(); return ok(payment.to_dict(), "Pago registrado", 201)
     except (ValueError, TypeError) as exc: db.session.rollback(); return error(str(exc), 422)
 
 
 @api.patch("/payments/<int:payment_id>")
 def payments_update(payment_id):
     payment = Payment.query.get_or_404(payment_id); data = request.get_json() or {}
+    was_paid = payment.status == "paid"
     if "amount" in data:
         amount = float(data["amount"])
         if amount < 0: return error("El importe no puede ser negativo", 422)
@@ -213,6 +267,8 @@ def payments_update(payment_id):
         if field in data: setattr(payment, field, data[field])
     if "due_date" in data: payment.due_date = parse_date(data["due_date"])
     payment.paid_at = datetime.utcnow() if payment.status == "paid" else None
+    if payment.status == "paid" and not was_paid:
+        advance_renewal_after_payment(payment)
     db.session.commit(); return ok(payment.to_dict(), "Pago actualizado")
 
 
