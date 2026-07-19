@@ -3,7 +3,7 @@ import io
 import calendar
 from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response
-from sqlalchemy import or_
+from sqlalchemy import Integer, case, cast, func, or_
 from models import db, Client, ClientAction, Payment, ClientMetric, ClientNote, ActionTemplate
 
 api = Blueprint("api", __name__)
@@ -149,8 +149,22 @@ def clients_list():
     for field in ["status", "service_stage", "country", "currency", "acquisition_source"]:
         if request.args.get(field): query = query.filter(getattr(Client, field) == request.args[field])
     sort_by = request.args.get("sort_by", "name")
-    column = getattr(Client, sort_by, Client.name)
-    query = query.order_by(column.desc() if request.args.get("sort_dir") == "desc" else column.asc())
+    if sort_by == "service_stage":
+        # Las etapas se guardan como texto, pero en la tabla deben seguir el
+        # orden natural de los meses (mes 2 antes que mes 10).
+        column = case(
+            (Client.service_stage == "first_month", 1),
+            (Client.service_stage == "second_month", 2),
+            (Client.service_stage == "third_month", 3),
+            (Client.service_stage.like("month_%"), cast(func.substr(Client.service_stage, 7), Integer)),
+            # Cualquier etapa no mensual se muestra después de la secuencia
+            # 1, 2, 3... cuando el orden es ascendente.
+            else_=2147483647,
+        )
+    else:
+        column = getattr(Client, sort_by, Client.name)
+    direction = column.desc() if request.args.get("sort_dir") == "desc" else column.asc()
+    query = query.order_by(direction, Client.name.asc())
     page = max(1, request.args.get("page", 1, type=int)); per_page = min(100, request.args.get("per_page", 25, type=int))
     result = query.paginate(page=page, per_page=per_page, error_out=False)
     return ok({"items": [c.summary() for c in result.items], "pagination": {"page": page, "per_page": per_page, "total": result.total, "pages": result.pages}})

@@ -89,6 +89,28 @@ def test_general_table_syncs_every_client(app):
         assert second.service_stage == "third_month"
 
 
+def test_general_table_sorts_stages_by_month(client):
+    common = {"country": "Argentina", "currency": "ARS"}
+    for name, renewal in [
+        ("Mes cinco", "2026-06-01"),
+        ("Mes uno", "2026-02-01"),
+        ("Mes cuatro", "2026-05-01"),
+        ("Mes tres", "2026-04-01"),
+        ("Mes dos", "2026-03-01"),
+    ]:
+        response = client.post("/api/clients", json={
+            **common, "name": name, "business_name": name,
+            "signup_date": "2026-01-01", "next_renewal_date": renewal,
+        })
+        assert response.status_code == 201
+
+    ascending = client.get("/api/clients?sort_by=service_stage&sort_dir=asc").get_json()["data"]["items"]
+    descending = client.get("/api/clients?sort_by=service_stage&sort_dir=desc").get_json()["data"]["items"]
+
+    assert [item["name"] for item in ascending] == ["Mes uno", "Mes dos", "Mes tres", "Mes cuatro", "Mes cinco"]
+    assert [item["name"] for item in descending] == ["Mes cinco", "Mes cuatro", "Mes tres", "Mes dos", "Mes uno"]
+
+
 def test_editing_client_counts_updates_account_evolution(client):
     created = client.post("/api/clients", json={
         "name": "Cliente Métricas", "business_name": "Marca Métricas",

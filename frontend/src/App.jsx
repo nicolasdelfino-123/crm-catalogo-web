@@ -1586,7 +1586,7 @@ function Clients() {
   const [form, setForm] = useState(null);
   const [clientToDelete, setClientToDelete] = useState(null);
   const [toast, setToast] = useState("");
-  const [sort, setSort] = useState({ by: "name", dir: "asc" });
+  const [sort, setSort] = useState({ by: "service_stage", dir: "asc" });
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -1703,7 +1703,12 @@ function Clients() {
                     toggle={toggleSort}
                   />
                   <th>Estado</th>
-                  <th>Etapa</th>
+                  <Th
+                    label="Etapa"
+                    name="service_stage"
+                    sort={sort}
+                    toggle={toggleSort}
+                  />
                   <Th
                     label="Alta"
                     name="signup_date"
