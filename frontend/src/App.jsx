@@ -32,8 +32,10 @@ import {
   Trash2,
 } from "lucide-react";
 
-const API =
-  import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000/api`;
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ||
+  (import.meta.env.DEV ? `http://${window.location.hostname}:5000` : "");
+if (!BACKEND_URL) throw new Error("Falta VITE_BACKEND_URL en .env.production");
+const API = `${BACKEND_URL.replace(/\/$/, "")}/api`;
 async function api(path, options = {}) {
   const response = await fetch(`${API}${path}`, {
     headers: { "Content-Type": "application/json", ...options.headers },
@@ -102,11 +104,11 @@ const acquisitionLabel = (value) => {
 const fmtDate = (value) =>
   value
     ? new Intl.DateTimeFormat("es-AR", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        timeZone: "UTC",
-      }).format(new Date(`${value.slice(0, 10)}T12:00:00Z`))
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(new Date(`${value.slice(0, 10)}T12:00:00Z`))
     : "Sin fecha";
 const fmtMoney = (value, currency = "ARS") =>
   new Intl.NumberFormat("es-AR", {
@@ -203,8 +205,8 @@ function Sidebar({ page, setPage, open, setOpen }) {
         ))}
       </nav>
       <div className="sidebar-foot">
-        <span>Base local</span>
-        <small>Tu información queda en este equipo</small>
+        <span>Catálogo-Web</span>
+        {/*  <small>Tu información queda en este equipo</small> */}
       </div>
     </aside>
   );
@@ -643,9 +645,9 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
     const payload =
       type === "action"
         ? {
-            ...form,
-            title: actionPreset === "__custom" ? form.title : actionPreset,
-          }
+          ...form,
+          title: actionPreset === "__custom" ? form.title : actionPreset,
+        }
         : form;
     await api(
       `/clients/${clientId}/${type === "action" ? "actions" : type === "payment" ? "payments" : type === "metric" ? "metrics" : "notes"}`,
@@ -1194,75 +1196,75 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit }) {
                       : action.status !== "completed",
                   )
                   .map((a) =>
-                  editingAction === a.id ? (
-                    <ActionEditor
-                      key={a.id}
-                      action={a}
-                      onCancel={() => setEditingAction(null)}
-                      onSaved={() => {
-                        setEditingAction(null);
-                        load();
-                        onRefresh();
-                      }}
-                    />
-                  ) : (
-                    <div
-                      className={`list-item ${a.status === "pending" && a.due_date && new Date(a.due_date) < new Date() ? "overdue" : ""} ${a.status === "cancelled" ? "cancelled-action" : ""}`}
-                      key={a.id}
-                    >
-                      <span className="item-check">
-                        {a.status === "completed" ? <CheckCircle2 /> : <Clock3 />}
-                      </span>
-                      <div>
-                        <strong>{a.title}</strong>
-                        <p>
-                          {fmtDate(a.due_date)} · {LABEL[a.priority] || a.priority}
-                        </p>
-                        {a.status === "cancelled" && <span className="badge cancelled">Anulada</span>}
-                      </div>
-                      <IconButton
-                        label={`Editar ${a.title}`}
-                        onClick={() => setEditingAction(a.id)}
+                    editingAction === a.id ? (
+                      <ActionEditor
+                        key={a.id}
+                        action={a}
+                        onCancel={() => setEditingAction(null)}
+                        onSaved={() => {
+                          setEditingAction(null);
+                          load();
+                          onRefresh();
+                        }}
+                      />
+                    ) : (
+                      <div
+                        className={`list-item ${a.status === "pending" && a.due_date && new Date(a.due_date) < new Date() ? "overdue" : ""} ${a.status === "cancelled" ? "cancelled-action" : ""}`}
+                        key={a.id}
                       >
-                        <Edit3 />
-                      </IconButton>
-                      <IconButton
-                        label={`Eliminar ${a.title}`}
-                        onClick={() => deleteAction(a)}
-                      >
-                        <Trash2 />
-                      </IconButton>
-                      {a.status === "completed" ? (
-                        <button
-                          className="text-btn"
-                          onClick={() => patchAction(a.id, "pending")}
-                        >
-                          <RotateCcw size={15} />
-                          Reabrir
-                        </button>
-                      ) : (
-                        <div className="action-row-buttons">
-                          {a.status === "cancelled" ? (
-                            <button className="text-btn" onClick={() => patchAction(a.id, "pending")}>
-                              <RotateCcw size={15} />Reactivar
-                            </button>
-                          ) : (
-                            <button className="text-btn cancel" onClick={() => patchAction(a.id, "cancelled")}>
-                              <X size={16} />Anular
-                            </button>
-                          )}
-                          <button
-                            className="text-btn complete"
-                            onClick={() => patchAction(a.id, "completed")}
-                          >
-                            <Check size={16} />
-                            Completar
-                          </button>
+                        <span className="item-check">
+                          {a.status === "completed" ? <CheckCircle2 /> : <Clock3 />}
+                        </span>
+                        <div>
+                          <strong>{a.title}</strong>
+                          <p>
+                            {fmtDate(a.due_date)} · {LABEL[a.priority] || a.priority}
+                          </p>
+                          {a.status === "cancelled" && <span className="badge cancelled">Anulada</span>}
                         </div>
-                      )}
-                    </div>
-                  ),
-                )}
+                        <IconButton
+                          label={`Editar ${a.title}`}
+                          onClick={() => setEditingAction(a.id)}
+                        >
+                          <Edit3 />
+                        </IconButton>
+                        <IconButton
+                          label={`Eliminar ${a.title}`}
+                          onClick={() => deleteAction(a)}
+                        >
+                          <Trash2 />
+                        </IconButton>
+                        {a.status === "completed" ? (
+                          <button
+                            className="text-btn"
+                            onClick={() => patchAction(a.id, "pending")}
+                          >
+                            <RotateCcw size={15} />
+                            Reabrir
+                          </button>
+                        ) : (
+                          <div className="action-row-buttons">
+                            {a.status === "cancelled" ? (
+                              <button className="text-btn" onClick={() => patchAction(a.id, "pending")}>
+                                <RotateCcw size={15} />Reactivar
+                              </button>
+                            ) : (
+                              <button className="text-btn cancel" onClick={() => patchAction(a.id, "cancelled")}>
+                                <X size={16} />Anular
+                              </button>
+                            )}
+                            <button
+                              className="text-btn complete"
+                              onClick={() => patchAction(a.id, "completed")}
+                            >
+                              <Check size={16} />
+                              Completar
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ),
+                  )}
               </div>
             </>
           )}
@@ -1443,15 +1445,15 @@ function Summary({ client, onUpdate, onEdit }) {
       <section>
         <h3>Estado operativo</h3>
         <div className="status-grid">
-          <EditableStatus label="Página" field="page_status" value={client.page_status} options={[["pending","Pendiente"],["in_progress","En curso"],["published","Publicada"]]} onSave={onUpdate}/>
-          <EditableStatus label="Link en bio" field="link_in_bio_status" value={client.link_in_bio_status} options={[["pending","Pendiente"],["no","No"],["yes","Sí"]]} onSave={onUpdate}/>
-          <EditableStatus label="Precios" field="prices_status" value={client.prices_status} options={[["pending","Pendiente"],["no","No"],["yes","Sí"]]} onSave={onUpdate}/>
-          <EditableStatus label="Imágenes" field="images_status" value={client.images_status} options={[["pending","Pendientes"],["optimized","Optimizadas"]]} onSave={onUpdate}/>
-          <EditableStatus label="Carga admin" field="admin_load_status" value={client.admin_load_status} options={[["pending","Pendiente"],["completed","Completada"]]} onSave={onUpdate}/>
-          <EditableStatus label="12 productos en inicio" field="twelve_products_status" value={client.twelve_products_status || "no"} options={[["no","No"],["yes","Sí"]]} onSave={onUpdate}/>
-          <EditableNumber label="Cantidad de productos activos" field="active_products_count" value={client.active_products_count} onSave={onUpdate}/>
-          <EditableStatus label="Compró dominio" field="domain_purchased_status" value={client.domain_purchased_status || "no"} options={[["no","No"],["yes","Sí"]]} onSave={onUpdate}/>
-          <EditableNumber label="Ventas por web" field="web_sales_count" value={client.web_sales_count} onSave={onUpdate}/>
+          <EditableStatus label="Página" field="page_status" value={client.page_status} options={[["pending", "Pendiente"], ["in_progress", "En curso"], ["published", "Publicada"]]} onSave={onUpdate} />
+          <EditableStatus label="Link en bio" field="link_in_bio_status" value={client.link_in_bio_status} options={[["pending", "Pendiente"], ["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
+          <EditableStatus label="Precios" field="prices_status" value={client.prices_status} options={[["pending", "Pendiente"], ["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
+          <EditableStatus label="Imágenes" field="images_status" value={client.images_status} options={[["pending", "Pendientes"], ["optimized", "Optimizadas"]]} onSave={onUpdate} />
+          <EditableStatus label="Carga admin" field="admin_load_status" value={client.admin_load_status} options={[["pending", "Pendiente"], ["completed", "Completada"]]} onSave={onUpdate} />
+          <EditableStatus label="12 productos en inicio" field="twelve_products_status" value={client.twelve_products_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
+          <EditableNumber label="Cantidad de productos activos" field="active_products_count" value={client.active_products_count} onSave={onUpdate} />
+          <EditableStatus label="Compró dominio" field="domain_purchased_status" value={client.domain_purchased_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
+          <EditableNumber label="Ventas por web" field="web_sales_count" value={client.web_sales_count} onSave={onUpdate} />
         </div>
       </section>
       <section className="summary-note">
@@ -1515,7 +1517,7 @@ function AcquisitionModal({ onClose }) {
                     <strong>{acquisitionLabel(item.source)}</strong>
                     <span>{item.percentage}% del total</span>
                   </div>
-                  <div className="acquisition-bar"><i style={{width:`${item.percentage}%`}} /></div>
+                  <div className="acquisition-bar"><i style={{ width: `${item.percentage}%` }} /></div>
                   <b>{item.count}</b>
                 </article>
               ))}
@@ -1945,6 +1947,8 @@ function Agenda() {
 function Payments() {
   const [items, setItems] = useState([]);
   const [editing, setEditing] = useState(null);
+  const [clientNameOrder, setClientNameOrder] = useState("asc");
+  const [dueDateOrder, setDueDateOrder] = useState(null);
   const load = useCallback(() => api("/payments").then(setItems), []);
   useEffect(() => {
     load();
@@ -1965,6 +1969,33 @@ function Payments() {
     }), {}),
     [items],
   );
+  const sortedItems = useMemo(() => {
+    const byClient = (first, second) => {
+      const clientOrder = first.client_name.localeCompare(second.client_name, "es", {
+        sensitivity: "base",
+      });
+      if (clientOrder) return clientOrder;
+      if (!first.due_date && !second.due_date) return first.id - second.id;
+      if (!first.due_date) return 1;
+      if (!second.due_date) return -1;
+      return first.due_date.localeCompare(second.due_date) || first.id - second.id;
+    };
+    if (!dueDateOrder) {
+      return [...items].sort((first, second) => {
+        const clientOrder = first.client_name.localeCompare(second.client_name, "es", {
+          sensitivity: "base",
+        });
+        return (clientNameOrder === "asc" ? clientOrder : -clientOrder) || byClient(first, second);
+      });
+    }
+    return [...items].sort((first, second) => {
+      if (!first.due_date && !second.due_date) return byClient(first, second);
+      if (!first.due_date) return 1;
+      if (!second.due_date) return -1;
+      const dateOrder = first.due_date.localeCompare(second.due_date);
+      return (dueDateOrder === "asc" ? dateOrder : -dateOrder) || byClient(first, second);
+    });
+  }, [items, clientNameOrder, dueDateOrder]);
   async function setPaymentStatus(id, status) {
     await api(`/payments/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
     load();
@@ -2003,16 +2034,37 @@ function Payments() {
         <table>
           <thead>
             <tr>
-              <th>Cliente</th>
+              <th>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClientNameOrder((order) => dueDateOrder ? "asc" : order === "asc" ? "desc" : "asc");
+                    setDueDateOrder(null);
+                  }}
+                  title={clientNameOrder === "asc" ? "Ordenar clientes de Z a A" : "Ordenar clientes de A a Z"}
+                >
+                  Cliente
+                  <ArrowUpDown className={!dueDateOrder ? "active" : ""} size={14} />
+                </button>
+              </th>
               <th>Importe</th>
               <th>Concepto</th>
-              <th>Vencimiento</th>
+              <th>
+                <button
+                  type="button"
+                  onClick={() => setDueDateOrder((order) => order === "asc" ? "desc" : "asc")}
+                  title={dueDateOrder === "asc" ? "Ordenar del más lejano al más próximo" : "Ordenar del más próximo al más lejano"}
+                >
+                  Vencimiento
+                  <ArrowUpDown className={dueDateOrder ? "active" : ""} size={14} />
+                </button>
+              </th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((p) => (
+            {sortedItems.map((p) => (
               <tr key={p.id}>
                 <td>
                   <strong>{p.client_name}</strong>

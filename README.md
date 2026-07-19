@@ -17,7 +17,8 @@ No hace falta activar `.venv`: `runback` usa directamente el Python del entorno 
 
 ## Estructura
 
-- `backend/app.py`: application factory y arranque Flask.
+- `backend/app/__init__.py`: application factory y exportación de `db`.
+- `backend/app/run.py`: punto de entrada para Gunicorn.
 - `backend/models.py`: clientes, acciones, pagos, métricas, notas y plantillas.
 - `backend/routes.py`: API REST y exportación CSV.
 - `backend/seed.py`: datos de demostración y cronograma de retención.

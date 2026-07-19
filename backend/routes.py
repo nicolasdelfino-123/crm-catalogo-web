@@ -282,7 +282,13 @@ def payments_delete(payment_id):
 
 @api.get("/payments")
 def payments_list():
-    items = Payment.query.join(Client).filter(Client.archived_at.is_(None)).order_by(Payment.due_date.desc()).limit(300).all()
+    items = (
+        Payment.query.join(Client)
+        .filter(Client.archived_at.is_(None))
+        .order_by(Client.name.asc(), Payment.due_date.asc().nullslast(), Payment.id.asc())
+        .limit(300)
+        .all()
+    )
     return ok([p.to_dict() for p in items])
 
 
