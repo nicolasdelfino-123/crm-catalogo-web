@@ -1,7 +1,7 @@
 import pytest
 from datetime import date
 from app import create_app
-from models import db, Client
+from models import db, Client, Payment
 from routes import advance_service_stage, sync_service_stages
 
 @pytest.fixture()
@@ -187,4 +187,95 @@ def test_monthly_collection_actions_are_created_and_advanced(client, app):
     paid_charge = [action for action in completed if action["title"] == "Cobrar a Cliente existente"]
 
     assert len(next_charge) == 1 and next_charge[0]["due_date"] == "2026-09-10"
-    assert len(paid_charge) == 1 and paid_charge[0]["due_date"] == "2026-08-10"
+    assert paid_charge == []
+
+
+def test_scheduled_monthly_payment_suppresses_charge_but_extra_work_does_not(client):
+    customer = client.post("/api/clients", json={
+        "name": "Gustavo", "business_name": "Gustavo", "signup_date": "2026-05-15",
+        "next_renewal_date": "2026-06-15", "country": "Argentina", "currency": "ARS",
+        "generate_schedule": False,
+    }).get_json()["data"]
+
+    client.post(f'/api/clients/{customer["id"]}/payments', json={
+        "amount": 5000, "currency": "ARS", "payment_type": "monthly",
+        "due_date": "2026-06-01", "status": "pending",
+    })
+    pending = client.get("/api/actions?view=all&status=pending").get_json()["data"]
+    assert not any(action["title"] == "Cobrar a Gustavo" for action in pending)
+
+    monthly_payment = client.get("/api/payments").get_json()["data"][0]
+    client.delete(f'/api/payments/{monthly_payment["id"]}')
+    client.post(f'/api/clients/{customer["id"]}/payments', json={
+        "amount": 2500, "currency": "ARS", "payment_type": "extra_work",
+        "due_date": "2026-06-05", "status": "paid",
+    })
+    pending = client.get("/api/actions?view=all&status=pending").get_json()["data"]
+    charge = [action for action in pending if action["title"] == "Cobrar a Gustavo"]
+    assert len(charge) == 1 and charge[0]["due_date"] == "2026-06-15"
+
+
+def test_early_payment_moves_charge_to_next_month_on_signup_day(client):
+    customer = client.post("/api/clients", json={
+        "name": "Gustavo", "business_name": "Gustavo", "signup_date": "2026-05-15",
+        "next_renewal_date": "2026-07-15", "country": "Argentina", "currency": "ARS",
+        "generate_schedule": False,
+    }).get_json()["data"]
+    client.post(f'/api/clients/{customer["id"]}/payments', json={
+        "amount": 5000, "currency": "ARS", "payment_type": "monthly",
+        "due_date": "2026-07-01", "status": "paid",
+    })
+
+    july = client.get("/api/actions?view=calendar&month=2026-07&status=pending").get_json()["data"]
+    august = client.get("/api/actions?view=calendar&month=2026-08&status=pending").get_json()["data"]
+    updated = client.get(f'/api/clients/{customer["id"]}').get_json()["data"]
+
+    assert not any(action["title"] == "Cobrar a Gustavo" for action in july)
+    august_charge = [action for action in august if action["title"] == "Cobrar a Gustavo"]
+    assert len(august_charge) == 1 and august_charge[0]["due_date"] == "2026-08-15"
+    assert updated["next_renewal_date"] == "2026-08-15"
+
+
+def test_existing_payment_in_same_month_advances_calendar_to_signup_day(client, app):
+    with app.app_context():
+        gustavo = Client(
+            name="Gustavo", business_name="Gustavo", signup_date=date(2026, 6, 26),
+            next_renewal_date=date(2026, 7, 26), country="Argentina", currency="ARS", status="active",
+        )
+        db.session.add(gustavo)
+        db.session.flush()
+        db.session.add(Payment(
+            client=gustavo, amount=5000, currency="ARS", payment_type="monthly",
+            due_date=date(2026, 7, 6), status="paid",
+        ))
+        db.session.commit()
+
+    july = client.get("/api/actions?view=calendar&month=2026-07&status=pending").get_json()["data"]
+    august = client.get("/api/actions?view=calendar&month=2026-08&status=pending").get_json()["data"]
+
+    assert not any(action["title"] == "Cobrar a Gustavo" for action in july)
+    charge = [action for action in august if action["title"] == "Cobrar a Gustavo"]
+    assert len(charge) == 1 and charge[0]["due_date"] == "2026-08-26"
+
+
+def test_calendar_projects_future_charges_and_hides_scheduled_month(client):
+    customer = client.post("/api/clients", json={
+        "name": "Calendario anual", "business_name": "Calendario anual",
+        "signup_date": "2026-01-31", "country": "Argentina", "currency": "ARS",
+        "generate_schedule": False,
+    }).get_json()["data"]
+
+    february = client.get("/api/actions?view=calendar&month=2026-02&status=pending").get_json()["data"]
+    august = client.get("/api/actions?view=calendar&month=2026-08&status=pending").get_json()["data"]
+    assert any(action["title"] == "Cobrar a Calendario anual" and action["due_date"] == "2026-02-28" for action in february)
+    assert any(action["title"] == "Cobrar a Calendario anual" and action["due_date"] == "2026-08-31" for action in august)
+
+    client.post(f'/api/clients/{customer["id"]}/payments', json={
+        "amount": 5000, "currency": "ARS", "payment_type": "monthly",
+        "due_date": "2026-08-04", "status": "pending",
+    })
+    august_after_payment = client.get("/api/actions?view=calendar&month=2026-08&status=pending").get_json()["data"]
+    september = client.get("/api/actions?view=calendar&month=2026-09&status=pending").get_json()["data"]
+
+    assert not any(action["title"] == "Cobrar a Calendario anual" for action in august_after_payment)
+    assert any(action["title"] == "Cobrar a Calendario anual" and action["due_date"] == "2026-09-30" for action in september)

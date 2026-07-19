@@ -184,7 +184,7 @@ function Sidebar({ page, setPage, open, setOpen }) {
       <div className="brand">
         <div className="brand-mark">F</div>
         <div>
-          <strong>Faro</strong>
+          <strong>Catálogo Web</strong>
           <span>CRM interno</span>
         </div>
         <IconButton label="Cerrar menú" onClick={() => setOpen(false)}>
@@ -208,7 +208,7 @@ function Sidebar({ page, setPage, open, setOpen }) {
       </nav>
       <div className="sidebar-foot">
         <span>Catálogo-Web</span>
-        {/*  <small>Tu información queda en este equipo</small> */}
+        <small>Año 2026</small>
       </div>
     </aside>
   );
@@ -713,10 +713,18 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
       ],
     },
     payment: {
-      title: "Registrar pago",
+      title: "Registrar mensualidad",
       fields: [
         ["amount", "Importe", "number"],
         ["due_date", "Vencimiento", "date"],
+        ["status", "Estado", "payselect"],
+      ],
+    },
+    extra_work: {
+      title: "Registrar trabajo extra",
+      fields: [
+        ["amount", "Importe", "number"],
+        ["due_date", "Fecha", "date"],
         ["status", "Estado", "payselect"],
       ],
     },
@@ -735,7 +743,11 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
   };
   const conf = schemas[type];
   const [form, setForm] = useState(
-    type === "payment" ? { status: "pending", due_date: defaultDueDate || "" } : {},
+    type === "payment"
+      ? { status: "pending", due_date: defaultDueDate || "", payment_type: "monthly" }
+      : type === "extra_work"
+        ? { status: "pending", due_date: new Date().toISOString().slice(0, 10), payment_type: "extra_work" }
+        : {},
   );
   const [actionPreset, setActionPreset] = useState("");
   async function submit(e) {
@@ -748,7 +760,7 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
         }
         : form;
     await api(
-      `/clients/${clientId}/${type === "action" ? "actions" : type === "payment" ? "payments" : type === "metric" ? "metrics" : "notes"}`,
+      `/clients/${clientId}/${type === "action" ? "actions" : ["payment", "extra_work"].includes(type) ? "payments" : type === "metric" ? "metrics" : "notes"}`,
       { method: "POST", body: JSON.stringify(payload) },
     );
     onDone();
@@ -1368,10 +1380,13 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit }) {
           )}
           {tab === "payments" && (
             <>
-              <TabHead
-                title="Historial de pagos"
-                onAdd={() => setAdding("payment")}
-              />
+              <div className="tab-head">
+                <h3>Historial de pagos</h3>
+                <div className="payment-add-buttons">
+                  <button className="secondary small" onClick={() => setAdding("payment")}><Plus size={16} />Registrar mensualidad</button>
+                  <button className="secondary small" onClick={() => setAdding("extra_work")}><Plus size={16} />Registrar trabajo extra</button>
+                </div>
+              </div>
               <div className="client-payment-totals">
                 {Object.entries(
                   client.payments
@@ -1385,9 +1400,9 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit }) {
                 ))}
                 {!client.payments.some((payment) => payment.status === "paid") && <span className="no-paid">Todavía no hay pagos completados.</span>}
               </div>
-              {adding === "payment" && (
+              {(adding === "payment" || adding === "extra_work") && (
                 <MiniForm
-                  type="payment"
+                  type={adding}
                   clientId={client.id}
                   defaultDueDate={client.next_renewal_date}
                   onDone={() => {
@@ -2100,11 +2115,11 @@ function Agenda() {
           )}
         </div>
       ) : (
-      <div className="agenda-list">
-        {items.map((a) => (
-          <AgendaItem key={a.id} action={a} onComplete={complete} />
-        ))}
-      </div>
+        <div className="agenda-list">
+          {items.map((a) => (
+            <AgendaItem key={a.id} action={a} onComplete={complete} />
+          ))}
+        </div>
       )}
       {view !== "calendar" && !items.length && <Empty />}
     </section>
@@ -2113,26 +2128,26 @@ function Agenda() {
 
 function AgendaItem({ action: a, onComplete }) {
   return (
-          <article key={a.id}>
-            <div className={`priority ${a.priority}`} />
+    <article key={a.id}>
+      <div className={`priority ${a.priority}`} />
             <div>
               <time>{fmtDate(a.due_date)}</time>
               <h3>{a.title}</h3>
               <p>
-                {a.client_name} · {a.business_name}
+                {a.client_name} · {a.business_name}{a.projected ? " · Cobro previsto" : ""}
               </p>
             </div>
             {badge(a.status)}
-            {a.status !== "completed" && (
-              <button
-                className="secondary small"
-                onClick={() => onComplete(a.id)}
-              >
-                <Check size={16} />
-                Completar
-              </button>
-            )}
-          </article>
+            {a.status !== "completed" && !a.projected && (
+        <button
+          className="secondary small"
+          onClick={() => onComplete(a.id)}
+        >
+          <Check size={16} />
+          Completar
+        </button>
+      )}
+    </article>
   );
 }
 function Payments() {

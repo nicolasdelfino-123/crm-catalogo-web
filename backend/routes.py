@@ -31,6 +31,55 @@ def add_calendar_months(value, months):
     return date(year, month, day)
 
 
+def next_billing_date(client, paid_period):
+    """Conserva el día de alta al abrir el período posterior al pagado."""
+    next_month = add_calendar_months(paid_period.replace(day=1), 1)
+    signup_day = client.signup_date.day if client.signup_date else paid_period.day
+    day = min(signup_day, calendar.monthrange(next_month.year, next_month.month)[1])
+    return date(next_month.year, next_month.month, day)
+
+
+def billing_date_in_month(client, year, month):
+    signup_day = client.signup_date.day
+    day = min(signup_day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def projected_collection_items(clients, year, month):
+    """Proyecta cobros mensuales sin persistir doce acciones por cliente."""
+    items = []
+    target_month = (year, month)
+    for client in clients:
+        if client.status not in ("active", "at_risk") or not client.signup_date:
+            continue
+        first_billing = add_calendar_months(client.signup_date, 1)
+        if target_month < (first_billing.year, first_billing.month):
+            continue
+        has_monthly_payment = any(
+            payment.payment_type == "monthly" and payment.due_date
+            and (payment.due_date.year, payment.due_date.month) == target_month
+            for payment in client.payments
+        )
+        if has_monthly_payment:
+            continue
+        due_date = billing_date_in_month(client, year, month)
+        items.append({
+            "id": f"projected-collection-{client.id}-{due_date.isoformat()}",
+            "title": f"Cobrar a {client.name}",
+            "description": "Cobro mensual proyectado desde la fecha de alta.",
+            "action_type": "collection_projection",
+            "status": "pending",
+            "priority": "high",
+            "due_date": due_date.isoformat(),
+            "completed_at": None,
+            "result_notes": None,
+            "client_name": client.name,
+            "business_name": client.business_name,
+            "projected": True,
+        })
+    return items
+
+
 def advance_service_stage(client, today=None):
     """Sincroniza la etapa con el mes indicado por la próxima renovación."""
     today = today or date.today()
@@ -46,10 +95,15 @@ def advance_service_stage(client, today=None):
         ),
         default=None,
     )
+    renewal_month = (
+        (client.next_renewal_date.year, client.next_renewal_date.month)
+        if client.next_renewal_date else None
+    )
+    paid_month = (latest_paid_period.year, latest_paid_period.month) if latest_paid_period else None
     if latest_paid_period and (
-        not client.next_renewal_date or client.next_renewal_date <= latest_paid_period
+        not renewal_month or paid_month >= renewal_month
     ):
-        client.next_renewal_date = add_calendar_months(latest_paid_period, 1)
+        client.next_renewal_date = next_billing_date(client, latest_paid_period)
     reference_date = client.next_renewal_date or today
     elapsed_months = max(0, (reference_date.year - client.signup_date.year) * 12 + reference_date.month - client.signup_date.month)
     if reference_date < add_calendar_months(client.signup_date, elapsed_months):
@@ -119,7 +173,7 @@ def advance_renewal_after_payment(payment):
     if not paid_period:
         return
     complete_collection_action(client, paid_period)
-    next_renewal = add_calendar_months(paid_period, 1)
+    next_renewal = next_billing_date(client, paid_period)
     if not client.next_renewal_date or next_renewal > client.next_renewal_date:
         client.next_renewal_date = next_renewal
     advance_service_stage(client)
@@ -136,7 +190,14 @@ def ensure_collection_action(client):
     due_date = client.next_renewal_date or (
         add_calendar_months(client.signup_date, 1) if client.signup_date else None
     )
-    expected_key = collection_action_key(due_date) if eligible and due_date else None
+    scheduled_for_month = due_date and any(
+        payment.payment_type == "monthly"
+        and payment.due_date
+        and payment.due_date.year == due_date.year
+        and payment.due_date.month == due_date.month
+        for payment in client.payments
+    )
+    expected_key = collection_action_key(due_date) if eligible and due_date and not scheduled_for_month else None
     automatic_pending = [
         action for action in client.actions
         if action.action_type == "collection" and action.status in ("pending", "in_progress")
@@ -162,8 +223,11 @@ def ensure_collection_action(client):
 
 
 def complete_collection_action(client, paid_period):
-    key = collection_action_key(paid_period)
-    action = next((item for item in client.actions if item.template_key == key), None)
+    action = next((
+        item for item in client.actions
+        if item.action_type == "collection" and item.due_date
+        and item.due_date.year == paid_period.year and item.due_date.month == paid_period.month
+    ), None)
     if action and action.status != "completed":
         action.status = "completed"
         action.completed_at = datetime.utcnow()
@@ -268,10 +332,15 @@ def actions_list():
     existing_clients = Client.query.filter(Client.archived_at.is_(None)).all()
     collection_actions_changed = False
     for client in existing_clients:
+        collection_actions_changed = advance_service_stage(client) or collection_actions_changed
         collection_actions_changed = ensure_collection_action(client) or collection_actions_changed
     if collection_actions_changed:
         db.session.commit()
     query = ClientAction.query.join(Client).filter(Client.archived_at.is_(None))
+    if request.args.get("view") == "calendar":
+        # En el calendario los cobros se proyectan para cada mes; se excluye
+        # la única acción persistida para no mostrar el mismo cobro dos veces.
+        query = query.filter(ClientAction.action_type != "collection")
     if request.args.get("status") == "pending":
         query = query.filter(ClientAction.status.in_(["pending", "in_progress"]))
     elif request.args.get("status"):
@@ -289,7 +358,12 @@ def actions_list():
         except ValueError:
             return error("Mes inválido", 422)
     items = query.order_by(ClientAction.due_date.asc()).limit(250).all()
-    return ok([{**a.to_dict(), "client_name": a.client.name, "business_name": a.client.business_name} for a in items])
+    result = [{**a.to_dict(), "client_name": a.client.name, "business_name": a.client.business_name} for a in items]
+    if request.args.get("view") == "calendar" and request.args.get("status") == "pending" and request.args.get("month"):
+        year, month = request.args["month"].split("-")
+        result.extend(projected_collection_items(existing_clients, int(year), int(month)))
+        result.sort(key=lambda item: (item["due_date"] or "9999-12-31", str(item["id"])))
+    return ok(result)
 
 
 @api.post("/clients/<int:client_id>/actions")
@@ -330,6 +404,7 @@ def payments_create(client_id):
         if payment.status == "paid": payment.paid_at = datetime.utcnow()
         db.session.add(payment)
         if payment.status == "paid": advance_renewal_after_payment(payment)
+        else: ensure_collection_action(client)
         db.session.commit(); return ok(payment.to_dict(), "Pago registrado", 201)
     except (ValueError, TypeError) as exc: db.session.rollback(); return error(str(exc), 422)
 
@@ -348,13 +423,18 @@ def payments_update(payment_id):
     payment.paid_at = datetime.utcnow() if payment.status == "paid" else None
     if payment.status == "paid" and not was_paid:
         advance_renewal_after_payment(payment)
+    else:
+        ensure_collection_action(payment.client)
     db.session.commit(); return ok(payment.to_dict(), "Pago actualizado")
 
 
 @api.delete("/payments/<int:payment_id>")
 def payments_delete(payment_id):
     payment = Payment.query.get_or_404(payment_id)
+    client = payment.client
     db.session.delete(payment)
+    db.session.flush()
+    ensure_collection_action(client)
     db.session.commit()
     return ok(None, "Pago eliminado")
 
