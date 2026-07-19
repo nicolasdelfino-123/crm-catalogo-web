@@ -1990,6 +1990,7 @@ function Agenda() {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const [showNewAction, setShowNewAction] = useState(false);
   const [editingAgendaAction, setEditingAgendaAction] = useState(null);
+  const [agendaDateOrder, setAgendaDateOrder] = useState("asc");
   const load = useCallback(
     () => api(`/actions?view=${view}&status=${actionStatus}${view === "calendar" ? `&month=${calendarMonth}` : ""}`).then(setItems),
     [view, actionStatus, calendarMonth],
@@ -2024,6 +2025,14 @@ function Agenda() {
   const selectedDayItems = selectedCalendarDate
     ? items.filter((action) => action.due_date === selectedCalendarDate)
     : [];
+  const sortedAgendaItems = useMemo(() => [...items].sort((first, second) => {
+    if (!first.due_date && !second.due_date) return String(first.id).localeCompare(String(second.id));
+    if (!first.due_date) return 1;
+    if (!second.due_date) return -1;
+    const dateComparison = first.due_date.localeCompare(second.due_date);
+    const titleComparison = first.title.localeCompare(second.title, "es", { sensitivity: "base" });
+    return (agendaDateOrder === "asc" ? dateComparison : -dateComparison) || titleComparison;
+  }), [items, agendaDateOrder]);
   const calendarTitle = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
     .format(new Date(`${calendarMonth}-01T12:00:00Z`));
   function moveCalendarMonth(offset) {
@@ -2075,6 +2084,18 @@ function Agenda() {
           </button>
         ))}
       </div>
+      {view !== "calendar" && (
+        <div className="agenda-sort-toolbar">
+          <button
+            type="button"
+            className="secondary small"
+            onClick={() => setAgendaDateOrder((order) => order === "asc" ? "desc" : "asc")}
+          >
+            <ArrowUpDown size={14} />
+            {agendaDateOrder === "asc" ? "Más próximas primero" : "Más lejanas primero"}
+          </button>
+        </div>
+      )}
       {view === "calendar" ? (
         <div className="action-calendar">
           <div className="calendar-head">
@@ -2112,7 +2133,7 @@ function Agenda() {
         </div>
       ) : (
         <div className="agenda-list">
-          {items.map((a) => (
+        {sortedAgendaItems.map((a) => (
           <AgendaItem key={a.id} action={a} onComplete={complete} onEdit={setEditingAgendaAction} />
           ))}
         </div>
