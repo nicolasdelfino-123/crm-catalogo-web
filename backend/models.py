@@ -10,6 +10,20 @@ def iso(value):
     return value.isoformat() if value else None
 
 
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(160), unique=True, nullable=False, index=True)
+    password = db.Column(db.String(255), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    role = db.Column(db.String(30), nullable=False, default="admin")
+    last_login = db.Column(db.DateTime)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    is_premium = db.Column(db.Boolean, nullable=False, default=True)
+    is_admin = db.Column(db.Boolean, nullable=False, default=True)
+    must_reset_password = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class Client(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False, index=True)
