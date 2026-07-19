@@ -1989,6 +1989,7 @@ function Agenda() {
   const [calendarMonth, setCalendarMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const [showNewAction, setShowNewAction] = useState(false);
+  const [editingAgendaAction, setEditingAgendaAction] = useState(null);
   const load = useCallback(
     () => api(`/actions?view=${view}&status=${actionStatus}${view === "calendar" ? `&month=${calendarMonth}` : ""}`).then(setItems),
     [view, actionStatus, calendarMonth],
@@ -2102,7 +2103,7 @@ function Agenda() {
               <h3>Acciones del {fmtDate(selectedCalendarDate)}</h3>
               <div className="agenda-list">
                 {selectedDayItems.map((a) => (
-                  <AgendaItem key={a.id} action={a} onComplete={complete} />
+                  <AgendaItem key={a.id} action={a} onComplete={complete} onEdit={setEditingAgendaAction} />
                 ))}
                 {!selectedDayItems.length && <p>Sin acciones para este día.</p>}
               </div>
@@ -2112,7 +2113,7 @@ function Agenda() {
       ) : (
         <div className="agenda-list">
           {items.map((a) => (
-            <AgendaItem key={a.id} action={a} onComplete={complete} />
+          <AgendaItem key={a.id} action={a} onComplete={complete} onEdit={setEditingAgendaAction} />
           ))}
         </div>
       )}
@@ -2124,6 +2125,16 @@ function Agenda() {
             setShowNewAction(false);
             setActionStatus("pending");
             if (actionStatus === "pending") load();
+          }}
+        />
+      )}
+      {editingAgendaAction && (
+        <AgendaActionEditor
+          action={editingAgendaAction}
+          onClose={() => setEditingAgendaAction(null)}
+          onSaved={() => {
+            setEditingAgendaAction(null);
+            load();
           }}
         />
       )}
@@ -2217,7 +2228,57 @@ function AgendaNewAction({ onClose, onSaved }) {
   );
 }
 
-function AgendaItem({ action: a, onComplete }) {
+function AgendaActionEditor({ action, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    title: action.title,
+    context_name: action.client_name,
+    due_date: action.due_date || "",
+    priority: action.priority || "medium",
+  });
+  const [saving, setSaving] = useState(false);
+  async function submit(event) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const actionId = action.standalone ? String(action.id).replace("standalone-", "") : action.id;
+      await api(`/${action.standalone ? "standalone-actions" : "actions"}/${actionId}`, {
+        method: "PATCH",
+        body: JSON.stringify(form),
+      });
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="form-modal agenda-action-modal">
+        <div className="modal-head">
+          <div><span className="eyebrow">Agenda</span><h2>Editar acción</h2></div>
+          <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
+        </div>
+        <form onSubmit={submit}>
+          <div className="form-grid">
+            {action.standalone ? (
+              <label className="span-2">¿Para quién o para qué es?<input value={form.context_name} onChange={(event) => setForm({ ...form, context_name: event.target.value })} required /></label>
+            ) : (
+              <label className="span-2">Cliente<input value={`${action.client_name} · ${action.business_name}`} readOnly /></label>
+            )}
+            <label className="span-2">Acción<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
+            <label>Fecha<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>
+            <label>Prioridad<select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label>
+          </div>
+          <div className="form-actions">
+            <button type="button" className="secondary" onClick={onClose}>Cancelar</button>
+            <button className="primary" disabled={saving}><Save size={17} />{saving ? "Guardando..." : "Guardar cambios"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AgendaItem({ action: a, onComplete, onEdit }) {
   return (
     <article key={a.id}>
       <div className={`priority ${a.priority}`} />
@@ -2229,6 +2290,7 @@ function AgendaItem({ action: a, onComplete }) {
               </p>
             </div>
             {badge(a.status)}
+            {!a.projected && <IconButton label={`Editar ${a.title}`} onClick={() => onEdit(a)}><Edit3 /></IconButton>}
             {a.status !== "completed" && !a.projected && (
         <button
           className="secondary small"

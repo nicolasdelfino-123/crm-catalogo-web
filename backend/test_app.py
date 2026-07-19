@@ -292,6 +292,14 @@ def test_standalone_action_appears_in_calendar_and_can_be_completed(client):
     assert any(item["id"] == action["id"] and item["client_name"] == "Trámite interno" for item in pending)
 
     action_id = action["id"].replace("standalone-", "")
+    edited = client.patch(f"/api/standalone-actions/{action_id}", json={
+        "context_name": "Proveedor externo", "title": "Enviar documentación",
+        "due_date": "2026-09-02", "priority": "urgent",
+    }).get_json()["data"]
+    assert edited["client_name"] == "Proveedor externo"
+    assert edited["title"] == "Enviar documentación"
+    assert edited["due_date"] == "2026-09-02"
+
     client.patch(f"/api/standalone-actions/{action_id}", json={"status": "completed"})
-    completed = client.get("/api/actions?view=calendar&month=2026-08&status=completed").get_json()["data"]
+    completed = client.get("/api/actions?view=calendar&month=2026-09&status=completed").get_json()["data"]
     assert any(item["id"] == action["id"] for item in completed)

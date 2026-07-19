@@ -377,6 +377,14 @@ def standalone_actions_create():
 @api.patch("/standalone-actions/<int:action_id>")
 def standalone_actions_update(action_id):
     action = StandaloneAction.query.get_or_404(action_id); data = request.get_json() or {}
+    if "context_name" in data:
+        if not data["context_name"].strip(): return error("Indicá para quién o para qué es", 422)
+        action.context_name = data["context_name"].strip()
+    if "title" in data:
+        if not data["title"].strip(): return error("El título es obligatorio", 422)
+        action.title = data["title"].strip()
+    if "due_date" in data: action.due_date = parse_date(data["due_date"])
+    if "priority" in data: action.priority = data["priority"]
     if "status" in data:
         action.status = data["status"]
         action.completed_at = datetime.utcnow() if action.status == "completed" else None
@@ -399,7 +407,7 @@ def actions_update(action_id):
         if field in data: setattr(action, field, data[field])
     if "due_date" in data: action.due_date = parse_date(data["due_date"])
     if data.get("status") == "completed" and not action.completed_at: action.completed_at = datetime.utcnow()
-    if data.get("status") != "completed": action.completed_at = None
+    if "status" in data and data["status"] != "completed": action.completed_at = None
     db.session.commit(); return ok(action.to_dict(), "Acción actualizada")
 
 
