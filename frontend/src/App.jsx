@@ -1883,10 +1883,11 @@ function Th({ label, name, sort, toggle }) {
 
 function Agenda() {
   const [view, setView] = useState("today");
+  const [actionStatus, setActionStatus] = useState("pending");
   const [items, setItems] = useState([]);
   const load = useCallback(
-    () => api(`/actions?view=${view}`).then(setItems),
-    [view],
+    () => api(`/actions?view=${view}&status=${actionStatus}`).then(setItems),
+    [view, actionStatus],
   );
   useEffect(() => {
     load();
@@ -1916,6 +1917,20 @@ function Agenda() {
           <button
             className={view === id ? "active" : ""}
             onClick={() => setView(id)}
+            key={id}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="segmented action-status-tabs" aria-label="Filtrar acciones por estado">
+        {[
+          ["pending", "Pendientes"],
+          ["completed", "Completadas"],
+        ].map(([id, label]) => (
+          <button
+            className={actionStatus === id ? "active" : ""}
+            onClick={() => setActionStatus(id)}
             key={id}
           >
             {label}

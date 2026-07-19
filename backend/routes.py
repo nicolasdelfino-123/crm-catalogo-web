@@ -219,8 +219,11 @@ def actions_generate(client_id):
 @api.get("/actions")
 def actions_list():
     query = ClientAction.query.join(Client).filter(Client.archived_at.is_(None))
-    if request.args.get("status"): query = query.filter(ClientAction.status == request.args["status"])
-    if request.args.get("view") == "overdue": query = query.filter(ClientAction.due_date < date.today(), ClientAction.status.in_(["pending", "in_progress"]))
+    if request.args.get("status") == "pending":
+        query = query.filter(ClientAction.status.in_(["pending", "in_progress"]))
+    elif request.args.get("status"):
+        query = query.filter(ClientAction.status == request.args["status"])
+    if request.args.get("view") == "overdue": query = query.filter(ClientAction.due_date < date.today())
     if request.args.get("view") == "today": query = query.filter(ClientAction.due_date == date.today())
     if request.args.get("view") == "week": query = query.filter(ClientAction.due_date.between(date.today(), date.today() + timedelta(days=7)))
     items = query.order_by(ClientAction.due_date.asc()).limit(250).all()
