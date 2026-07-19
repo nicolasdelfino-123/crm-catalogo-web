@@ -134,3 +134,24 @@ def test_editing_client_counts_updates_account_evolution(client):
     }).get_json()["data"]
     assert len(updated_again["metrics"]) == 1
     assert updated_again["metrics"][0]["followers_count"] == 130
+
+
+def test_actions_can_be_filtered_as_pending_or_completed(client):
+    customer = client.post("/api/clients", json={
+        "name": "Agenda", "business_name": "Agenda", "signup_date": "2026-07-01",
+        "country": "Argentina", "currency": "ARS", "generate_schedule": False,
+    }).get_json()["data"]
+    action_ids = []
+    for title in ["Pendiente", "En curso", "Completada"]:
+        action = client.post(f'/api/clients/{customer["id"]}/actions', json={
+            "title": title, "due_date": date.today().isoformat(),
+        }).get_json()["data"]
+        action_ids.append(action["id"])
+    client.patch(f"/api/actions/{action_ids[1]}", json={"status": "in_progress"})
+    client.patch(f"/api/actions/{action_ids[2]}", json={"status": "completed"})
+
+    pending = client.get("/api/actions?view=today&status=pending").get_json()["data"]
+    completed = client.get("/api/actions?view=today&status=completed").get_json()["data"]
+
+    assert {action["title"] for action in pending} == {"Pendiente", "En curso"}
+    assert [action["title"] for action in completed] == ["Completada"]

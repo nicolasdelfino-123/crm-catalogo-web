@@ -372,11 +372,49 @@ def notes_delete(note_id):
 @api.get("/dashboard/summary")
 def dashboard():
     today = date.today(); month_start = today.replace(day=1)
-    clients = Client.query.filter(Client.archived_at.is_(None)).all(); actions = ClientAction.query.all(); payments = Payment.query.all()
+    clients = Client.query.filter(Client.archived_at.is_(None)).all()
+    actions = ClientAction.query.join(Client).filter(Client.archived_at.is_(None)).all()
+    payments = Payment.query.all()
     money = {}
     for p in payments:
         if p.status == "paid" and p.paid_at and p.paid_at.date() >= month_start: money[p.currency] = money.get(p.currency, 0) + float(p.amount)
-    data = {"active_clients": sum(c.status == "active" for c in clients), "at_risk_clients": sum(c.status == "at_risk" for c in clients), "pending_actions": sum(a.status in ("pending", "in_progress") for a in actions), "overdue_actions": sum(a.status in ("pending", "in_progress") and a.due_date and a.due_date < today for a in actions), "renewals_week": sum(c.next_renewal_date and today <= c.next_renewal_date <= today + timedelta(days=7) for c in clients), "new_clients_month": sum(c.signup_date >= month_start for c in clients), "collected": money}
+    active_clients = [c for c in clients if c.status == "active"]
+    at_risk_clients = [c for c in clients if c.status == "at_risk"]
+    pending_actions = [a for a in actions if a.status in ("pending", "in_progress")]
+    overdue_actions = [a for a in pending_actions if a.due_date and a.due_date < today]
+    renewals_week = [c for c in clients if c.next_renewal_date and today <= c.next_renewal_date <= today + timedelta(days=7)]
+    new_clients_month = [c for c in clients if c.signup_date >= month_start]
+
+    def client_item(client):
+        return {
+            "id": client.id, "name": client.name, "business_name": client.business_name,
+            "status": client.status, "service_stage": client.service_stage,
+            "signup_date": client.signup_date.isoformat() if client.signup_date else None,
+            "next_renewal_date": client.next_renewal_date.isoformat() if client.next_renewal_date else None,
+        }
+
+    def action_item(action):
+        return {
+            "id": action.id, "title": action.title, "status": action.status,
+            "due_date": action.due_date.isoformat() if action.due_date else None,
+            "client_id": action.client.id, "client_name": action.client.name,
+            "business_name": action.client.business_name,
+        }
+
+    data = {
+        "active_clients": len(active_clients), "at_risk_clients": len(at_risk_clients),
+        "pending_actions": len(pending_actions), "overdue_actions": len(overdue_actions),
+        "renewals_week": len(renewals_week), "new_clients_month": len(new_clients_month),
+        "collected": money,
+        "details": {
+            "active_clients": [client_item(c) for c in active_clients],
+            "at_risk_clients": [client_item(c) for c in at_risk_clients],
+            "pending_actions": [action_item(a) for a in pending_actions],
+            "overdue_actions": [action_item(a) for a in overdue_actions],
+            "renewals_week": [client_item(c) for c in renewals_week],
+            "new_clients_month": [client_item(c) for c in new_clients_month],
+        },
+    }
     return ok(data)
 
 

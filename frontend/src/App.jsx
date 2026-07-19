@@ -257,17 +257,18 @@ function Shell({ page, setPage, children }) {
 
 function Dashboard({ goClients }) {
   const [data, setData] = useState(null);
+  const [selectedMetric, setSelectedMetric] = useState(null);
   useEffect(() => {
     api("/dashboard/summary").then(setData);
   }, []);
   if (!data) return <Loading />;
   const cards = [
-    ["Clientes activos", data.active_clients, Users, "green"],
-    ["Necesitan atención", data.at_risk_clients, AlertTriangle, "amber"],
-    ["Acciones pendientes", data.pending_actions, Clock3, "blue"],
-    ["Acciones vencidas", data.overdue_actions, AlertTriangle, "red"],
-    ["Renuevan esta semana", data.renewals_week, CalendarDays, "violet"],
-    ["Altas del mes", data.new_clients_month, TrendingUp, "green"],
+    ["active_clients", "Clientes activos", data.active_clients, Users, "green"],
+    ["at_risk_clients", "Necesitan atención", data.at_risk_clients, AlertTriangle, "amber"],
+    ["pending_actions", "Acciones pendientes", data.pending_actions, Clock3, "blue"],
+    ["overdue_actions", "Acciones vencidas", data.overdue_actions, AlertTriangle, "red"],
+    ["renewals_week", "Renuevan esta semana", data.renewals_week, CalendarDays, "violet"],
+    ["new_clients_month", "Altas del mes", data.new_clients_month, TrendingUp, "green"],
   ];
   return (
     <section className="page">
@@ -282,8 +283,14 @@ function Dashboard({ goClients }) {
         </button>
       </div>
       <div className="metrics-grid">
-        {cards.map(([label, value, Icon, color]) => (
-          <div className="metric" key={label}>
+        {cards.map(([key, label, value, Icon, color]) => (
+          <button
+            type="button"
+            className="metric metric-button"
+            key={key}
+            onClick={() => setSelectedMetric({ key, label })}
+            aria-label={`Ver detalle de ${label}`}
+          >
             <span className={color}>
               <Icon size={20} />
             </span>
@@ -291,7 +298,7 @@ function Dashboard({ goClients }) {
               <small>{label}</small>
               <strong>{value}</strong>
             </div>
-          </div>
+          </button>
         ))}
       </div>
       <div className="dashboard-band">
@@ -310,7 +317,85 @@ function Dashboard({ goClients }) {
           )}
         </div>
       </div>
+      {selectedMetric && (
+        <DashboardMetricModal
+          title={selectedMetric.label}
+          metricKey={selectedMetric.key}
+          items={data.details?.[selectedMetric.key] || []}
+          onClose={() => setSelectedMetric(null)}
+        />
+      )}
     </section>
+  );
+}
+
+function DashboardMetricModal({ title, metricKey, items, onClose }) {
+  const actionMetric = metricKey === "pending_actions" || metricKey === "overdue_actions";
+  const [dateOrder, setDateOrder] = useState("asc");
+  const displayedItems = useMemo(() => {
+    if (metricKey !== "pending_actions") return items;
+    return [...items].sort((first, second) => {
+      if (!first.due_date && !second.due_date) return first.id - second.id;
+      if (!first.due_date) return 1;
+      if (!second.due_date) return -1;
+      const comparison = first.due_date.localeCompare(second.due_date);
+      return (dateOrder === "asc" ? comparison : -comparison) || first.id - second.id;
+    });
+  }, [items, metricKey, dateOrder]);
+  return (
+    <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="dashboard-metric-modal" role="dialog" aria-modal="true" aria-label={title}>
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">Detalle del resumen</span>
+            <h2>{title} ({items.length})</h2>
+          </div>
+          <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
+        </div>
+        <div className="dashboard-metric-list">
+          {metricKey === "pending_actions" && (
+            <div className="dashboard-metric-toolbar">
+              <button
+                type="button"
+                className="secondary small"
+                onClick={() => setDateOrder((order) => order === "asc" ? "desc" : "asc")}
+              >
+                <ArrowUpDown size={14} />
+                {dateOrder === "asc" ? "Más próximas primero" : "Más lejanas primero"}
+              </button>
+            </div>
+          )}
+          {displayedItems.map((item) => (
+            <article key={item.id}>
+              <div>
+                <strong>{actionMetric ? item.title : item.name}</strong>
+                <span>
+                  {actionMetric
+                    ? `${item.client_name} · ${item.business_name}`
+                    : item.business_name}
+                </span>
+              </div>
+              <div className="dashboard-metric-meta">
+                {actionMetric ? (
+                  <>
+                    <small>Fecha</small>
+                    <strong>{fmtDate(item.due_date)}</strong>
+                    {badge(item.status)}
+                  </>
+                ) : metricKey === "renewals_week" ? (
+                  <><small>Renovación</small><strong>{fmtDate(item.next_renewal_date)}</strong></>
+                ) : metricKey === "new_clients_month" ? (
+                  <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong></>
+                ) : (
+                  <><small>Etapa</small><strong>{stageLabel(item.service_stage)}</strong>{badge(item.status)}</>
+                )}
+              </div>
+            </article>
+          ))}
+          {!displayedItems.length && <Empty />}
+        </div>
+      </section>
+    </div>
   );
 }
 
