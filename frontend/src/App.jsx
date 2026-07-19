@@ -331,14 +331,21 @@ function Dashboard({ goClients }) {
 
 function DashboardMetricModal({ title, metricKey, items, onClose }) {
   const actionMetric = metricKey === "pending_actions" || metricKey === "overdue_actions";
-  const [dateOrder, setDateOrder] = useState("asc");
+  const [dateOrder, setDateOrder] = useState(metricKey === "active_clients" ? "desc" : "asc");
   const displayedItems = useMemo(() => {
-    if (metricKey !== "pending_actions") return items;
+    const dateField = metricKey === "pending_actions"
+      ? "due_date"
+      : metricKey === "active_clients"
+        ? "signup_date"
+        : null;
+    if (!dateField) return items;
     return [...items].sort((first, second) => {
-      if (!first.due_date && !second.due_date) return first.id - second.id;
-      if (!first.due_date) return 1;
-      if (!second.due_date) return -1;
-      const comparison = first.due_date.localeCompare(second.due_date);
+      const firstDate = first[dateField];
+      const secondDate = second[dateField];
+      if (!firstDate && !secondDate) return first.id - second.id;
+      if (!firstDate) return 1;
+      if (!secondDate) return -1;
+      const comparison = firstDate.localeCompare(secondDate);
       return (dateOrder === "asc" ? comparison : -comparison) || first.id - second.id;
     });
   }, [items, metricKey, dateOrder]);
@@ -353,7 +360,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
           <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
         </div>
         <div className="dashboard-metric-list">
-          {metricKey === "pending_actions" && (
+          {(metricKey === "pending_actions" || metricKey === "active_clients") && (
             <div className="dashboard-metric-toolbar">
               <button
                 type="button"
@@ -361,7 +368,9 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
                 onClick={() => setDateOrder((order) => order === "asc" ? "desc" : "asc")}
               >
                 <ArrowUpDown size={14} />
-                {dateOrder === "asc" ? "Más próximas primero" : "Más lejanas primero"}
+                {metricKey === "active_clients"
+                  ? dateOrder === "desc" ? "Altas más recientes primero" : "Altas más antiguas primero"
+                  : dateOrder === "asc" ? "Más próximas primero" : "Más lejanas primero"}
               </button>
             </div>
           )}
@@ -386,6 +395,8 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
                   <><small>Renovación</small><strong>{fmtDate(item.next_renewal_date)}</strong></>
                 ) : metricKey === "new_clients_month" ? (
                   <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong></>
+                ) : metricKey === "active_clients" ? (
+                  <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong>{badge(item.service_stage)}</>
                 ) : (
                   <><small>Etapa</small><strong>{stageLabel(item.service_stage)}</strong>{badge(item.status)}</>
                 )}
