@@ -123,6 +123,26 @@ class ClientAction(db.Model):
         return {**self.short(), "description": self.description, "action_type": self.action_type, "completed_at": iso(self.completed_at), "result_notes": self.result_notes}
 
 
+class StandaloneAction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    context_name = db.Column(db.String(180), nullable=False)
+    title = db.Column(db.String(180), nullable=False)
+    status = db.Column(db.String(30), nullable=False, default="pending", index=True)
+    priority = db.Column(db.String(20), default="medium")
+    due_date = db.Column(db.Date, index=True)
+    completed_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": f"standalone-{self.id}", "title": self.title, "description": None,
+            "action_type": "standalone", "status": self.status, "priority": self.priority,
+            "due_date": iso(self.due_date), "completed_at": iso(self.completed_at),
+            "result_notes": None, "client_name": self.context_name,
+            "business_name": "Acción personalizada", "standalone": True,
+        }
+
+
 class Payment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey("client.id"), nullable=False, index=True)

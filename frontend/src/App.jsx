@@ -432,7 +432,7 @@ function ClientForm({ client, onClose, onSaved }) {
     notes_summary: "",
     followers_count: 0,
     publications_count: 0,
-    generate_schedule: true,
+    generate_schedule: false,
   };
   const [form, setForm] = useState(initial);
   const isKnownAcquisition = ACQUISITION_OPTIONS.some(
@@ -674,17 +674,6 @@ function ClientForm({ client, onClose, onSaved }) {
                   onChange={change}
                 />
               </label>
-              {!client && (
-                <label className="check span-2">
-                  <input
-                    type="checkbox"
-                    name="generate_schedule"
-                    checked={form.generate_schedule}
-                    onChange={change}
-                  />
-                  Crear cronograma de retención automáticamente
-                </label>
-              )}
             </div>
           </fieldset>
           <div className="form-actions">
@@ -1999,6 +1988,7 @@ function Agenda() {
   const [items, setItems] = useState([]);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
+  const [showNewAction, setShowNewAction] = useState(false);
   const load = useCallback(
     () => api(`/actions?view=${view}&status=${actionStatus}${view === "calendar" ? `&month=${calendarMonth}` : ""}`).then(setItems),
     [view, actionStatus, calendarMonth],
@@ -2006,8 +1996,9 @@ function Agenda() {
   useEffect(() => {
     load();
   }, [load]);
-  async function complete(id) {
-    await api(`/actions/${id}`, {
+  async function complete(action) {
+    const actionId = action.standalone ? String(action.id).replace("standalone-", "") : action.id;
+    await api(`/${action.standalone ? "standalone-actions" : "actions"}/${actionId}`, {
       method: "PATCH",
       body: JSON.stringify({ status: "completed" }),
     });
@@ -2047,6 +2038,10 @@ function Agenda() {
           <h2>Acciones por fecha</h2>
           <p>Prioriza el trabajo sin perder el contexto del cliente.</p>
         </div>
+        <button className="primary" onClick={() => setShowNewAction(true)}>
+          <Plus size={18} />
+          Agregar acción
+        </button>
       </div>
       <div className="segmented">
         {[
@@ -2122,7 +2117,103 @@ function Agenda() {
         </div>
       )}
       {view !== "calendar" && !items.length && <Empty />}
+      {showNewAction && (
+        <AgendaNewAction
+          onClose={() => setShowNewAction(false)}
+          onSaved={() => {
+            setShowNewAction(false);
+            setActionStatus("pending");
+            if (actionStatus === "pending") load();
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function AgendaNewAction({ onClose, onSaved }) {
+  const [clients, setClients] = useState([]);
+  const [actionPreset, setActionPreset] = useState("");
+  const [form, setForm] = useState({
+    client_id: "",
+    custom_context: "",
+    title: "",
+    due_date: new Date().toISOString().slice(0, 10),
+    priority: "medium",
+  });
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    api("/clients?per_page=100&sort_by=name&sort_dir=asc").then((result) => setClients(result.items));
+  }, []);
+  async function submit(event) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const customContext = form.client_id === "__custom";
+      await api(customContext ? "/standalone-actions" : `/clients/${form.client_id}/actions`, {
+        method: "POST",
+        body: JSON.stringify({
+          context_name: customContext ? form.custom_context : undefined,
+          title: actionPreset === "__custom" ? form.title : actionPreset,
+          due_date: form.due_date,
+          priority: form.priority,
+          status: "pending",
+        }),
+      });
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="form-modal agenda-action-modal">
+        <div className="modal-head">
+          <div><span className="eyebrow">Agenda</span><h2>Agregar acción pendiente</h2></div>
+          <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
+        </div>
+        <form onSubmit={submit}>
+          <div className="form-grid">
+            <label className="span-2">
+              Cliente
+              <select value={form.client_id} onChange={(event) => setForm({ ...form, client_id: event.target.value })} required>
+                <option value="">Elegí un cliente</option>
+                {clients.map((client) => <option value={client.id} key={client.id}>{client.name} · {client.business_name}</option>)}
+                <option value="__custom">PERSONALIZADO / SIN CLIENTE...</option>
+              </select>
+            </label>
+            {form.client_id === "__custom" && (
+              <label className="span-2">
+                ¿Para quién o para qué es?
+                <input value={form.custom_context} onChange={(event) => setForm({ ...form, custom_context: event.target.value })} placeholder="Ej.: proveedor, trámite, tarea interna..." required />
+              </label>
+            )}
+            <label className="span-2">
+              Acción
+              <select value={actionPreset} onChange={(event) => setActionPreset(event.target.value)} required>
+                <option value="">Elegí una acción</option>
+                {ACTION_PRESETS.map((preset) => <option value={preset} key={preset}>{preset}</option>)}
+                <option value="__custom">ACCIÓN PERSONALIZADA...</option>
+              </select>
+            </label>
+            {actionPreset === "__custom" && (
+              <label className="span-2">Nombre de la acción<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
+            )}
+            <label>Fecha<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>
+            <label>
+              Prioridad
+              <select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}>
+                <option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option>
+              </select>
+            </label>
+          </div>
+          <div className="form-actions">
+            <button type="button" className="secondary" onClick={onClose}>Cancelar</button>
+            <button className="primary" disabled={saving}><Save size={17} />{saving ? "Guardando..." : "Guardar acción"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -2141,7 +2232,7 @@ function AgendaItem({ action: a, onComplete }) {
             {a.status !== "completed" && !a.projected && (
         <button
           className="secondary small"
-          onClick={() => onComplete(a.id)}
+                onClick={() => onComplete(a)}
         >
           <Check size={16} />
           Completar

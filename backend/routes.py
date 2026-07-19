@@ -4,7 +4,7 @@ import calendar
 from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response
 from sqlalchemy import Integer, case, cast, func, or_
-from models import db, Client, ClientAction, Payment, ClientMetric, ClientNote, ActionTemplate
+from models import db, Client, ClientAction, StandaloneAction, Payment, ClientMetric, ClientNote, ActionTemplate
 
 api = Blueprint("api", __name__)
 
@@ -185,41 +185,14 @@ def collection_action_key(due_date):
 
 
 def ensure_collection_action(client):
-    """Mantiene una sola acción de cobro para la próxima renovación."""
-    eligible = not client.archived_at and client.status in ("active", "at_risk")
-    due_date = client.next_renewal_date or (
-        add_calendar_months(client.signup_date, 1) if client.signup_date else None
-    )
-    scheduled_for_month = due_date and any(
-        payment.payment_type == "monthly"
-        and payment.due_date
-        and payment.due_date.year == due_date.year
-        and payment.due_date.month == due_date.month
-        for payment in client.payments
-    )
-    expected_key = collection_action_key(due_date) if eligible and due_date and not scheduled_for_month else None
+    """Retira cobros persistidos antiguos; ahora se proyectan en el calendario."""
     automatic_pending = [
         action for action in client.actions
         if action.action_type == "collection" and action.status in ("pending", "in_progress")
     ]
-    changed = False
     for action in automatic_pending:
-        if action.template_key != expected_key:
-            db.session.delete(action)
-            changed = True
-    if not expected_key or any(action.template_key == expected_key for action in client.actions):
-        return changed
-    db.session.add(ClientAction(
-        client=client,
-        title=f"Cobrar a {client.name}",
-        description="Cobro mensual generado automáticamente desde la fecha de alta.",
-        action_type="collection",
-        status="pending",
-        priority="high",
-        due_date=due_date,
-        template_key=expected_key,
-    ))
-    return True
+        db.session.delete(action)
+    return bool(automatic_pending)
 
 
 def complete_collection_action(client, paid_period):
@@ -250,7 +223,13 @@ def generate_schedule(client):
 @api.get("/clients")
 def clients_list():
     query = Client.query.filter(Client.archived_at.is_(None))
-    sync_service_stages(query.all())
+    listed_clients = query.all()
+    sync_service_stages(listed_clients)
+    removed_legacy_collections = False
+    for client in listed_clients:
+        removed_legacy_collections = ensure_collection_action(client) or removed_legacy_collections
+    if removed_legacy_collections:
+        db.session.commit()
     search = request.args.get("search", "").strip()
     if search:
         term = f"%{search}%"
@@ -286,7 +265,7 @@ def clients_create():
         db.session.add(client); db.session.flush()
         if "followers_count" in data or "publications_count" in data:
             record_client_metric(client)
-        if data.get("generate_schedule", True): generate_schedule(client)
+        if data.get("generate_schedule", False): generate_schedule(client)
         ensure_collection_action(client)
         db.session.commit(); return ok(client.detail(), "Cliente creado", 201)
     except (ValueError, TypeError) as exc:
@@ -296,7 +275,7 @@ def clients_create():
 @api.get("/clients/<int:client_id>")
 def clients_detail(client_id):
     client = Client.query.get_or_404(client_id)
-    if advance_service_stage(client):
+    if advance_service_stage(client) or ensure_collection_action(client):
         db.session.commit()
     return ok(client.detail())
 
@@ -359,11 +338,50 @@ def actions_list():
             return error("Mes inválido", 422)
     items = query.order_by(ClientAction.due_date.asc()).limit(250).all()
     result = [{**a.to_dict(), "client_name": a.client.name, "business_name": a.client.business_name} for a in items]
+    standalone_query = StandaloneAction.query
+    if request.args.get("status") == "pending":
+        standalone_query = standalone_query.filter(StandaloneAction.status.in_(["pending", "in_progress"]))
+    elif request.args.get("status"):
+        standalone_query = standalone_query.filter(StandaloneAction.status == request.args["status"])
+    if request.args.get("view") == "overdue": standalone_query = standalone_query.filter(StandaloneAction.due_date < date.today())
+    if request.args.get("view") == "today": standalone_query = standalone_query.filter(StandaloneAction.due_date == date.today())
+    if request.args.get("view") == "week": standalone_query = standalone_query.filter(StandaloneAction.due_date.between(date.today(), date.today() + timedelta(days=7)))
+    if request.args.get("view") == "calendar" and request.args.get("month"):
+        month_start = date.fromisoformat(f'{request.args["month"]}-01')
+        standalone_query = standalone_query.filter(
+            StandaloneAction.due_date >= month_start,
+            StandaloneAction.due_date < add_calendar_months(month_start, 1),
+        )
+    result.extend(action.to_dict() for action in standalone_query.order_by(StandaloneAction.due_date.asc()).limit(250).all())
     if request.args.get("view") == "calendar" and request.args.get("status") == "pending" and request.args.get("month"):
         year, month = request.args["month"].split("-")
         result.extend(projected_collection_items(existing_clients, int(year), int(month)))
         result.sort(key=lambda item: (item["due_date"] or "9999-12-31", str(item["id"])))
     return ok(result)
+
+
+@api.post("/standalone-actions")
+def standalone_actions_create():
+    data = request.get_json() or {}
+    if not data.get("context_name", "").strip() or not data.get("title", "").strip():
+        return error("Completá para quién o para qué es y el nombre de la acción", 422)
+    action = StandaloneAction(
+        context_name=data["context_name"].strip(), title=data["title"].strip(),
+        due_date=parse_date(data.get("due_date")), priority=data.get("priority", "medium"),
+        status="pending",
+    )
+    db.session.add(action); db.session.commit()
+    return ok(action.to_dict(), "Acción creada", 201)
+
+
+@api.patch("/standalone-actions/<int:action_id>")
+def standalone_actions_update(action_id):
+    action = StandaloneAction.query.get_or_404(action_id); data = request.get_json() or {}
+    if "status" in data:
+        action.status = data["status"]
+        action.completed_at = datetime.utcnow() if action.status == "completed" else None
+    db.session.commit()
+    return ok(action.to_dict(), "Acción actualizada")
 
 
 @api.post("/clients/<int:client_id>/actions")
@@ -515,7 +533,10 @@ def notes_delete(note_id):
 def dashboard():
     today = date.today(); month_start = today.replace(day=1)
     clients = Client.query.filter(Client.archived_at.is_(None)).all()
-    actions = ClientAction.query.join(Client).filter(Client.archived_at.is_(None)).all()
+    actions = ClientAction.query.join(Client).filter(
+        Client.archived_at.is_(None),
+        or_(ClientAction.action_type != "collection", ClientAction.action_type.is_(None)),
+    ).all()
     payments = Payment.query.all()
     money = {}
     for p in payments:

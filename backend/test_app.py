@@ -157,7 +157,7 @@ def test_actions_can_be_filtered_as_pending_or_completed(client):
     assert [action["title"] for action in completed] == ["Completada"]
 
 
-def test_monthly_collection_actions_are_created_and_advanced(client, app):
+def test_monthly_collections_only_exist_as_calendar_projections(client, app):
     with app.app_context():
         existing = Client(
             name="Cliente existente", business_name="Existente", signup_date=date(2026, 7, 10),
@@ -167,12 +167,12 @@ def test_monthly_collection_actions_are_created_and_advanced(client, app):
         db.session.commit()
         existing_id = existing.id
 
-    first_list = client.get("/api/actions?view=all&status=pending").get_json()["data"]
-    second_list = client.get("/api/actions?view=all&status=pending").get_json()["data"]
-    charges = [action for action in first_list if action["title"] == "Cobrar a Cliente existente"]
-    repeated_charges = [action for action in second_list if action["title"] == "Cobrar a Cliente existente"]
+    manual_actions = client.get("/api/actions?view=all&status=pending").get_json()["data"]
+    august = client.get("/api/actions?view=calendar&month=2026-08&status=pending").get_json()["data"]
+    charges = [action for action in august if action["title"] == "Cobrar a Cliente existente"]
 
-    assert len(charges) == len(repeated_charges) == 1
+    assert not any(action["title"] == "Cobrar a Cliente existente" for action in manual_actions)
+    assert len(charges) == 1
     assert charges[0]["due_date"] == "2026-08-10"
 
     payment = client.post(f"/api/clients/{existing_id}/payments", json={
@@ -181,13 +181,12 @@ def test_monthly_collection_actions_are_created_and_advanced(client, app):
     }).get_json()["data"]
     client.patch(f'/api/payments/{payment["id"]}', json={"status": "paid"})
 
-    pending = client.get("/api/actions?view=all&status=pending").get_json()["data"]
+    september = client.get("/api/actions?view=calendar&month=2026-09&status=pending").get_json()["data"]
     completed = client.get("/api/actions?view=all&status=completed").get_json()["data"]
-    next_charge = [action for action in pending if action["title"] == "Cobrar a Cliente existente"]
-    paid_charge = [action for action in completed if action["title"] == "Cobrar a Cliente existente"]
+    next_charge = [action for action in september if action["title"] == "Cobrar a Cliente existente"]
 
     assert len(next_charge) == 1 and next_charge[0]["due_date"] == "2026-09-10"
-    assert paid_charge == []
+    assert not any(action["title"] == "Cobrar a Cliente existente" for action in completed)
 
 
 def test_scheduled_monthly_payment_suppresses_charge_but_extra_work_does_not(client):
@@ -210,8 +209,8 @@ def test_scheduled_monthly_payment_suppresses_charge_but_extra_work_does_not(cli
         "amount": 2500, "currency": "ARS", "payment_type": "extra_work",
         "due_date": "2026-06-05", "status": "paid",
     })
-    pending = client.get("/api/actions?view=all&status=pending").get_json()["data"]
-    charge = [action for action in pending if action["title"] == "Cobrar a Gustavo"]
+    june = client.get("/api/actions?view=calendar&month=2026-06&status=pending").get_json()["data"]
+    charge = [action for action in june if action["title"] == "Cobrar a Gustavo"]
     assert len(charge) == 1 and charge[0]["due_date"] == "2026-06-15"
 
 
@@ -279,3 +278,20 @@ def test_calendar_projects_future_charges_and_hides_scheduled_month(client):
 
     assert not any(action["title"] == "Cobrar a Calendario anual" for action in august_after_payment)
     assert any(action["title"] == "Cobrar a Calendario anual" and action["due_date"] == "2026-09-30" for action in september)
+
+
+def test_standalone_action_appears_in_calendar_and_can_be_completed(client):
+    created = client.post("/api/standalone-actions", json={
+        "context_name": "Trámite interno", "title": "Presentar documentación",
+        "due_date": "2026-08-20", "priority": "high",
+    })
+    assert created.status_code == 201
+    action = created.get_json()["data"]
+
+    pending = client.get("/api/actions?view=calendar&month=2026-08&status=pending").get_json()["data"]
+    assert any(item["id"] == action["id"] and item["client_name"] == "Trámite interno" for item in pending)
+
+    action_id = action["id"].replace("standalone-", "")
+    client.patch(f"/api/standalone-actions/{action_id}", json={"status": "completed"})
+    completed = client.get("/api/actions?view=calendar&month=2026-08&status=completed").get_json()["data"]
+    assert any(item["id"] == action["id"] for item in completed)
