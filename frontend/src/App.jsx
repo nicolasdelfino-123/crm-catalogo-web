@@ -1991,6 +1991,8 @@ function Agenda() {
   const [showNewAction, setShowNewAction] = useState(false);
   const [editingAgendaAction, setEditingAgendaAction] = useState(null);
   const [agendaDateOrder, setAgendaDateOrder] = useState("asc");
+  const [selectedAgendaClient, setSelectedAgendaClient] = useState(null);
+  const [agendaClientForm, setAgendaClientForm] = useState(null);
   const load = useCallback(
     () => api(`/actions?view=${view}&status=${actionStatus}${view === "calendar" ? `&month=${calendarMonth}` : ""}`).then(setItems),
     [view, actionStatus, calendarMonth],
@@ -2124,7 +2126,7 @@ function Agenda() {
               <h3>Acciones del {fmtDate(selectedCalendarDate)}</h3>
               <div className="agenda-list">
                 {selectedDayItems.map((a) => (
-                  <AgendaItem key={a.id} action={a} onComplete={complete} onEdit={setEditingAgendaAction} />
+                  <AgendaItem key={a.id} action={a} onComplete={complete} onEdit={setEditingAgendaAction} onOpenClient={setSelectedAgendaClient} />
                 ))}
                 {!selectedDayItems.length && <p>Sin acciones para este día.</p>}
               </div>
@@ -2134,7 +2136,7 @@ function Agenda() {
       ) : (
         <div className="agenda-list">
         {sortedAgendaItems.map((a) => (
-          <AgendaItem key={a.id} action={a} onComplete={complete} onEdit={setEditingAgendaAction} />
+          <AgendaItem key={a.id} action={a} onComplete={complete} onEdit={setEditingAgendaAction} onOpenClient={setSelectedAgendaClient} />
           ))}
         </div>
       )}
@@ -2155,6 +2157,27 @@ function Agenda() {
           onClose={() => setEditingAgendaAction(null)}
           onSaved={() => {
             setEditingAgendaAction(null);
+            load();
+          }}
+        />
+      )}
+      {selectedAgendaClient && (
+        <DetailModal
+          clientId={selectedAgendaClient}
+          onClose={() => setSelectedAgendaClient(null)}
+          onRefresh={load}
+          onEdit={(client) => {
+            setSelectedAgendaClient(null);
+            setAgendaClientForm(client);
+          }}
+        />
+      )}
+      {agendaClientForm && (
+        <ClientForm
+          client={agendaClientForm}
+          onClose={() => setAgendaClientForm(null)}
+          onSaved={() => {
+            setAgendaClientForm(null);
             load();
           }}
         />
@@ -2299,9 +2322,22 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
   );
 }
 
-function AgendaItem({ action: a, onComplete, onEdit }) {
+function AgendaItem({ action: a, onComplete, onEdit, onOpenClient }) {
+  const openClient = () => a.client_id && onOpenClient(a.client_id);
   return (
-    <article key={a.id}>
+          <article
+            key={a.id}
+            className={a.client_id ? "clickable-action" : ""}
+            onClick={openClient}
+            role={a.client_id ? "button" : undefined}
+            tabIndex={a.client_id ? 0 : undefined}
+            onKeyDown={(event) => {
+              if (a.client_id && (event.key === "Enter" || event.key === " ")) {
+                event.preventDefault();
+                openClient();
+              }
+            }}
+          >
       <div className={`priority ${a.priority}`} />
             <div>
               <time>{fmtDate(a.due_date)}</time>
@@ -2311,11 +2347,11 @@ function AgendaItem({ action: a, onComplete, onEdit }) {
               </p>
             </div>
             {badge(a.status)}
-            {!a.projected && <IconButton label={`Editar ${a.title}`} onClick={() => onEdit(a)}><Edit3 /></IconButton>}
+            {!a.projected && <IconButton label={`Editar ${a.title}`} onClick={(event) => { event.stopPropagation(); onEdit(a); }}><Edit3 /></IconButton>}
             {a.status !== "completed" && !a.projected && (
         <button
           className="secondary small"
-                onClick={() => onComplete(a)}
+                onClick={(event) => { event.stopPropagation(); onComplete(a); }}
         >
           <Check size={16} />
           Completar

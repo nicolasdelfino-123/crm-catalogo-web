@@ -73,6 +73,7 @@ def projected_collection_items(clients, year, month):
             "due_date": due_date.isoformat(),
             "completed_at": None,
             "result_notes": None,
+            "client_id": client.id,
             "client_name": client.name,
             "business_name": client.business_name,
             "projected": True,
@@ -337,7 +338,7 @@ def actions_list():
         except ValueError:
             return error("Mes inválido", 422)
     items = query.order_by(ClientAction.due_date.asc()).limit(250).all()
-    result = [{**a.to_dict(), "client_name": a.client.name, "business_name": a.client.business_name} for a in items]
+    result = [{**a.to_dict(), "client_id": a.client.id, "client_name": a.client.name, "business_name": a.client.business_name} for a in items]
     standalone_query = StandaloneAction.query
     if request.args.get("status") == "pending":
         standalone_query = standalone_query.filter(StandaloneAction.status.in_(["pending", "in_progress"]))
