@@ -33,8 +33,9 @@ import {
 } from "lucide-react";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ||
-  (import.meta.env.DEV ? `http://${window.location.hostname}:5000` : "");
-if (!BACKEND_URL) throw new Error("Falta VITE_BACKEND_URL en .env.production");
+  (import.meta.env.DEV
+    ? `http://${window.location.hostname}:5000`
+    : window.location.origin);
 const API = `${BACKEND_URL.replace(/\/$/, "")}/api`;
 async function api(path, options = {}) {
   const response = await fetch(`${API}${path}`, {
