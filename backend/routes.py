@@ -118,10 +118,55 @@ def advance_renewal_after_payment(payment):
     paid_period = payment.due_date or client.next_renewal_date
     if not paid_period:
         return
+    complete_collection_action(client, paid_period)
     next_renewal = add_calendar_months(paid_period, 1)
     if not client.next_renewal_date or next_renewal > client.next_renewal_date:
         client.next_renewal_date = next_renewal
     advance_service_stage(client)
+    ensure_collection_action(client)
+
+
+def collection_action_key(due_date):
+    return f"monthly_collection:{due_date.isoformat()}"
+
+
+def ensure_collection_action(client):
+    """Mantiene una sola acción de cobro para la próxima renovación."""
+    eligible = not client.archived_at and client.status in ("active", "at_risk")
+    due_date = client.next_renewal_date or (
+        add_calendar_months(client.signup_date, 1) if client.signup_date else None
+    )
+    expected_key = collection_action_key(due_date) if eligible and due_date else None
+    automatic_pending = [
+        action for action in client.actions
+        if action.action_type == "collection" and action.status in ("pending", "in_progress")
+    ]
+    changed = False
+    for action in automatic_pending:
+        if action.template_key != expected_key:
+            db.session.delete(action)
+            changed = True
+    if not expected_key or any(action.template_key == expected_key for action in client.actions):
+        return changed
+    db.session.add(ClientAction(
+        client=client,
+        title=f"Cobrar a {client.name}",
+        description="Cobro mensual generado automáticamente desde la fecha de alta.",
+        action_type="collection",
+        status="pending",
+        priority="high",
+        due_date=due_date,
+        template_key=expected_key,
+    ))
+    return True
+
+
+def complete_collection_action(client, paid_period):
+    key = collection_action_key(paid_period)
+    action = next((item for item in client.actions if item.template_key == key), None)
+    if action and action.status != "completed":
+        action.status = "completed"
+        action.completed_at = datetime.utcnow()
 
 
 def generate_schedule(client):
@@ -178,6 +223,7 @@ def clients_create():
         if "followers_count" in data or "publications_count" in data:
             record_client_metric(client)
         if data.get("generate_schedule", True): generate_schedule(client)
+        ensure_collection_action(client)
         db.session.commit(); return ok(client.detail(), "Cliente creado", 201)
     except (ValueError, TypeError) as exc:
         db.session.rollback(); return error(str(exc), 422)
@@ -201,6 +247,7 @@ def clients_update(client_id):
         current_counts = (client.followers_count or 0, client.publications_count or 0)
         if current_counts != previous_counts:
             record_client_metric(client)
+        ensure_collection_action(client)
         db.session.commit(); return ok(client.detail(), "Cliente actualizado")
     except (ValueError, TypeError) as exc:
         db.session.rollback(); return error(str(exc), 422)
@@ -218,6 +265,12 @@ def actions_generate(client_id):
 
 @api.get("/actions")
 def actions_list():
+    existing_clients = Client.query.filter(Client.archived_at.is_(None)).all()
+    collection_actions_changed = False
+    for client in existing_clients:
+        collection_actions_changed = ensure_collection_action(client) or collection_actions_changed
+    if collection_actions_changed:
+        db.session.commit()
     query = ClientAction.query.join(Client).filter(Client.archived_at.is_(None))
     if request.args.get("status") == "pending":
         query = query.filter(ClientAction.status.in_(["pending", "in_progress"]))

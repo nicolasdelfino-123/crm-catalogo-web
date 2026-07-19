@@ -155,3 +155,36 @@ def test_actions_can_be_filtered_as_pending_or_completed(client):
 
     assert {action["title"] for action in pending} == {"Pendiente", "En curso"}
     assert [action["title"] for action in completed] == ["Completada"]
+
+
+def test_monthly_collection_actions_are_created_and_advanced(client, app):
+    with app.app_context():
+        existing = Client(
+            name="Cliente existente", business_name="Existente", signup_date=date(2026, 7, 10),
+            next_renewal_date=date(2026, 8, 10), country="Argentina", currency="ARS", status="active",
+        )
+        db.session.add(existing)
+        db.session.commit()
+        existing_id = existing.id
+
+    first_list = client.get("/api/actions?view=all&status=pending").get_json()["data"]
+    second_list = client.get("/api/actions?view=all&status=pending").get_json()["data"]
+    charges = [action for action in first_list if action["title"] == "Cobrar a Cliente existente"]
+    repeated_charges = [action for action in second_list if action["title"] == "Cobrar a Cliente existente"]
+
+    assert len(charges) == len(repeated_charges) == 1
+    assert charges[0]["due_date"] == "2026-08-10"
+
+    payment = client.post(f"/api/clients/{existing_id}/payments", json={
+        "amount": 1000, "currency": "ARS", "payment_type": "monthly",
+        "due_date": "2026-08-10", "status": "pending",
+    }).get_json()["data"]
+    client.patch(f'/api/payments/{payment["id"]}', json={"status": "paid"})
+
+    pending = client.get("/api/actions?view=all&status=pending").get_json()["data"]
+    completed = client.get("/api/actions?view=all&status=completed").get_json()["data"]
+    next_charge = [action for action in pending if action["title"] == "Cobrar a Cliente existente"]
+    paid_charge = [action for action in completed if action["title"] == "Cobrar a Cliente existente"]
+
+    assert len(next_charge) == 1 and next_charge[0]["due_date"] == "2026-09-10"
+    assert len(paid_charge) == 1 and paid_charge[0]["due_date"] == "2026-08-10"
