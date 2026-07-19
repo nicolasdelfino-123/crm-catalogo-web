@@ -226,6 +226,15 @@ def actions_list():
     if request.args.get("view") == "overdue": query = query.filter(ClientAction.due_date < date.today())
     if request.args.get("view") == "today": query = query.filter(ClientAction.due_date == date.today())
     if request.args.get("view") == "week": query = query.filter(ClientAction.due_date.between(date.today(), date.today() + timedelta(days=7)))
+    if request.args.get("view") == "calendar" and request.args.get("month"):
+        try:
+            month_start = date.fromisoformat(f'{request.args["month"]}-01')
+            query = query.filter(
+                ClientAction.due_date >= month_start,
+                ClientAction.due_date < add_calendar_months(month_start, 1),
+            )
+        except ValueError:
+            return error("Mes inválido", 422)
     items = query.order_by(ClientAction.due_date.asc()).limit(250).all()
     return ok([{**a.to_dict(), "client_name": a.client.name, "business_name": a.client.business_name} for a in items])
 

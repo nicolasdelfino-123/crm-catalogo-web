@@ -9,6 +9,7 @@ import {
   SlidersHorizontal,
   Download,
   X,
+  ChevronLeft,
   ChevronRight,
   AlertTriangle,
   CheckCircle2,
@@ -1981,9 +1982,11 @@ function Agenda() {
   const [view, setView] = useState("today");
   const [actionStatus, setActionStatus] = useState("pending");
   const [items, setItems] = useState([]);
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const load = useCallback(
-    () => api(`/actions?view=${view}&status=${actionStatus}`).then(setItems),
-    [view, actionStatus],
+    () => api(`/actions?view=${view}&status=${actionStatus}${view === "calendar" ? `&month=${calendarMonth}` : ""}`).then(setItems),
+    [view, actionStatus, calendarMonth],
   );
   useEffect(() => {
     load();
@@ -1994,6 +1997,33 @@ function Agenda() {
       body: JSON.stringify({ status: "completed" }),
     });
     load();
+  }
+  const calendarDays = useMemo(() => {
+    const [year, month] = calendarMonth.split("-").map(Number);
+    const firstDay = new Date(Date.UTC(year, month - 1, 1));
+    const mondayOffset = (firstDay.getUTCDay() + 6) % 7;
+    const gridStart = new Date(Date.UTC(year, month - 1, 1 - mondayOffset));
+    const counts = items.reduce((result, action) => {
+      if (action.due_date) result[action.due_date] = (result[action.due_date] || 0) + 1;
+      return result;
+    }, {});
+    return Array.from({ length: 42 }, (_, index) => {
+      const current = new Date(gridStart);
+      current.setUTCDate(gridStart.getUTCDate() + index);
+      const iso = current.toISOString().slice(0, 10);
+      return { iso, day: current.getUTCDate(), currentMonth: current.getUTCMonth() === month - 1, count: counts[iso] || 0 };
+    });
+  }, [calendarMonth, items]);
+  const selectedDayItems = selectedCalendarDate
+    ? items.filter((action) => action.due_date === selectedCalendarDate)
+    : [];
+  const calendarTitle = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
+    .format(new Date(`${calendarMonth}-01T12:00:00Z`));
+  function moveCalendarMonth(offset) {
+    const [year, month] = calendarMonth.split("-").map(Number);
+    const next = new Date(Date.UTC(year, month - 1 + offset, 1));
+    setCalendarMonth(next.toISOString().slice(0, 7));
+    setSelectedCalendarDate(null);
   }
   return (
     <section className="page">
@@ -2009,6 +2039,7 @@ function Agenda() {
           ["week", "Próximos 7 días"],
           ["overdue", "Vencidas"],
           ["all", "Todas"],
+          ["calendar", "Calendario"],
         ].map(([id, label]) => (
           <button
             className={view === id ? "active" : ""}
@@ -2033,8 +2064,55 @@ function Agenda() {
           </button>
         ))}
       </div>
+      {view === "calendar" ? (
+        <div className="action-calendar">
+          <div className="calendar-head">
+            <button className="icon-btn" onClick={() => moveCalendarMonth(-1)} aria-label="Mes anterior"><ChevronLeft /></button>
+            <h3>{calendarTitle}</h3>
+            <button className="icon-btn" onClick={() => moveCalendarMonth(1)} aria-label="Mes siguiente"><ChevronRight /></button>
+          </div>
+          <div className="calendar-grid calendar-weekdays">
+            {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day) => <span key={day}>{day}</span>)}
+          </div>
+          <div className="calendar-grid calendar-days">
+            {calendarDays.map((day) => (
+              <button
+                type="button"
+                key={day.iso}
+                className={`${day.currentMonth ? "" : "outside"} ${selectedCalendarDate === day.iso ? "selected" : ""}`}
+                onClick={() => setSelectedCalendarDate(day.iso)}
+              >
+                <time>{day.day}</time>
+                {day.count > 0 && <strong>{day.count} {day.count === 1 ? "acción" : "acciones"}</strong>}
+              </button>
+            ))}
+          </div>
+          {selectedCalendarDate && (
+            <div className="calendar-selection">
+              <h3>Acciones del {fmtDate(selectedCalendarDate)}</h3>
+              <div className="agenda-list">
+                {selectedDayItems.map((a) => (
+                  <AgendaItem key={a.id} action={a} onComplete={complete} />
+                ))}
+                {!selectedDayItems.length && <p>Sin acciones para este día.</p>}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="agenda-list">
         {items.map((a) => (
+          <AgendaItem key={a.id} action={a} onComplete={complete} />
+        ))}
+      </div>
+      )}
+      {view !== "calendar" && !items.length && <Empty />}
+    </section>
+  );
+}
+
+function AgendaItem({ action: a, onComplete }) {
+  return (
           <article key={a.id}>
             <div className={`priority ${a.priority}`} />
             <div>
@@ -2048,17 +2126,13 @@ function Agenda() {
             {a.status !== "completed" && (
               <button
                 className="secondary small"
-                onClick={() => complete(a.id)}
+                onClick={() => onComplete(a.id)}
               >
                 <Check size={16} />
                 Completar
               </button>
             )}
           </article>
-        ))}
-      </div>
-      {!items.length && <Empty />}
-    </section>
   );
 }
 function Payments() {
