@@ -2422,6 +2422,15 @@ function Payments() {
     }), {}),
     [items],
   );
+  const monthlyPaidTotals = useMemo(
+    () => items
+      .filter((payment) => payment.status === "paid" && payment.payment_type === "monthly")
+      .reduce((result, payment) => ({
+        ...result,
+        [payment.currency]: (result[payment.currency] || 0) + payment.amount,
+      }), {}),
+    [items],
+  );
   const extraWorkPaidTotals = useMemo(
     () => items
       .filter((payment) => payment.status === "paid" && payment.payment_type !== "monthly")
@@ -2493,12 +2502,27 @@ function Payments() {
       </div>
       <div className="payment-summary">
         {paymentCurrencies.map((currency) => (
+          <div key={`monthly-paid-${currency}`}>
+            <small>Pagos Mensualidades · {currency}</small>
+            <strong>{fmtMoney(monthlyPaidTotals[currency] || 0, currency)}</strong>
+          </div>
+        ))}
+        {paymentCurrencies.map((currency) => (
           <div key={`extra-work-paid-${currency}`}>
-            <small>Pagado trabajos extra · {currency}</small>
+            <small>Pagos Trabajos extra · {currency}</small>
             <strong>{fmtMoney(extraWorkPaidTotals[currency] || 0, currency)}</strong>
           </div>
         ))}
-        {Object.entries(totals).map(([key, total]) => {
+        {paymentCurrencies.map((currency) => (
+          <div key={`total-paid-${currency}`}>
+            <small>Pagos Totales · {currency}</small>
+            <strong>{fmtMoney(
+              (monthlyPaidTotals[currency] || 0) + (extraWorkPaidTotals[currency] || 0),
+              currency,
+            )}</strong>
+          </div>
+        ))}
+        {Object.entries(totals).filter(([key]) => !key.endsWith("-paid")).map(([key, total]) => {
           const [currency, status] = key.split("-");
           return (
             <div key={key}>
