@@ -24,8 +24,8 @@ def create_app(test_config=None):
         if test_config and test_config.get("JWT_SECRET_KEY")
         else os.getenv("JWT_SECRET_KEY")
     )
-    if not jwt_secret or len(jwt_secret) < 32:
-        raise RuntimeError("JWT_SECRET_KEY debe tener al menos 32 caracteres")
+    if not jwt_secret:
+        raise RuntimeError("Falta JWT_SECRET_KEY en el archivo .env")
     database_uri = (
         test_config.get("SQLALCHEMY_DATABASE_URI")
         if test_config
