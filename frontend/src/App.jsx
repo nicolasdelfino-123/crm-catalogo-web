@@ -2393,6 +2393,7 @@ function AgendaItem({ action: a, onComplete, onEdit, onOpenClient }) {
 function Payments() {
   const [items, setItems] = useState([]);
   const [editing, setEditing] = useState(null);
+  const [clientQuery, setClientQuery] = useState("");
   const [clientNameOrder, setClientNameOrder] = useState("asc");
   const [dueDateOrder, setDueDateOrder] = useState(null);
   const load = useCallback(() => api("/payments").then(setItems), []);
@@ -2429,6 +2430,14 @@ function Payments() {
     [items],
   );
   const sortedItems = useMemo(() => {
+    const normalizedQuery = clientQuery.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
+    const visibleItems = normalizedQuery
+      ? items.filter((payment) => payment.client_name
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase("es")
+        .includes(normalizedQuery))
+      : items;
     const byClient = (first, second) => {
       const clientOrder = first.client_name.localeCompare(second.client_name, "es", {
         sensitivity: "base",
@@ -2440,21 +2449,21 @@ function Payments() {
       return first.due_date.localeCompare(second.due_date) || first.id - second.id;
     };
     if (!dueDateOrder) {
-      return [...items].sort((first, second) => {
+      return [...visibleItems].sort((first, second) => {
         const clientOrder = first.client_name.localeCompare(second.client_name, "es", {
           sensitivity: "base",
         });
         return (clientNameOrder === "asc" ? clientOrder : -clientOrder) || byClient(first, second);
       });
     }
-    return [...items].sort((first, second) => {
+    return [...visibleItems].sort((first, second) => {
       if (!first.due_date && !second.due_date) return byClient(first, second);
       if (!first.due_date) return 1;
       if (!second.due_date) return -1;
       const dateOrder = first.due_date.localeCompare(second.due_date);
       return (dueDateOrder === "asc" ? dateOrder : -dateOrder) || byClient(first, second);
     });
-  }, [items, clientNameOrder, dueDateOrder]);
+  }, [items, clientQuery, clientNameOrder, dueDateOrder]);
   async function setPaymentStatus(id, status) {
     await api(`/payments/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
     load();
@@ -2494,6 +2503,22 @@ function Payments() {
             </div>
           );
         })}
+      </div>
+      <div className="toolbar">
+        <label className="search">
+          <Search />
+          <input
+            value={clientQuery}
+            onChange={(event) => setClientQuery(event.target.value)}
+            placeholder="Buscar por nombre de cliente"
+          />
+        </label>
+        {clientQuery && (
+          <button className="text-btn" onClick={() => setClientQuery("")}>
+            <X size={15} />
+            Limpiar
+          </button>
+        )}
       </div>
       <div className="table-wrap payments-table">
         <table>
