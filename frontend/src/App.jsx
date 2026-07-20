@@ -740,6 +740,7 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
         ["amount", "Importe", "number"],
         ["due_date", "Fecha", "date"],
         ["status", "Estado", "payselect"],
+        ["notes", "Nota", "textarea"],
       ],
     },
     metric: {
@@ -827,7 +828,8 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
               </select>
             ) : kind === "textarea" ? (
               <textarea
-                required
+                required={type === "note"}
+                placeholder={type === "extra_work" ? "Describí qué trabajo se realizó" : undefined}
                 onChange={(e) => setForm({ ...form, [name]: e.target.value })}
               />
             ) : (
@@ -1440,6 +1442,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit }) {
                         {LABEL[p.payment_type] || "Mensual"} · vence{" "}
                         {fmtDate(p.due_date)}
                       </p>
+                      {p.notes && <p>{p.notes}</p>}
                     </div>
                     {badge(p.status)}
                     <IconButton label="Editar pago" onClick={() => setEditingPayment(p.id)}><Edit3 /></IconButton>
