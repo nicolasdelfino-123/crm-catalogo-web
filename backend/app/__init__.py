@@ -108,6 +108,21 @@ def create_app(test_config=None):
         if "service_stage_manual" not in columns:
             db.session.execute(text("ALTER TABLE client ADD COLUMN service_stage_manual BOOLEAN DEFAULT FALSE"))
             db.session.commit()
+        if "google_analytics_status" not in columns:
+            db.session.execute(text("ALTER TABLE client ADD COLUMN google_analytics_status VARCHAR(10) DEFAULT 'no'"))
+            db.session.commit()
+        if "qr_generated_status" not in columns:
+            db.session.execute(text("ALTER TABLE client ADD COLUMN qr_generated_status VARCHAR(10) DEFAULT 'no'"))
+            db.session.commit()
+        if "carousel_installed_status" not in columns:
+            db.session.execute(text("ALTER TABLE client ADD COLUMN carousel_installed_status VARCHAR(10) DEFAULT 'no'"))
+            db.session.commit()
+        if "coupon_status" not in columns:
+            db.session.execute(text("ALTER TABLE client ADD COLUMN coupon_status VARCHAR(10) DEFAULT 'no'"))
+            db.session.commit()
+        if "best_sellers_status" not in columns:
+            db.session.execute(text("ALTER TABLE client ADD COLUMN best_sellers_status VARCHAR(10) DEFAULT 'no'"))
+            db.session.commit()
 
     if frontend_folder:
         @app.route("/", defaults={"path": ""})

@@ -1572,11 +1572,13 @@ function Summary({ client, onUpdate, onEdit }) {
       <section>
         <h3>Estado operativo</h3>
         <div className="status-grid">
-          <EditableStatus label="Página" field="page_status" value={client.page_status} options={[["pending", "Pendiente"], ["in_progress", "En curso"], ["published", "Publicada"]]} onSave={onUpdate} />
           <EditableStatus label="Link en bio" field="link_in_bio_status" value={client.link_in_bio_status} options={[["pending", "Pendiente"], ["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
           <EditableStatus label="Precios" field="prices_status" value={client.prices_status} options={[["pending", "Pendiente"], ["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
-          <EditableStatus label="Imágenes" field="images_status" value={client.images_status} options={[["pending", "Pendientes"], ["optimized", "Optimizadas"]]} onSave={onUpdate} />
-          <EditableStatus label="Carga admin" field="admin_load_status" value={client.admin_load_status} options={[["pending", "Pendiente"], ["completed", "Completada"]]} onSave={onUpdate} />
+          <EditableStatus label="Google Analytics" field="google_analytics_status" value={client.google_analytics_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
+          <EditableStatus label="QR generado" field="qr_generated_status" value={client.qr_generated_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
+          <EditableStatus label="Carrusel instalado" field="carousel_installed_status" value={client.carousel_installed_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
+          <EditableStatus label="Cupón" field="coupon_status" value={client.coupon_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
+          <EditableStatus label="Más vendidos" field="best_sellers_status" value={client.best_sellers_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
           <EditableStatus label="12 productos en inicio" field="twelve_products_status" value={client.twelve_products_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
           <EditableNumber label="Cantidad de productos activos" field="active_products_count" value={client.active_products_count} onSave={onUpdate} />
           <EditableStatus label="Compró dominio" field="domain_purchased_status" value={client.domain_purchased_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />

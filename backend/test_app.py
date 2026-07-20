@@ -79,6 +79,30 @@ def test_create_and_list_client(client):
     assert payment.status_code == 201
     assert payment.get_json()["data"]["due_date"] == "2026-08-01"
 
+
+def test_operational_statuses(client):
+    created = client.post("/api/clients", json={
+        "name": "Cliente Operativo", "business_name": "Marca Operativa",
+        "signup_date": "2026-07-01", "country": "Argentina", "currency": "ARS",
+    }).get_json()["data"]
+    detail = client.get(f'/api/clients/{created["id"]}').get_json()["data"]
+    assert detail["google_analytics_status"] == "no"
+    assert detail["qr_generated_status"] == "no"
+    assert detail["carousel_installed_status"] == "no"
+    assert detail["coupon_status"] == "no"
+    assert detail["best_sellers_status"] == "no"
+
+    updated = client.patch(f'/api/clients/{created["id"]}', json={
+        "google_analytics_status": "yes", "qr_generated_status": "yes",
+        "carousel_installed_status": "yes", "coupon_status": "yes",
+        "best_sellers_status": "yes",
+    }).get_json()["data"]
+    assert updated["google_analytics_status"] == "yes"
+    assert updated["qr_generated_status"] == "yes"
+    assert updated["carousel_installed_status"] == "yes"
+    assert updated["coupon_status"] == "yes"
+    assert updated["best_sellers_status"] == "yes"
+
 def test_service_stage_changes_only_on_monthly_date():
     customer = Client(name="Etapas", business_name="Prueba", signup_date=date(2026, 1, 31), service_stage="second_month")
     advance_service_stage(customer, date(2026, 2, 27))

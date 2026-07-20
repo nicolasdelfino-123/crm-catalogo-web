@@ -46,6 +46,11 @@ class Client(db.Model):
     link_in_bio_status = db.Column(db.String(20), default="pending")
     prices_status = db.Column(db.String(20), default="pending")
     images_status = db.Column(db.String(30), default="pending")
+    google_analytics_status = db.Column(db.String(10), default="no")
+    qr_generated_status = db.Column(db.String(10), default="no")
+    carousel_installed_status = db.Column(db.String(10), default="no")
+    coupon_status = db.Column(db.String(10), default="no")
+    best_sellers_status = db.Column(db.String(10), default="no")
     admin_load_status = db.Column(db.String(30), default="pending")
     twelve_products_status = db.Column(db.String(10), default="no")
     active_products_count = db.Column(db.Integer, default=0)
@@ -87,7 +92,13 @@ class Client(db.Model):
         result.update({
             "website_url": self.website_url, "instagram_username": self.instagram_username,
             "email": self.email, "phone": self.phone, "page_status": self.page_status,
-            "images_status": self.images_status, "admin_load_status": self.admin_load_status,
+            "images_status": self.images_status,
+            "google_analytics_status": self.google_analytics_status or "no",
+            "qr_generated_status": self.qr_generated_status or "no",
+            "carousel_installed_status": self.carousel_installed_status or "no",
+            "coupon_status": self.coupon_status or "no",
+            "best_sellers_status": self.best_sellers_status or "no",
+            "admin_load_status": self.admin_load_status,
             "twelve_products_status": self.twelve_products_status,
             "active_products_count": self.active_products_count or 0,
             "domain_purchased_status": self.domain_purchased_status,
