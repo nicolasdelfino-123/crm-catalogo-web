@@ -2415,6 +2415,19 @@ function Payments() {
     }), {}),
     [items],
   );
+  const extraWorkPaidTotals = useMemo(
+    () => items
+      .filter((payment) => payment.status === "paid" && payment.payment_type !== "monthly")
+      .reduce((result, payment) => ({
+        ...result,
+        [payment.currency]: (result[payment.currency] || 0) + payment.amount,
+      }), {}),
+    [items],
+  );
+  const paymentCurrencies = useMemo(
+    () => [...new Set(items.map((payment) => payment.currency))].sort(),
+    [items],
+  );
   const sortedItems = useMemo(() => {
     const byClient = (first, second) => {
       const clientOrder = first.client_name.localeCompare(second.client_name, "es", {
@@ -2464,6 +2477,12 @@ function Payments() {
         <div>{Object.entries(paidTotals).map(([currency, total]) => <strong key={currency}>{fmtMoney(total, currency)}</strong>)}{!Object.keys(paidTotals).length && <span>Sin pagos completados</span>}</div>
       </div>
       <div className="payment-summary">
+        {paymentCurrencies.map((currency) => (
+          <div key={`extra-work-paid-${currency}`}>
+            <small>Pagado trabajos extra · {currency}</small>
+            <strong>{fmtMoney(extraWorkPaidTotals[currency] || 0, currency)}</strong>
+          </div>
+        ))}
         {Object.entries(totals).map(([key, total]) => {
           const [currency, status] = key.split("-");
           return (
