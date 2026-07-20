@@ -15,6 +15,12 @@ runfront
 
 No hace falta activar `.venv`: `runback` usa directamente el Python del entorno virtual y mantiene Flask activo en esa terminal hasta presionar `Ctrl+C`.
 
+La aplicación solicita iniciar sesión al abrir. Si la base local todavía no tiene un administrador, crealo desde la raíz del proyecto (la contraseña se solicita de forma oculta):
+
+```bash
+./createadmin
+```
+
 ## Estructura
 
 - `backend/app/__init__.py`: application factory y exportación de `db`.

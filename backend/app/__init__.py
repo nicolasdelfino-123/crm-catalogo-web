@@ -1,27 +1,31 @@
 import os
 
+import click
 from dotenv import load_dotenv
-from flask import Flask, abort, jsonify, send_from_directory
+from flask import Flask, abort, jsonify, request, send_from_directory
+from flask_bcrypt import Bcrypt
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager, verify_jwt_in_request
 from sqlalchemy import inspect, text
-from werkzeug.security import generate_password_hash
 
-from models import db
+from models import User, db
+from auth import auth, users
 from routes import api
 
-
-class _PasswordHasher:
-    @staticmethod
-    def generate_password_hash(password):
-        return generate_password_hash(password).encode("utf-8")
-
-
-bcrypt = _PasswordHasher()
+bcrypt = Bcrypt()
+jwt = JWTManager()
 
 
 def create_app(test_config=None):
     load_dotenv()
     frontend_folder = os.getenv("STATIC_FOLDER")
+    jwt_secret = (
+        test_config.get("JWT_SECRET_KEY")
+        if test_config and test_config.get("JWT_SECRET_KEY")
+        else os.getenv("JWT_SECRET_KEY")
+    )
+    if not jwt_secret or len(jwt_secret) < 32:
+        raise RuntimeError("JWT_SECRET_KEY debe tener al menos 32 caracteres")
     database_uri = (
         test_config.get("SQLALCHEMY_DATABASE_URI")
         if test_config
@@ -36,18 +40,52 @@ def create_app(test_config=None):
         SQLALCHEMY_DATABASE_URI=database_uri,
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         JSON_SORT_KEYS=False,
-        JWT_SECRET_KEY=os.getenv("JWT_SECRET_KEY"),
+        JWT_SECRET_KEY=jwt_secret,
     )
     if test_config:
         app.config.update(test_config)
 
     db.init_app(app)
+    bcrypt.init_app(app)
+    jwt.init_app(app)
     CORS(app)
     app.register_blueprint(api, url_prefix="/api")
+    app.register_blueprint(auth, url_prefix="/auth")
+    app.register_blueprint(users, url_prefix="/user")
+
+    @app.before_request
+    def protect_crm_api():
+        if (
+            request.path.startswith("/api/")
+            and request.path != "/api/health"
+            and not app.config.get("AUTH_DISABLED", False)
+        ):
+            verify_jwt_in_request()
 
     @app.get("/api/health")
     def health():
         return jsonify({"success": True, "data": {"status": "ok"}})
+
+    @app.cli.command("create-admin")
+    @click.option("--email", prompt="Email")
+    @click.option("--name", prompt="Nombre", default="Administrador")
+    @click.password_option(prompt="Contraseña", confirmation_prompt=True)
+    def create_admin(email, name, password):
+        """Crea el administrador inicial sin exponer la contraseña."""
+        normalized_email = email.strip().lower()
+        if User.query.filter(db.func.lower(User.email) == normalized_email).first():
+            raise click.ClickException("Ya existe un usuario con ese email.")
+        user = User(
+            email=normalized_email,
+            name=name.strip() or "Administrador",
+            password=bcrypt.generate_password_hash(password).decode("utf-8"),
+            role="admin",
+            is_admin=True,
+            is_active=True,
+        )
+        db.session.add(user)
+        db.session.commit()
+        click.echo("Administrador creado correctamente.")
 
     with app.app_context():
         db.create_all()
@@ -85,4 +123,4 @@ def create_app(test_config=None):
     return app
 
 
-__all__ = ["create_app", "db", "bcrypt"]
+__all__ = ["create_app", "db", "bcrypt", "jwt"]

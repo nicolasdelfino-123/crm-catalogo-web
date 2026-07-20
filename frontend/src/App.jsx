@@ -31,6 +31,9 @@ import {
   Save,
   ChartNoAxesColumnIncreasing,
   Trash2,
+  Eye,
+  EyeOff,
+  LogOut,
 } from "lucide-react";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ||
@@ -38,12 +41,32 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ||
     ? `http://${window.location.hostname}:5000`
     : window.location.origin);
 const API = `${BACKEND_URL.replace(/\/$/, "")}/api`;
+const TOKEN_KEY = "persistent_token";
+const clearSession = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem("token");
+  localStorage.removeItem("token_expiry");
+};
+const getToken = () => {
+  const token = localStorage.getItem(TOKEN_KEY);
+  const expiry = Number(localStorage.getItem("token_expiry"));
+  if (!token || !expiry || Date.now() >= expiry) {
+    clearSession();
+    return null;
+  }
+  return token;
+};
 async function api(path, options = {}) {
+  const token = getToken();
   const response = await fetch(`${API}${path}`, {
-    headers: { "Content-Type": "application/json", ...options.headers },
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers },
     ...options,
   });
   const body = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    clearSession();
+    window.dispatchEvent(new Event("crm-session-expired"));
+  }
   if (!response.ok)
     throw new Error(body.error?.message || "No se pudo completar la operación");
   return body.data;
@@ -213,7 +236,7 @@ function Sidebar({ page, setPage, open, setOpen }) {
     </aside>
   );
 }
-function Header({ title, onMenu }) {
+function Header({ title, onMenu, onLogout }) {
   return (
     <header className="topbar">
       <IconButton label="Abrir menú" onClick={onMenu}>
@@ -229,14 +252,16 @@ function Header({ title, onMenu }) {
           }).format(new Date())}
         </p>
       </div>
-      <div className="status-dot">
-        <i />
-        Sistema operativo
+      <div className="header-session">
+        <div className="status-dot"><i />Sistema operativo</div>
+        <button className="logout-btn" onClick={onLogout} title="Cerrar sesión">
+          <LogOut size={17} /><span>Salir</span>
+        </button>
       </div>
     </header>
   );
 }
-function Shell({ page, setPage, children }) {
+function Shell({ page, setPage, onLogout, children }) {
   const [open, setOpen] = useState(false);
   const titles = {
     dashboard: "Resumen operativo",
@@ -249,7 +274,7 @@ function Shell({ page, setPage, children }) {
       <Sidebar page={page} setPage={setPage} open={open} setOpen={setOpen} />
       {open && <div className="scrim" onClick={() => setOpen(false)} />}
       <main>
-        <Header title={titles[page]} onMenu={() => setOpen(true)} />
+        <Header title={titles[page]} onMenu={() => setOpen(true)} onLogout={onLogout} />
         {children}
       </main>
     </div>
@@ -2529,10 +2554,66 @@ function Empty() {
     </div>
   );
 }
+function Login({ onAuthenticated }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async (event) => {
+    event.preventDefault(); setLoading(true); setError("");
+    try {
+      const base = BACKEND_URL.replace(/\/$/, "");
+      const response = await fetch(`${base}/auth/login-persistent`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.access_token) throw new Error(data.error || "Credenciales inválidas");
+      const expiry = Date.now() + data.expires_in_days * 24 * 60 * 60 * 1000;
+      localStorage.setItem(TOKEN_KEY, data.access_token);
+      localStorage.setItem("token", data.access_token);
+      localStorage.setItem("token_expiry", String(expiry));
+      const userResponse = await fetch(`${base}/user/me`, { headers: { Authorization: `Bearer ${data.access_token}` } });
+      const user = await userResponse.json().catch(() => ({}));
+      if (!userResponse.ok || !user.is_admin) { clearSession(); throw new Error(user.error || "No tenés permisos de administrador"); }
+      onAuthenticated(user);
+    } catch (loginError) {
+      clearSession(); setError(loginError.message || "No se pudo conectar con el servidor");
+    } finally { setLoading(false); }
+  };
+  return (
+    <main className="login-page"><section className="login-card">
+      <div className="login-brand"><span>F</span></div><p className="login-eyebrow">Catálogo Web</p>
+      <h1>Ingresá al CRM</h1><p className="login-copy">Usá tu cuenta de administrador para continuar.</p>
+      <form onSubmit={submit}>
+        {error && <div className="login-error" role="alert">{error}</div>}
+        <label>Email<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required autoFocus /></label>
+        <label>Contraseña<span className="password-field">
+          <input type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+          <button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+        </span></label>
+        <button className="login-submit" type="submit" disabled={loading}>{loading ? "Ingresando…" : "Ingresar"}</button>
+      </form>
+    </section></main>
+  );
+}
 export default function App() {
   const [page, setPage] = useState("clients");
+  const [session, setSession] = useState(() => ({ checking: Boolean(getToken()), user: null }));
+  useEffect(() => {
+    const expire = () => setSession({ checking: false, user: null });
+    window.addEventListener("crm-session-expired", expire);
+    const token = getToken();
+    if (token) {
+      fetch(`${BACKEND_URL.replace(/\/$/, "")}/user/me`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(async (response) => { const user = await response.json().catch(() => ({})); if (!response.ok || !user.is_admin) throw new Error(); setSession({ checking: false, user }); })
+        .catch(() => { clearSession(); setSession({ checking: false, user: null }); });
+    }
+    return () => window.removeEventListener("crm-session-expired", expire);
+  }, []);
+  if (session.checking) return <div className="login-page"><Loading /></div>;
+  if (!session.user) return <Login onAuthenticated={(user) => setSession({ checking: false, user })} />;
+  const logout = () => { clearSession(); setSession({ checking: false, user: null }); };
   return (
-    <Shell page={page} setPage={setPage}>
+    <Shell page={page} setPage={setPage} onLogout={logout}>
       {page === "dashboard" && (
         <Dashboard goClients={() => setPage("clients")} />
       )}{" "}

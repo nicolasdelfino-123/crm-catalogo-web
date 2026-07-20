@@ -1,12 +1,12 @@
 import pytest
 from datetime import date
 from app import create_app
-from models import db, Client, Payment
+from models import db, Client, Payment, User
 from routes import advance_service_stage, sync_service_stages
 
 @pytest.fixture()
 def app():
-    app = create_app({"TESTING": True, "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:"})
+    app = create_app({"TESTING": True, "AUTH_DISABLED": True, "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:", "JWT_SECRET_KEY": "test-secret-key-with-at-least-32-chars"})
     with app.app_context(): db.create_all()
     return app
 
@@ -16,6 +16,56 @@ def client(app):
     return app.test_client()
 
 def test_health(client): assert client.get("/api/health").status_code == 200
+
+
+def test_login_and_protected_api():
+    secured_app = create_app({
+        "TESTING": True,
+        "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+        "JWT_SECRET_KEY": "test-secret-key-with-at-least-32-chars",
+    })
+    with secured_app.app_context():
+        db.create_all()
+        from flask_bcrypt import generate_password_hash
+        db.session.add(User(
+            email="admin@example.com", password=generate_password_hash("secreto").decode(),
+            name="Admin", role="admin", is_admin=True,
+        ))
+        db.session.commit()
+
+    secured_client = secured_app.test_client()
+    assert secured_client.get("/api/clients").status_code == 401
+    login = secured_client.post("/auth/login-persistent", json={
+        "email": "ADMIN@example.com", "password": "secreto",
+    })
+    assert login.status_code == 200
+    token = login.get_json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    assert secured_client.get("/user/me", headers=headers).get_json()["is_admin"] is True
+    assert secured_client.get("/api/clients", headers=headers).status_code == 200
+
+
+def test_login_rejects_invalid_password():
+    secured_app = create_app({
+        "TESTING": True,
+        "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+        "JWT_SECRET_KEY": "test-secret-key-with-at-least-32-chars",
+    })
+    with secured_app.app_context():
+        db.create_all()
+        from werkzeug.security import generate_password_hash
+        db.session.add(User(email="admin@example.com", password=generate_password_hash("correcta"), name="Admin", role="admin", is_admin=True))
+        db.session.commit()
+    response = secured_app.test_client().post("/auth/login-persistent", json={"email": "admin@example.com", "password": "incorrecta"})
+    assert response.status_code == 401
+
+
+def test_create_admin_command(app):
+    result = app.test_cli_runner().invoke(args=["create-admin"], input="nuevo@example.com\nNuevo Admin\nsegura123\nsegura123\n")
+    assert result.exit_code == 0
+    with app.app_context():
+        user = User.query.filter_by(email="nuevo@example.com").one()
+        assert user.is_admin is True
 
 def test_create_and_list_client(client):
     payload = {"name": "Cliente Prueba", "business_name": "Marca Prueba", "signup_date": "2026-07-01", "country": "Argentina", "currency": "ARS", "payment_amount": 30000}
