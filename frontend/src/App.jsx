@@ -1932,17 +1932,15 @@ function Clients() {
         </label>
         <label className="filter acquisition-filter">
           <ChartNoAxesColumnIncreasing />
-          <input
-            list="acquisition-filter-options"
+          <select
             value={acquisition}
             onChange={(e) => setAcquisition(e.target.value)}
-            placeholder="Todos los canales"
-          />
-          <datalist id="acquisition-filter-options">
+          >
+            <option value="">Todos los canales</option>
             {ACQUISITION_OPTIONS.map(([value, label]) => (
               <option value={value} key={value}>{label}</option>
             ))}
-          </datalist>
+          </select>
         </label>
         {(query || status || acquisition) && (
           <button
