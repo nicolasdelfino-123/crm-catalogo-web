@@ -197,6 +197,23 @@ class Expense(db.Model):
         }
 
 
+class VpsAssignment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    vps_name = db.Column(db.String(20), nullable=False, index=True)
+    client_id = db.Column(db.Integer, db.ForeignKey("client.id"), unique=True, index=True)
+    custom_name = db.Column(db.String(180))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    client = db.relationship("Client")
+
+    def to_dict(self):
+        return {
+            "id": self.id, "vps_name": self.vps_name, "client_id": self.client_id,
+            "name": self.client.name if self.client else self.custom_name,
+            "business_name": self.client.business_name if self.client else "Aplicación personalizada",
+            "custom": self.client_id is None, "created_at": iso(self.created_at),
+        }
+
+
 class ClientMetric(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey("client.id"), nullable=False)

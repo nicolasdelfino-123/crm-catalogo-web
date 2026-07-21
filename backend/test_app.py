@@ -80,6 +80,29 @@ def test_expenses_monthly_balance_uses_paid_ars_income(client):
     assert client.delete(f"/api/expenses/{expense_id}").status_code == 200
 
 
+def test_vps_assignments_support_clients_and_custom_apps(client):
+    customer = client.post("/api/clients", json={
+        "name": "Cliente VPS", "business_name": "Tienda VPS",
+        "signup_date": "2026-07-01", "country": "Argentina", "currency": "ARS",
+    }).get_json()["data"]
+    assigned = client.post("/api/vps", json={"vps_name": "vape", "client_id": customer["id"]})
+    assert assigned.status_code == 201
+    assignment_id = assigned.get_json()["data"]["id"]
+    custom = client.post("/api/vps", json={
+        "vps_name": "shatha", "custom_name": "Aplicación interna",
+    })
+    assert custom.status_code == 201
+
+    duplicate = client.post("/api/vps", json={"vps_name": "shatha", "client_id": customer["id"]})
+    assert duplicate.status_code == 422
+    moved = client.patch(f"/api/vps/{assignment_id}", json={"vps_name": "shatha"})
+    assert moved.status_code == 200
+    listed = client.get("/api/vps").get_json()["data"]
+    assert listed["counts"] == {"vape": 0, "shatha": 2}
+    assert {item["name"] for item in listed["items"]} == {"Cliente VPS", "Aplicación interna"}
+    assert client.delete(f"/api/vps/{assignment_id}").status_code == 200
+
+
 def test_login_and_protected_api():
     secured_app = create_app({
         "TESTING": True,

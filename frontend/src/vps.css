@@ -1,0 +1,33 @@
+.vps-form {
+  display: grid;
+  grid-template-columns: 1fr .75fr 1.5fr 1.25fr auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.vps-form h3 { margin: 4px 0 7px; font: 700 17px Manrope; }
+.vps-form label { display: grid; gap: 5px; color: #57645d; font-size: 11px; font-weight: 600; }
+.vps-form input,.vps-form select,.vps-items select { min-height: 40px; border: 1px solid #cbd5cf; border-radius: 5px; background: #fff; padding: 8px 10px; color: var(--ink); }
+.vps-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.vps-card { min-width: 0; border: 1px solid var(--line); background: #fff; }
+.vps-card > header { display: flex; align-items: center; gap: 12px; padding: 17px; border-bottom: 1px solid var(--line); }
+.vps-card > header > span { display: grid; place-items: center; width: 39px; height: 39px; border-radius: 6px; color: var(--green); background: var(--green-bg); }
+.vps-card > header h3,.vps-card > header p { margin: 0; }
+.vps-card > header h3 { font: 700 16px Manrope; }
+.vps-card > header p { margin-top: 3px; color: var(--muted); font-size: 11px; }
+.vps-card > header > strong { margin-left: auto; font: 700 24px Manrope; color: var(--green); }
+.vps-items { display: grid; }
+.vps-items article { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 12px 14px; border-bottom: 1px solid #e7ebe8; }
+.vps-items article:last-child { border-bottom: 0; }
+.vps-item-name { min-width: 0; flex: 1; }
+.vps-item-name strong,.vps-item-name span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vps-item-name strong { font-size: 13px; }
+.vps-item-name span { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.vps-items select { min-height: 34px; max-width: 130px; padding: 5px 7px; font-size: 11px; }
+.vps-empty { display: grid; justify-items: center; gap: 8px; padding: 48px 15px; color: var(--muted); font-size: 12px; }
+.vps-empty svg { opacity: .45; }
+@media(max-width:1100px){.vps-form{grid-template-columns:1fr 1fr}.vps-form>div{grid-column:1/-1}.vps-form .primary{justify-self:end}.vps-lists{grid-template-columns:1fr}}
+@media(max-width:680px){.vps-form{grid-template-columns:1fr;padding:14px}.vps-form>div{grid-column:auto}.vps-form .primary{justify-self:stretch}.vps-items article{align-items:flex-start;flex-wrap:wrap}.vps-item-name{flex-basis:calc(100% - 45px)}.vps-items select{margin-left:auto}}

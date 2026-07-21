@@ -4,6 +4,7 @@ import {
   CalendarDays,
   WalletCards,
   ReceiptText,
+  Server,
   LayoutDashboard,
   Plus,
   Search,
@@ -40,6 +41,7 @@ import {
 } from "lucide-react";
 import "./expenses.css";
 import "./payment-summary.css";
+import "./vps.css";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ||
   (import.meta.env.DEV
@@ -218,6 +220,7 @@ function Sidebar({ page, setPage, open, setOpen }) {
     ["agenda", "Agenda", CalendarDays],
     ["payments", "Pagos", WalletCards],
     ["expenses", "Gastos", ReceiptText],
+    ["vps", "VPS", Server],
     ["messages", "Mensajes", Mail],
   ];
   return (
@@ -287,6 +290,7 @@ function Shell({ page, setPage, onLogout, children }) {
     agenda: "Agenda de acciones",
     payments: "Pagos",
     expenses: "Gastos",
+    vps: "VPS",
     messages: "Mensajes enviados",
   };
   return (
@@ -2671,6 +2675,64 @@ function Messages() {
   );
 }
 
+function Vps() {
+  const [data, setData] = useState({ items: [], counts: { vape: 0, shatha: 0 } });
+  const [clients, setClients] = useState([]);
+  const [form, setForm] = useState({ vps_name: "vape", selection: "", custom_name: "" });
+  const [saving, setSaving] = useState(false);
+  const load = useCallback(() => Promise.all([
+    api("/vps"), api("/clients?per_page=100&sort_by=name"),
+  ]).then(([vpsData, clientData]) => {
+    setData(vpsData); setClients(clientData.items);
+  }), []);
+  useEffect(() => { load(); }, [load]);
+  const assignedClientIds = useMemo(() => new Set(data.items.filter((item) => item.client_id).map((item) => item.client_id)), [data.items]);
+  async function submit(event) {
+    event.preventDefault(); setSaving(true);
+    try {
+      await api("/vps", {
+        method: "POST",
+        body: JSON.stringify({
+          vps_name: form.vps_name,
+          client_id: form.selection.startsWith("client:") ? Number(form.selection.slice(7)) : null,
+          custom_name: form.selection === "custom" ? form.custom_name : "",
+        }),
+      });
+      setForm({ ...form, selection: "", custom_name: "" });
+      await load();
+    } catch (error) { alert(error.message); }
+    finally { setSaving(false); }
+  }
+  async function move(item, vpsName) {
+    await api(`/vps/${item.id}`, { method: "PATCH", body: JSON.stringify({ vps_name: vpsName }) });
+    await load();
+  }
+  async function remove(item) {
+    if (!window.confirm(`¿Quitar "${item.name}" de ${item.vps_name === "vape" ? "VPS Vape" : "VPS Shatha"}?`)) return;
+    await api(`/vps/${item.id}`, { method: "DELETE" }); await load();
+  }
+  const servers = [["vape", "VPS Vape"], ["shatha", "VPS Shatha"]];
+  return (
+    <section className="page vps-page">
+      <div className="page-intro"><div><h2>Distribución de VPS</h2><p>Organizá clientes y aplicaciones según el servidor donde están alojados.</p></div></div>
+      <form className="vps-form" onSubmit={submit}>
+        <div><span className="eyebrow">Nueva asignación</span><h3>Agregar a un VPS</h3></div>
+        <label>VPS<select value={form.vps_name} onChange={(event) => setForm({ ...form, vps_name: event.target.value })}><option value="vape">VPS Vape</option><option value="shatha">VPS Shatha</option></select></label>
+        <label>Cliente o aplicación<select value={form.selection} onChange={(event) => setForm({ ...form, selection: event.target.value, custom_name: "" })} required><option value="">Elegí una opción</option>{clients.filter((client) => !assignedClientIds.has(client.id)).map((client) => <option value={`client:${client.id}`} key={client.id}>{client.name} · {client.business_name}</option>)}<option value="custom">Nombre personalizado…</option></select></label>
+        {form.selection === "custom" && <label>Nombre personalizado<input value={form.custom_name} onChange={(event) => setForm({ ...form, custom_name: event.target.value })} placeholder="Nombre de la aplicación" required autoFocus /></label>}
+        <button className="primary" disabled={saving}><Plus size={17} />{saving ? "Agregando…" : "Agregar"}</button>
+      </form>
+      <div className="vps-lists">
+        {servers.map(([id, title]) => {
+          const entries = data.items.filter((item) => item.vps_name === id);
+          const otherId = id === "vape" ? "shatha" : "vape";
+          return <section className="vps-card" key={id}><header><span><Server size={20} /></span><div><h3>{title}</h3><p>{entries.length} {entries.length === 1 ? "elemento alojado" : "elementos alojados"}</p></div><strong>{entries.length}</strong></header><div className="vps-items">{entries.map((item) => <article key={item.id}><div className="vps-item-name"><strong>{item.name}</strong><span>{item.business_name}</span></div><select aria-label={`Mover ${item.name}`} value={item.vps_name} onChange={(event) => move(item, event.target.value)}><option value={id}>{title}</option><option value={otherId}>{otherId === "vape" ? "VPS Vape" : "VPS Shatha"}</option></select><IconButton label={`Quitar ${item.name}`} onClick={() => remove(item)}><Trash2 /></IconButton></article>)}{!entries.length && <div className="vps-empty"><Server /><span>Este VPS todavía está vacío.</span></div>}</div></section>;
+        })}
+      </div>
+    </section>
+  );
+}
+
 function Expenses() {
   const today = new Date().toISOString().slice(0, 10);
   const [month, setMonth] = useState(today.slice(0, 7));
@@ -3087,6 +3149,7 @@ export default function App() {
       {page === "agenda" && <Agenda />}
       {page === "payments" && <Payments />}
       {page === "expenses" && <Expenses />}
+      {page === "vps" && <Vps />}
       {page === "messages" && <Messages />}
     </Shell>
   );

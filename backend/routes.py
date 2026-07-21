@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response, current_app
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Integer, case, cast, func, or_
-from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, ClientMetric, ClientNote, ClientCredential, MessageLog, ActionTemplate
+from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, VpsAssignment, ClientMetric, ClientNote, ClientCredential, MessageLog, ActionTemplate
 
 api = Blueprint("api", __name__)
 
@@ -674,6 +674,56 @@ def expenses_delete(expense_id):
     expense = Expense.query.get_or_404(expense_id)
     db.session.delete(expense); db.session.commit()
     return ok(None, "Gasto eliminado")
+
+
+VPS_NAMES = {"vape", "shatha"}
+
+
+@api.get("/vps")
+def vps_list():
+    items = VpsAssignment.query.order_by(VpsAssignment.vps_name, VpsAssignment.id).all()
+    return ok({
+        "items": [item.to_dict() for item in items],
+        "counts": {name: sum(item.vps_name == name for item in items) for name in VPS_NAMES},
+    })
+
+
+@api.post("/vps")
+def vps_create():
+    data = request.get_json() or {}
+    vps_name = data.get("vps_name")
+    if vps_name not in VPS_NAMES:
+        return error("Elegí un VPS válido", 422)
+    client_id = data.get("client_id")
+    custom_name = (data.get("custom_name") or "").strip()
+    if client_id:
+        client = Client.query.filter_by(id=client_id, archived_at=None).first_or_404()
+        if VpsAssignment.query.filter_by(client_id=client.id).first():
+            return error("Ese cliente ya está asignado a un VPS", 422)
+        assignment = VpsAssignment(vps_name=vps_name, client=client)
+    elif custom_name:
+        assignment = VpsAssignment(vps_name=vps_name, custom_name=custom_name)
+    else:
+        return error("Elegí un cliente o escribí un nombre personalizado", 422)
+    db.session.add(assignment); db.session.commit()
+    return ok(assignment.to_dict(), "Asignación agregada", 201)
+
+
+@api.patch("/vps/<int:assignment_id>")
+def vps_update(assignment_id):
+    assignment = VpsAssignment.query.get_or_404(assignment_id)
+    vps_name = (request.get_json() or {}).get("vps_name")
+    if vps_name not in VPS_NAMES:
+        return error("Elegí un VPS válido", 422)
+    assignment.vps_name = vps_name
+    db.session.commit(); return ok(assignment.to_dict(), "Asignación movida")
+
+
+@api.delete("/vps/<int:assignment_id>")
+def vps_delete(assignment_id):
+    assignment = VpsAssignment.query.get_or_404(assignment_id)
+    db.session.delete(assignment); db.session.commit()
+    return ok(None, "Asignación eliminada")
 
 
 @api.post("/clients/<int:client_id>/metrics")
