@@ -143,6 +143,9 @@ const fmtDate = (value) =>
       timeZone: "UTC",
     }).format(new Date(`${value.slice(0, 10)}T12:00:00Z`))
     : "Sin fecha";
+const fmtMonth = (value) => value
+  ? new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${value.slice(0, 7)}-01T12:00:00Z`))
+  : "Sin mes";
 const billingDay = (value) => value ? Number(value.slice(8, 10)) : 32;
 const fmtMoney = (value, currency = "ARS") =>
   new Intl.NumberFormat("es-AR", {
@@ -2547,12 +2550,15 @@ function Messages() {
   const [items, setItems] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [selectedChannel, setSelectedChannel] = useState("");
+  const [filterMonth, setFilterMonth] = useState(currentMonth);
+  const [filterChannel, setFilterChannel] = useState("");
   const [form, setForm] = useState({ entry_type: "monthly", month: currentMonth, sent_date: today, channel: "", quantity: "", notes: "" });
+  const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const load = useCallback(() => api("/messages").then(setItems), []);
   useEffect(() => { load(); }, [load]);
   const monthItems = useMemo(
-    () => items.filter((item) => item.sent_date?.startsWith(selectedMonth)),
+    () => selectedMonth ? items.filter((item) => item.sent_date?.startsWith(selectedMonth)) : items,
     [items, selectedMonth],
   );
   const filteredMonthItems = useMemo(
@@ -2570,14 +2576,14 @@ function Messages() {
   const todayTotal = filteredAllItems.filter((item) => item.entry_type !== "monthly" && item.sent_date === today).reduce((total, item) => total + item.quantity, 0);
   const monthTotal = filteredMonthItems.reduce((total, item) => total + item.quantity, 0);
   const allTimeTotal = filteredAllItems.reduce((total, item) => total + item.quantity, 0);
-  const monthLabel = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
-    .format(new Date(`${selectedMonth}-01T12:00:00Z`));
+  const monthLabel = selectedMonth ? fmtMonth(selectedMonth) : "todos los meses";
   async function submit(event) {
     event.preventDefault(); setSaving(true);
     try {
       await api("/messages", { method: "POST", body: JSON.stringify(form) });
       const savedMonth = form.entry_type === "monthly" ? form.month : form.sent_date.slice(0, 7);
       setSelectedMonth(savedMonth);
+      setFilterMonth(savedMonth);
       setForm({ ...form, channel: "", quantity: "", notes: "" });
       await load();
     } finally { setSaving(false); }
@@ -2586,6 +2592,11 @@ function Messages() {
     if (!window.confirm(`¿Eliminar el registro de ${item.quantity} mensajes?`)) return;
     await api(`/messages/${item.id}`, { method: "DELETE" }); load();
   }
+  async function saveEdit(event) {
+    event.preventDefault();
+    await api(`/messages/${editing.id}`, { method: "PATCH", body: JSON.stringify(editing) });
+    setEditing(null); await load();
+  }
   return (
     <section className="page messages-page">
       <div className="page-intro"><div><h2>Mensajes enviados</h2><p>Registrá cuántos mensajes mandaste por cada canal.</p></div></div>
@@ -2593,8 +2604,6 @@ function Messages() {
         <div className="message-today"><span><Mail size={20} /></span><div><small>Enviados hoy</small><strong>{todayTotal}</strong></div></div>
         <div className="message-today month-total"><span><CalendarDays size={20} /></span><div><small>Total de {monthLabel}</small><strong>{monthTotal}</strong></div></div>
         <div className="message-today all-time-total"><span><ChartNoAxesColumnIncreasing size={20} /></span><div><small>Total de todos los meses</small><strong>{allTimeTotal}</strong></div></div>
-        <label className="message-month-filter">Ver mes<input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} /></label>
-        <label className="message-month-filter">Ver canal<select value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)}><option value="">Todos los canales</option>{ACQUISITION_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
       </div>
       <form className="message-form" onSubmit={submit}>
         <label>Tipo de carga<select value={form.entry_type} onChange={(event) => setForm({ ...form, entry_type: event.target.value })}><option value="monthly">Total del mes</option><option value="daily">Detalle por día</option></select></label>
@@ -2606,12 +2615,36 @@ function Messages() {
         <label className="message-notes">Nota opcional<input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Ej.: campaña de seguimiento" /></label>
         <button className="primary" disabled={saving}><Plus size={17} />{saving ? "Guardando..." : "Registrar"}</button>
       </form>
+      <form className="message-search" onSubmit={(event) => { event.preventDefault(); setSelectedMonth(filterMonth); setSelectedChannel(filterChannel); }}>
+        <div><span className="eyebrow">Buscar registros</span><h3>Consultar totales cargados</h3></div>
+        <label>Mes<input type="month" value={filterMonth} onChange={(event) => setFilterMonth(event.target.value)} /></label>
+        <label>Canal<select value={filterChannel} onChange={(event) => setFilterChannel(event.target.value)}><option value="">Todos los canales</option>{ACQUISITION_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+        <button className="primary"><Search size={16} />Buscar</button>
+        <button type="button" className="secondary" onClick={() => { setFilterMonth(""); setFilterChannel(""); setSelectedMonth(""); setSelectedChannel(""); }}>Ver todos</button>
+      </form>
       <div className="message-channel-totals">
         <div className="all-channels-total"><small>Total · todos los canales</small><strong>{monthTotal}</strong><span>{monthLabel}</span></div>
         {Object.entries(totals).sort(([first], [second]) => acquisitionLabel(first).localeCompare(acquisitionLabel(second), "es")).map(([channel, total]) => <div key={channel}><small>{acquisitionLabel(channel)}</small><strong>{total}</strong><span>mensajes</span></div>)}
       </div>
-      <div className="table-wrap messages-table"><table><thead><tr><th>Período</th><th>Tipo</th><th>Canal</th><th>Cantidad</th><th>Nota</th><th /></tr></thead><tbody>{filteredMonthItems.map((item) => <tr key={item.id}><td><strong>{item.entry_type === "monthly" ? monthLabel : fmtDate(item.sent_date)}</strong></td><td>{item.entry_type === "monthly" ? "Total mensual" : "Carga diaria"}</td><td>{acquisitionLabel(item.channel)}</td><td><strong>{item.quantity}</strong></td><td>{item.notes || "—"}</td><td><IconButton label="Eliminar registro" onClick={() => remove(item)}><Trash2 /></IconButton></td></tr>)}</tbody></table></div>
+      <div className="table-wrap messages-table"><table><thead><tr><th>Período</th><th>Tipo</th><th>Canal</th><th>Cantidad</th><th>Nota</th><th /></tr></thead><tbody>{filteredMonthItems.map((item) => <tr key={item.id}><td><strong>{item.entry_type === "monthly" ? fmtMonth(item.sent_date) : fmtDate(item.sent_date)}</strong></td><td>{item.entry_type === "monthly" ? "Total mensual" : "Carga diaria"}</td><td>{acquisitionLabel(item.channel)}</td><td><strong>{item.quantity}</strong></td><td>{item.notes || "—"}</td><td><IconButton label="Editar registro" onClick={() => setEditing({ ...item, month: item.sent_date.slice(0, 7) })}><Edit3 /></IconButton><IconButton label="Eliminar registro" onClick={() => remove(item)}><Trash2 /></IconButton></td></tr>)}</tbody></table></div>
       {!filteredMonthItems.length && <Empty />}
+      {editing && (
+        <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && setEditing(null)}>
+          <div className="form-modal message-edit-modal">
+            <div className="modal-head"><div><span className="eyebrow">Mensajes</span><h2>Editar total cargado</h2></div><IconButton label="Cerrar" onClick={() => setEditing(null)}><X /></IconButton></div>
+            <form onSubmit={saveEdit}>
+              <div className="form-grid">
+                <label>Tipo de carga<select value={editing.entry_type} onChange={(event) => setEditing({ ...editing, entry_type: event.target.value })}><option value="monthly">Total del mes</option><option value="daily">Detalle por día</option></select></label>
+                {editing.entry_type === "monthly" ? <label>Mes<input type="month" value={editing.month} onChange={(event) => setEditing({ ...editing, month: event.target.value })} required /></label> : <label>Fecha<input type="date" value={editing.sent_date} onChange={(event) => setEditing({ ...editing, sent_date: event.target.value })} required /></label>}
+                <label>Canal<select value={editing.channel} onChange={(event) => setEditing({ ...editing, channel: event.target.value })} required>{ACQUISITION_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                <label>Cantidad<input type="number" min="1" value={editing.quantity} onChange={(event) => setEditing({ ...editing, quantity: event.target.value })} required /></label>
+                <label className="span-2">Nota opcional<input value={editing.notes || ""} onChange={(event) => setEditing({ ...editing, notes: event.target.value })} /></label>
+              </div>
+              <div className="form-actions"><button type="button" className="secondary" onClick={() => setEditing(null)}>Cancelar</button><button className="primary"><Save size={16} />Guardar cambios</button></div>
+            </form>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

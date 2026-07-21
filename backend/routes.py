@@ -401,6 +401,31 @@ def messages_delete(message_id):
     return ok(None, "Registro eliminado")
 
 
+@api.patch("/messages/<int:message_id>")
+def messages_update(message_id):
+    item = MessageLog.query.get_or_404(message_id)
+    data = request.get_json(silent=True) or {}
+    entry_type = str(data.get("entry_type") or item.entry_type or "daily")
+    channel = str(data.get("channel") or "").strip()
+    try:
+        quantity = int(data.get("quantity") or 0)
+        sent_date = (
+            date.fromisoformat(f'{data.get("month")}-01')
+            if entry_type == "monthly" and data.get("month")
+            else parse_date(data.get("sent_date"))
+        )
+    except (ValueError, TypeError):
+        return error("Revisá la fecha y la cantidad", 422)
+    if entry_type not in {"daily", "monthly"} or not sent_date:
+        return error("Completá correctamente el período", 422)
+    if not channel or quantity <= 0:
+        return error("Elegí un canal y una cantidad mayor que cero", 422)
+    item.entry_type = entry_type; item.sent_date = sent_date; item.channel = channel
+    item.quantity = quantity; item.notes = str(data.get("notes") or "").strip() or None
+    db.session.commit()
+    return ok(item.to_dict(), "Registro actualizado")
+
+
 @api.post("/clients/<int:client_id>/generate-actions")
 def actions_generate(client_id):
     client = Client.query.get_or_404(client_id); count = generate_schedule(client); db.session.commit(); return ok({"created": count}, f"Se crearon {count} acciones")

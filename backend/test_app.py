@@ -41,6 +41,13 @@ def test_monthly_message_total_uses_selected_month(client):
     data = created.get_json()["data"]
     assert data["sent_date"] == "2026-04-01"
     assert data["entry_type"] == "monthly"
+    updated = client.patch(f'/api/messages/{data["id"]}', json={
+        "entry_type": "monthly", "month": "2026-05",
+        "channel": "business_whatsapp", "quantity": 450,
+    })
+    assert updated.status_code == 200
+    assert updated.get_json()["data"]["sent_date"] == "2026-05-01"
+    assert updated.get_json()["data"]["quantity"] == 450
 
 
 def test_login_and_protected_api():
