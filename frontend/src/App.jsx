@@ -2547,6 +2547,7 @@ function Payments() {
   const [clientQuery, setClientQuery] = useState("");
   const [clientNameOrder, setClientNameOrder] = useState("asc");
   const [dueDateOrder, setDueDateOrder] = useState(null);
+  const [statusOrder, setStatusOrder] = useState(null);
   const load = useCallback(() => api("/payments").then(setItems), []);
   useEffect(() => {
     load();
@@ -2608,6 +2609,15 @@ function Payments() {
       if (!second.due_date) return -1;
       return first.due_date.localeCompare(second.due_date) || first.id - second.id;
     };
+    if (statusOrder) {
+      const statusPriority = { pending: 0, partial: 1, overdue: 2, waived: 3, paid: 4 };
+      return [...visibleItems].sort((first, second) => {
+        const firstPriority = statusPriority[first.status] ?? 2;
+        const secondPriority = statusPriority[second.status] ?? 2;
+        const statusDifference = firstPriority - secondPriority;
+        return (statusOrder === "asc" ? statusDifference : -statusDifference) || byClient(first, second);
+      });
+    }
     if (!dueDateOrder) {
       return [...visibleItems].sort((first, second) => {
         const clientOrder = first.client_name.localeCompare(second.client_name, "es", {
@@ -2623,7 +2633,7 @@ function Payments() {
       const dateOrder = first.due_date.localeCompare(second.due_date);
       return (dueDateOrder === "asc" ? dateOrder : -dateOrder) || byClient(first, second);
     });
-  }, [items, clientQuery, clientNameOrder, dueDateOrder]);
+  }, [items, clientQuery, clientNameOrder, dueDateOrder, statusOrder]);
   async function setPaymentStatus(id, status) {
     await api(`/payments/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
     load();
@@ -2705,11 +2715,12 @@ function Payments() {
                   onClick={() => {
                     setClientNameOrder((order) => dueDateOrder ? "asc" : order === "asc" ? "desc" : "asc");
                     setDueDateOrder(null);
+                    setStatusOrder(null);
                   }}
                   title={clientNameOrder === "asc" ? "Ordenar clientes de Z a A" : "Ordenar clientes de A a Z"}
                 >
                   Cliente
-                  <ArrowUpDown className={!dueDateOrder ? "active" : ""} size={14} />
+                  <ArrowUpDown className={!dueDateOrder && !statusOrder ? "active" : ""} size={14} />
                 </button>
               </th>
               <th>Importe</th>
@@ -2717,14 +2728,29 @@ function Payments() {
               <th>
                 <button
                   type="button"
-                  onClick={() => setDueDateOrder((order) => order === "asc" ? "desc" : "asc")}
+                  onClick={() => {
+                    setDueDateOrder((order) => order === "asc" ? "desc" : "asc");
+                    setStatusOrder(null);
+                  }}
                   title={dueDateOrder === "asc" ? "Ordenar del más lejano al más próximo" : "Ordenar del más próximo al más lejano"}
                 >
                   Vencimiento
                   <ArrowUpDown className={dueDateOrder ? "active" : ""} size={14} />
                 </button>
               </th>
-              <th>Estado</th>
+              <th>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatusOrder((order) => order === "asc" ? "desc" : "asc");
+                    setDueDateOrder(null);
+                  }}
+                  title={statusOrder === "asc" ? "Mostrar pagados primero" : "Mostrar pendientes primero"}
+                >
+                  Estado
+                  <ArrowUpDown className={statusOrder ? "active" : ""} size={14} />
+                </button>
+              </th>
               <th>Acciones</th>
             </tr>
           </thead>
