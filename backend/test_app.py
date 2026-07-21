@@ -192,6 +192,26 @@ def test_clients_can_be_filtered_by_cancelled_status(client):
     assert filtered["items"][0]["status"] == "cancelled"
 
 
+def test_monthly_forecast_includes_only_billable_client_statuses(client):
+    cases = [
+        ("Activo ARS", "active", "ARS", 30000),
+        ("En riesgo ARS", "at_risk", "ARS", 20000),
+        ("Sin alta USD", "no_signup", "USD", 50),
+        ("Pausado", "paused", "ARS", 90000),
+        ("Cancelado", "cancelled", "ARS", 80000),
+        ("Sin importe", "active", "ARS", 0),
+    ]
+    for name, status, currency, amount in cases:
+        client.post("/api/clients", json={
+            "name": name, "business_name": name, "signup_date": "2026-07-01",
+            "country": "Argentina", "currency": currency,
+            "payment_amount": amount, "status": status,
+        })
+    forecast = client.get("/api/payments/monthly-forecast").get_json()["data"]
+    assert forecast["totals"] == {"ARS": 50000.0, "USD": 50.0}
+    assert {item["name"] for item in forecast["items"]} == {"Activo ARS", "En riesgo ARS", "Sin alta USD"}
+
+
 def test_client_credentials_are_encrypted_and_loaded_separately(client, app):
     created = client.post("/api/clients", json={
         "name": "Cliente Acceso", "business_name": "Marca Acceso",

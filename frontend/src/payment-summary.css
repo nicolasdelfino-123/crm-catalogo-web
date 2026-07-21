@@ -27,6 +27,20 @@ button.global-paid-total {
   display: block;
 }
 
+.payment-summary > button.monthly-forecast-card {
+  border-color: #b8d7c5;
+  background: var(--green-bg);
+}
+
+.payment-summary > button.monthly-forecast-card small {
+  color: var(--green);
+}
+
+.forecast-detail-table th:nth-child(1) { width: 27%; }
+.forecast-detail-table th:nth-child(2) { width: 31%; }
+.forecast-detail-table th:nth-child(3) { width: 20%; }
+.forecast-detail-table th:nth-child(4) { width: 22%; }
+
 .payment-summary > button small {
   color: var(--muted);
   font-size: 10px;

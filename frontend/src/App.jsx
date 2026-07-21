@@ -2817,13 +2817,18 @@ function Expenses() {
 
 function Payments() {
   const [items, setItems] = useState([]);
+  const [forecast, setForecast] = useState({ items: [], totals: {} });
   const [editing, setEditing] = useState(null);
   const [summaryDetail, setSummaryDetail] = useState(null);
   const [clientQuery, setClientQuery] = useState("");
   const [clientNameOrder, setClientNameOrder] = useState("asc");
   const [dueDateOrder, setDueDateOrder] = useState(null);
   const [statusOrder, setStatusOrder] = useState(null);
-  const load = useCallback(() => api("/payments").then(setItems), []);
+  const load = useCallback(() => Promise.all([
+    api("/payments"), api("/payments/monthly-forecast"),
+  ]).then(([payments, monthlyForecast]) => {
+    setItems(payments); setForecast(monthlyForecast);
+  }), []);
   useEffect(() => {
     load();
   }, [load]);
@@ -2919,7 +2924,14 @@ function Payments() {
     load();
   }
   function showSummary(title, predicate) {
-    setSummaryDetail({ title, items: items.filter(predicate) });
+    setSummaryDetail({ title, items: items.filter(predicate), kind: "payments" });
+  }
+  function showForecast(currency) {
+    setSummaryDetail({
+      title: `Mensualidad a cobrar por mes · ${currency}`,
+      items: forecast.items.filter((client) => client.currency === currency),
+      kind: "forecast",
+    });
   }
   return (
     <section className="page">
@@ -2934,6 +2946,12 @@ function Payments() {
         <div>{Object.entries(paidTotals).map(([currency, total]) => <strong key={currency}>{fmtMoney(total, currency)}</strong>)}{!Object.keys(paidTotals).length && <span>Sin pagos completados</span>}</div>
       </button>
       <div className="payment-summary">
+        {Object.entries(forecast.totals).sort(([first], [second]) => first.localeCompare(second)).map(([currency, total]) => (
+          <button type="button" className="payment-summary-trigger monthly-forecast-card" key={`monthly-forecast-${currency}`} onClick={() => showForecast(currency)}>
+            <small>Mensualidad a cobrar por mes · {currency}</small>
+            <strong>{fmtMoney(total, currency)}</strong>
+          </button>
+        ))}
         {paymentCurrencies.map((currency) => (
           <button type="button" className="payment-summary-trigger" key={`monthly-paid-${currency}`} onClick={() => showSummary(`Mensualidades pagadas · ${currency}`, (payment) => payment.currency === currency && payment.status === "paid" && payment.payment_type === "monthly")}>
             <small>Pagos Mensualidades · {currency}</small>
@@ -3066,10 +3084,12 @@ function Payments() {
         <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && setSummaryDetail(null)}>
           <div className="payment-summary-modal">
             <div className="modal-head"><div><span className="eyebrow">Desglose del total</span><h2>{summaryDetail.title}</h2></div><IconButton label="Cerrar" onClick={() => setSummaryDetail(null)}><X /></IconButton></div>
-            <div className="summary-payment-count">{summaryDetail.items.length} {summaryDetail.items.length === 1 ? "pago incluido" : "pagos incluidos"}</div>
-            {summaryDetail.items.length ? (
+            <div className="summary-payment-count">{summaryDetail.items.length} {summaryDetail.kind === "forecast" ? summaryDetail.items.length === 1 ? "cliente incluido" : "clientes incluidos" : summaryDetail.items.length === 1 ? "pago incluido" : "pagos incluidos"}</div>
+            {summaryDetail.items.length && summaryDetail.kind === "payments" ? (
               <div className="table-wrap summary-payments-table"><table><thead><tr><th>Cliente</th><th>Importe</th><th>Concepto</th><th>Vencimiento</th><th>Fecha de pago</th><th>Estado</th></tr></thead><tbody>{summaryDetail.items.map((payment) => <tr key={payment.id}><td><strong>{payment.client_name}</strong></td><td><strong>{fmtMoney(payment.amount, payment.currency)}</strong></td><td>{LABEL[payment.payment_type] || payment.payment_type}</td><td>{fmtDate(payment.due_date)}</td><td>{payment.paid_at ? fmtDate(payment.paid_at) : "Todavía no pagado"}</td><td>{badge(payment.status)}</td></tr>)}</tbody></table></div>
-            ) : <div className="summary-payment-empty">Este total no contiene pagos.</div>}
+            ) : summaryDetail.items.length ? (
+              <div className="table-wrap summary-payments-table forecast-detail-table"><table><thead><tr><th>Cliente</th><th>Negocio</th><th>Estado</th><th>Mensualidad</th></tr></thead><tbody>{summaryDetail.items.map((client) => <tr key={client.id}><td><strong>{client.name}</strong></td><td>{client.business_name}</td><td>{badge(client.status)}</td><td><strong>{fmtMoney(client.amount, client.currency)}</strong></td></tr>)}</tbody></table></div>
+            ) : <div className="summary-payment-empty">Este total no contiene registros.</div>}
           </div>
         </div>
       )}

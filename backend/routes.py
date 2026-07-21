@@ -602,6 +602,24 @@ def payments_list():
     return ok([p.to_dict() for p in items])
 
 
+@api.get("/payments/monthly-forecast")
+def payments_monthly_forecast():
+    clients = Client.query.filter(
+        Client.archived_at.is_(None),
+        Client.status.in_(("active", "at_risk", "no_signup")),
+        Client.payment_amount > 0,
+    ).order_by(Client.name.asc()).all()
+    items = [{
+        "id": client.id, "name": client.name, "business_name": client.business_name,
+        "status": client.status, "amount": float(client.payment_amount),
+        "currency": client.currency,
+    } for client in clients]
+    totals = {}
+    for item in items:
+        totals[item["currency"]] = totals.get(item["currency"], 0) + item["amount"]
+    return ok({"items": items, "totals": totals})
+
+
 def apply_expense(expense, data):
     if "amount" in data:
         amount = float(data.get("amount") or 0)
