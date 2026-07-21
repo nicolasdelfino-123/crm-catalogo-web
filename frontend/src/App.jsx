@@ -2557,6 +2557,10 @@ function Messages() {
   const [saving, setSaving] = useState(false);
   const load = useCallback(() => api("/messages").then(setItems), []);
   useEffect(() => { load(); }, [load]);
+  const availableMonths = useMemo(
+    () => [...new Set(items.map((item) => item.sent_date?.slice(0, 7)).filter(Boolean))].sort().reverse(),
+    [items],
+  );
   const monthItems = useMemo(
     () => selectedMonth ? items.filter((item) => item.sent_date?.startsWith(selectedMonth)) : items,
     [items, selectedMonth],
@@ -2617,7 +2621,7 @@ function Messages() {
       </form>
       <form className="message-search" onSubmit={(event) => { event.preventDefault(); setSelectedMonth(filterMonth); setSelectedChannel(filterChannel); }}>
         <div><span className="eyebrow">Buscar registros</span><h3>Consultar totales cargados</h3></div>
-        <label>Mes<input type="month" value={filterMonth} onChange={(event) => setFilterMonth(event.target.value)} /></label>
+        <label>Mes<select value={filterMonth} onChange={(event) => setFilterMonth(event.target.value)}><option value="">Todos los meses</option>{availableMonths.map((month) => <option value={month} key={month}>{fmtMonth(month)}</option>)}</select></label>
         <label>Canal<select value={filterChannel} onChange={(event) => setFilterChannel(event.target.value)}><option value="">Todos los canales</option>{ACQUISITION_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
         <button className="primary"><Search size={16} />Buscar</button>
         <button type="button" className="secondary" onClick={() => { setFilterMonth(""); setFilterChannel(""); setSelectedMonth(""); setSelectedChannel(""); }}>Ver todos</button>
