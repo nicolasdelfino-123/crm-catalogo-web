@@ -4,7 +4,7 @@ import calendar
 from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response
 from sqlalchemy import Integer, case, cast, func, or_
-from models import db, Client, ClientAction, StandaloneAction, Payment, ClientMetric, ClientNote, ActionTemplate
+from models import db, iso, Client, ClientAction, StandaloneAction, Payment, ClientMetric, ClientNote, ActionTemplate
 
 api = Blueprint("api", __name__)
 
@@ -593,14 +593,37 @@ def dashboard():
 @api.get("/dashboard/acquisition")
 def acquisition_summary():
     clients = Client.query.filter(Client.archived_at.is_(None)).all()
-    counts = {}
+    grouped = {}
     for client in clients:
         key = client.acquisition_source or "not_set"
-        counts[key] = counts.get(key, 0) + 1
+        grouped.setdefault(key, []).append(client)
     total = len(clients)
     items = [
-        {"source": source, "count": count, "percentage": round((count / total) * 100, 1) if total else 0}
-        for source, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)
+        {
+            "source": source,
+            "count": len(source_clients),
+            "percentage": round((len(source_clients) / total) * 100, 1) if total else 0,
+            "active_count": sum(client.status == "active" for client in source_clients),
+            "clients": [
+                {
+                    "id": client.id,
+                    "name": client.name,
+                    "business_name": client.business_name,
+                    "status": client.status,
+                    "service_stage": client.service_stage,
+                    "signup_date": iso(client.signup_date),
+                    "city": client.city,
+                    "country": client.country,
+                    "instagram_username": client.instagram_username,
+                    "email": client.email,
+                    "phone": client.phone,
+                    "payment_amount": float(client.payment_amount or 0),
+                    "currency": client.currency,
+                }
+                for client in sorted(source_clients, key=lambda item: item.name.lower())
+            ],
+        }
+        for source, source_clients in sorted(grouped.items(), key=lambda item: len(item[1]), reverse=True)
     ]
     return ok({"total": total, "items": items})
 

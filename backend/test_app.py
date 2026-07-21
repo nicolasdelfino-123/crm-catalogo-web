@@ -80,6 +80,22 @@ def test_create_and_list_client(client):
     assert payment.get_json()["data"]["due_date"] == "2026-08-01"
 
 
+def test_acquisition_summary_includes_client_details(client):
+    client.post("/api/clients", json={
+        "name": "Cliente Instagram", "business_name": "Marca Instagram",
+        "signup_date": "2026-07-01", "country": "Argentina", "currency": "ARS",
+        "payment_amount": 30000, "acquisition_source": "business_instagram",
+    })
+
+    response = client.get("/api/dashboard/acquisition")
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    channel = next(item for item in data["items"] if item["source"] == "business_instagram")
+    assert channel["active_count"] == 1
+    assert channel["clients"][0]["name"] == "Cliente Instagram"
+    assert channel["clients"][0]["signup_date"] == "2026-07-01"
+
+
 def test_operational_statuses(client):
     created = client.post("/api/clients", json={
         "name": "Cliente Operativo", "business_name": "Marca Operativa",

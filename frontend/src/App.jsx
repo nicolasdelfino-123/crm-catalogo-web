@@ -1629,6 +1629,7 @@ function Summary({ client, onUpdate, onEdit }) {
 
 function AcquisitionModal({ onClose }) {
   const [data, setData] = useState(null);
+  const [expandedSource, setExpandedSource] = useState(null);
   useEffect(() => {
     api("/dashboard/acquisition").then(setData);
     const close = (event) => event.key === "Escape" && onClose();
@@ -1653,13 +1654,54 @@ function AcquisitionModal({ onClose }) {
             </div>
             <div className="acquisition-list">
               {data.items.map((item) => (
-                <article key={item.source}>
-                  <div>
-                    <strong>{acquisitionLabel(item.source)}</strong>
-                    <span>{item.percentage}% del total</span>
-                  </div>
-                  <div className="acquisition-bar"><i style={{ width: `${item.percentage}%` }} /></div>
-                  <b>{item.count}</b>
+                <article className={expandedSource === item.source ? "expanded" : ""} key={item.source}>
+                  <button
+                    type="button"
+                    className="acquisition-channel"
+                    aria-expanded={expandedSource === item.source}
+                    onClick={() => setExpandedSource((source) => source === item.source ? null : item.source)}
+                  >
+                    <div>
+                      <strong>{acquisitionLabel(item.source)}</strong>
+                      <span>{item.percentage}% del total</span>
+                    </div>
+                    <div className="acquisition-bar"><i style={{ width: `${item.percentage}%` }} /></div>
+                    <b>{item.count}</b>
+                    <ChevronRight size={18} />
+                  </button>
+                  {expandedSource === item.source && (
+                    <div className="acquisition-detail">
+                      <div className="acquisition-insights">
+                        <span><strong>{item.active_count}</strong> activos</span>
+                        <span><strong>{item.count - item.active_count}</strong> no activos</span>
+                        <span><strong>{item.count}</strong> adquiridos</span>
+                      </div>
+                      <div className="acquisition-clients">
+                        {item.clients.map((client) => (
+                          <div key={client.id}>
+                            <div>
+                              <strong>{client.name}</strong>
+                              <span>{client.business_name}</span>
+                            </div>
+                            <div>
+                              {badge(client.status)}
+                              <span>{stageLabel(client.service_stage)} · Alta {fmtDate(client.signup_date)}</span>
+                            </div>
+                            <div>
+                              <strong>{fmtMoney(client.payment_amount, client.currency)}</strong>
+                              <span>{[client.city, client.country].filter(Boolean).join(", ") || "Sin ubicación"}</span>
+                            </div>
+                            <div className="acquisition-contact">
+                              {client.instagram_username && <span>@{client.instagram_username.replace(/^@/, "")}</span>}
+                              {client.phone && <span>{client.phone}</span>}
+                              {client.email && <span>{client.email}</span>}
+                              {!client.instagram_username && !client.phone && !client.email && <span>Sin contacto registrado</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </article>
               ))}
             </div>
