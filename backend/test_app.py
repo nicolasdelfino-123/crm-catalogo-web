@@ -50,7 +50,7 @@ def test_monthly_message_total_uses_selected_month(client):
     assert updated.get_json()["data"]["quantity"] == 450
 
 
-def test_expenses_monthly_balance_uses_paid_ars_income(client):
+def test_expenses_balance_is_independent_from_client_payments(client):
     today = date.today()
     month = today.strftime("%Y-%m")
     created_client = client.post("/api/clients", json={
@@ -69,11 +69,29 @@ def test_expenses_monthly_balance_uses_paid_ars_income(client):
     })
     assert expense.status_code == 201
     expense_id = expense.get_json()["data"]["id"]
+    client.post("/api/expenses", json={
+        "expense_date": today.isoformat(), "category": "server_income",
+        "description": "Aporte cliente VPS", "amount": 7000,
+    })
+    client.post("/api/expenses", json={
+        "expense_date": today.isoformat(), "category": "extra",
+        "description": "Dominio", "amount": 3000,
+    })
+    client.post("/api/expenses", json={
+        "expense_date": "2020-01-10", "category": "server",
+        "description": "Servidor anterior", "amount": 10000,
+    })
 
     result = client.get(f"/api/expenses?month={month}").get_json()["data"]
     assert result["summary"] == {
-        "income_ars": 100000.0, "expenses_ars": 25000.0, "balance_ars": 75000.0,
+        "server_income_ars": 7000.0,
+        "server_expenses_ars": 25000.0, "net_server_cost_ars": 18000.0,
+        "extra_expenses_ars": 3000.0, "expenses_ars": 28000.0,
+        "balance_ars": -21000.0,
     }
+    accumulated = client.get("/api/expenses?scope=all").get_json()["data"]
+    assert accumulated["summary"]["server_expenses_ars"] == 35000.0
+    assert accumulated["summary"]["net_server_cost_ars"] == 28000.0
     updated = client.patch(f"/api/expenses/{expense_id}", json={"amount": 30000})
     assert updated.status_code == 200
     assert updated.get_json()["data"]["amount"] == 30000.0

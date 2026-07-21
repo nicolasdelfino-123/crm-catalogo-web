@@ -1,12 +1,7 @@
-.expense-month {
-  display: grid;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.expense-month input,
+.expense-period-filter { display: flex; align-items: flex-end; gap: 9px; }
+.expense-period-filter label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.expense-period-filter input,
+.expense-period-filter select,
 .expense-form input,
 .expense-form select {
   min-height: 40px;
@@ -33,6 +28,8 @@
 }
 
 .balance-card.spent { border-left-color: var(--amber); }
+.balance-card.contribution { border-left-color: var(--green); background: #f4faf6; }
+.balance-card.server-net { border-left-color: var(--blue); background: var(--blue-bg); }
 .balance-card.final { background: var(--green-bg); }
 .balance-card.final.negative { border-left-color: var(--red); background: var(--red-bg); }
 .balance-card small,
@@ -60,6 +57,7 @@
 .expenses-table table { min-width: 850px; }
 .expenses-table td:last-child { white-space: nowrap; }
 .expenses-table .icon-btn { display: inline-grid; }
+.expenses-table .income-text { color: var(--green); }
 
 @media (max-width: 1100px) {
   .expense-form { grid-template-columns: repeat(2, 1fr); }
@@ -69,6 +67,8 @@
 
 @media (max-width: 680px) {
   .expenses-page .page-intro { align-items: flex-end; }
+  .expense-period-filter { width: 100%; }
+  .expense-period-filter label { flex: 1; }
   .balance-grid { grid-template-columns: 1fr; gap: 8px; }
   .balance-card { padding: 15px; }
   .balance-card strong { font-size: 21px; }

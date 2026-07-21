@@ -631,7 +631,7 @@ def apply_expense(expense, data):
     if not expense.expense_date:
         raise ValueError("Elegí la fecha del gasto")
     if "category" in data:
-        if data["category"] not in {"server", "extra"}:
+        if data["category"] not in {"server", "extra", "server_income"}:
             raise ValueError("Tipo de gasto inválido")
         expense.category = data["category"]
     if "description" in data:
@@ -644,25 +644,35 @@ def apply_expense(expense, data):
 
 @api.get("/expenses")
 def expenses_list():
+    scope = request.args.get("scope", "month")
     month = request.args.get("month") or date.today().strftime("%Y-%m")
-    try:
-        month_start = datetime.strptime(month, "%Y-%m").date().replace(day=1)
-        month_end = add_calendar_months(month_start, 1)
-    except ValueError:
-        return error("Mes inválido", 422)
-    expenses = Expense.query.filter(
-        Expense.expense_date >= month_start, Expense.expense_date < month_end,
-    ).order_by(Expense.expense_date.desc(), Expense.id.desc()).all()
-    paid_ars = Payment.query.filter(
-        Payment.status == "paid", Payment.currency == "ARS",
-        Payment.paid_at >= datetime.combine(month_start, datetime.min.time()),
-        Payment.paid_at < datetime.combine(month_end, datetime.min.time()),
-    ).all()
-    income = sum(float(payment.amount) for payment in paid_ars)
-    spent = sum(float(expense.amount) for expense in expenses)
+    expense_query = Expense.query
+    if scope == "month":
+        try:
+            month_start = datetime.strptime(month, "%Y-%m").date().replace(day=1)
+            month_end = add_calendar_months(month_start, 1)
+        except ValueError:
+            return error("Mes inválido", 422)
+        expense_query = expense_query.filter(
+            Expense.expense_date >= month_start, Expense.expense_date < month_end,
+        )
+    elif scope != "all":
+        return error("Filtro inválido", 422)
+    expenses = expense_query.order_by(Expense.expense_date.desc(), Expense.id.desc()).all()
+    server_expenses = sum(float(item.amount) for item in expenses if item.category == "server")
+    extra_expenses = sum(float(item.amount) for item in expenses if item.category == "extra")
+    server_income = sum(float(item.amount) for item in expenses if item.category == "server_income")
+    spent = server_expenses + extra_expenses
     return ok({
-        "month": month, "items": [expense.to_dict() for expense in expenses],
-        "summary": {"income_ars": income, "expenses_ars": spent, "balance_ars": income - spent},
+        "month": month if scope == "month" else None, "scope": scope,
+        "items": [expense.to_dict() for expense in expenses],
+        "summary": {
+            "server_income_ars": server_income,
+            "server_expenses_ars": server_expenses,
+            "net_server_cost_ars": server_expenses - server_income,
+            "extra_expenses_ars": extra_expenses, "expenses_ars": spent,
+            "balance_ars": server_income - spent,
+        },
     })
 
 
