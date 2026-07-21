@@ -112,6 +112,22 @@ def test_create_and_list_client(client):
     assert payment.get_json()["data"]["due_date"] == "2026-08-01"
 
 
+def test_client_accepts_no_signup_status(client):
+    created = client.post("/api/clients", json={
+        "name": "Cliente sin alta",
+        "business_name": "Marca pendiente",
+        "signup_date": "2026-07-01",
+        "country": "Argentina",
+        "currency": "ARS",
+        "status": "no_signup",
+    })
+
+    assert created.status_code == 201
+    assert created.get_json()["data"]["status"] == "no_signup"
+    filtered = client.get("/api/clients?status=no_signup").get_json()["data"]
+    assert filtered["pagination"]["total"] == 1
+
+
 def test_client_credentials_are_encrypted_and_loaded_separately(client, app):
     created = client.post("/api/clients", json={
         "name": "Cliente Acceso", "business_name": "Marca Acceso",

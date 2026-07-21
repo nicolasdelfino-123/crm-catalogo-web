@@ -11,7 +11,7 @@ from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Cli
 
 api = Blueprint("api", __name__)
 
-STATUSES = {"lead", "active", "at_risk", "paused", "cancelled"}
+STATUSES = {"lead", "active", "at_risk", "paused", "cancelled", "no_signup"}
 
 
 def credential_cipher():

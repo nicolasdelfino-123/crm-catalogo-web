@@ -78,6 +78,7 @@ const LABEL = {
   at_risk: "En riesgo",
   paused: "Pausado",
   cancelled: "Cancelado",
+  no_signup: "Sin alta",
   lead: "Potencial",
   onboarding: "Inicio",
   first_month: "1er mes",
@@ -626,23 +627,31 @@ function ClientForm({ client, onClose, onSaved }) {
             <legend>Servicio y cobro</legend>
             <div className="form-grid">
               <label>
-                Fecha de alta *
-                <input
-                  type="date"
-                  name="signup_date"
-                  value={form.signup_date || ""}
-                  onChange={change}
-                  required
-                />
+                {form.status === "no_signup" ? "Fecha de alta" : "Fecha de alta *"}
+                {form.status === "no_signup" ? (
+                  <input value="Sin alta" readOnly />
+                ) : (
+                  <input
+                    type="date"
+                    name="signup_date"
+                    value={form.signup_date || ""}
+                    onChange={change}
+                    required
+                  />
+                )}
               </label>
               <label>
                 Próxima renovación
-                <input
-                  type="date"
-                  name="next_renewal_date"
-                  value={form.next_renewal_date || ""}
-                  onChange={change}
-                />
+                {form.status === "no_signup" ? (
+                  <input value="Sin alta" readOnly />
+                ) : (
+                  <input
+                    type="date"
+                    name="next_renewal_date"
+                    value={form.next_renewal_date || ""}
+                    onChange={change}
+                  />
+                )}
               </label>
               <label>
                 Estado
@@ -651,6 +660,7 @@ function ClientForm({ client, onClose, onSaved }) {
                   <option value="at_risk">En riesgo</option>
                   <option value="paused">Pausado</option>
                   <option value="cancelled">Cancelado</option>
+                  <option value="no_signup">Sin alta</option>
                 </select>
               </label>
               <label>
@@ -1330,7 +1340,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit }) {
         <div className="quick-stats">
           <div>
             <small>Alta</small>
-            <strong>{fmtDate(client.signup_date)}</strong>
+            <strong>{client.status === "no_signup" ? "Sin alta" : fmtDate(client.signup_date)}</strong>
             <span>{client.days_as_client} días</span>
           </div>
           <div>
@@ -1933,6 +1943,7 @@ function Clients() {
             <option value="active">Activos</option>
             <option value="at_risk">En riesgo</option>
             <option value="paused">Pausados</option>
+            <option value="no_signup">Sin alta</option>
           </select>
         </label>
         <label className="filter acquisition-filter">
@@ -2010,7 +2021,7 @@ function Clients() {
                 {data.items.map((c) => (
                   <tr key={c.id} onClick={() => setSelected(c.id)}>
                     <td className="billing-day-cell">
-                      <strong>{billingDay(c.signup_date)}</strong>
+                      <strong>{c.status === "no_signup" ? "—" : billingDay(c.signup_date)}</strong>
                     </td>
                     <td>
                       <strong>{c.name}</strong>
@@ -2019,12 +2030,12 @@ function Clients() {
                     <td>{badge(c.status)}</td>
                     <td>{badge(c.service_stage)}</td>
                     <td>
-                      <strong>{fmtDate(c.signup_date)}</strong>
-                      <span>{c.days_as_client} días</span>
+                      <strong>{c.status === "no_signup" ? "Sin alta" : fmtDate(c.signup_date)}</strong>
+                      {c.status !== "no_signup" && <span>{c.days_as_client} días</span>}
                     </td>
                     <td>
-                      <strong>{fmtDate(c.next_renewal_date)}</strong>
-                      <span>{fmtMoney(c.payment_amount, c.currency)}</span>
+                      <strong>{c.status === "no_signup" ? "Sin alta" : fmtDate(c.next_renewal_date)}</strong>
+                      {c.status !== "no_signup" && <span>{fmtMoney(c.payment_amount, c.currency)}</span>}
                     </td>
                     <td className="action-cell">
                       <strong>
@@ -2098,11 +2109,11 @@ function Clients() {
                 <dl>
                   <div>
                     <dt>Día de cobro</dt>
-                    <dd>{billingDay(c.signup_date)}</dd>
+                    <dd>{c.status === "no_signup" ? "Sin alta" : billingDay(c.signup_date)}</dd>
                   </div>
                   <div>
                     <dt>Renueva</dt>
-                    <dd>{fmtDate(c.next_renewal_date)}</dd>
+                    <dd>{c.status === "no_signup" ? "Sin alta" : fmtDate(c.next_renewal_date)}</dd>
                   </div>
                   <div>
                     <dt>Próxima acción</dt>

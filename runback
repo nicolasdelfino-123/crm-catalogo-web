@@ -3,8 +3,11 @@ set -e
 SCRIPT_PATH="$(readlink -f "$0")"
 cd "$(dirname "$SCRIPT_PATH")/backend"
 if [ ! -d .venv ]; then python3 -m venv .venv; fi
-.venv/bin/pip install -q -r requirements.txt
+# Invoke tools through Python instead of their generated launchers. Those
+# launchers contain an absolute path and stop working when the project moves.
+.venv/bin/python -m pip install -q -r requirements.txt
 export SQLALCHEMY_DATABASE_URI="${SQLALCHEMY_DATABASE_URI:-sqlite:///crm.db}"
+mkdir -p instance
 if [ -z "${JWT_SECRET_KEY:-}" ]; then
   JWT_SECRET_FILE="instance/.jwt-secret"
   if [ ! -s "$JWT_SECRET_FILE" ]; then
@@ -15,4 +18,4 @@ if [ -z "${JWT_SECRET_KEY:-}" ]; then
   export JWT_SECRET_KEY
 fi
 if [ ! -f instance/crm.db ]; then .venv/bin/python seed.py; fi
-exec .venv/bin/flask --app app.run run --host=0.0.0.0
+exec .venv/bin/python -m flask --app app.run run --host=0.0.0.0
