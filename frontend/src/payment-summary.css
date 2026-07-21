@@ -39,11 +39,21 @@ button.global-paid-total {
 
 .payment-summary-modal {
   width: min(1050px, 95vw);
+  max-width: 95vw;
   max-height: 90vh;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   border-radius: 7px;
   background: #fff;
   box-shadow: 0 25px 70px rgba(0, 0, 0, .28);
+}
+
+.payment-summary-modal .modal-head > div {
+  min-width: 0;
+}
+
+.payment-summary-modal .modal-head h2 {
+  overflow-wrap: anywhere;
 }
 
 .summary-payment-count {
@@ -54,11 +64,44 @@ button.global-paid-total {
 }
 
 .summary-payments-table {
+  width: 100%;
+  max-width: 100%;
   border: 0;
+  overflow-x: hidden !important;
+  overflow-y: visible;
 }
 
-.summary-payments-table table {
-  min-width: 850px;
+.payment-summary-modal .summary-payments-table table {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0 !important;
+  table-layout: fixed;
+}
+
+.summary-payments-table th,
+.summary-payments-table td {
+  padding: 10px 8px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.summary-payments-table th:nth-child(1) { width: 20%; }
+.summary-payments-table th:nth-child(2) { width: 16%; }
+.summary-payments-table th:nth-child(3) { width: 17%; }
+.summary-payments-table th:nth-child(4),
+.summary-payments-table th:nth-child(5) { width: 17%; }
+.summary-payments-table th:nth-child(6) { width: 13%; }
+
+.summary-payments-table td:first-child {
+  position: static;
+  min-width: 0 !important;
+}
+
+.summary-payments-table .badge {
+  max-width: 100%;
+  width: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .summary-payment-empty {
@@ -69,6 +112,9 @@ button.global-paid-total {
 
 @media (max-width: 680px) {
   .payment-summary > button { padding: 12px; }
-  .payment-summary-modal { width: 100%; height: 100vh; max-height: 100vh; border-radius: 0; }
+  .payment-summary-modal { width: 100%; max-width: 100%; height: 100vh; max-height: 100vh; border-radius: 0; }
   .summary-payments-table { display: block; }
+  .summary-payments-table th,
+  .summary-payments-table td { padding: 8px 5px; font-size: 10px; }
+  .summary-payments-table .badge { padding: 3px 4px; font-size: 9px !important; }
 }
