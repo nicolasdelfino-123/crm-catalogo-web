@@ -730,6 +730,7 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
         ["title", "Acción", "actionpreset"],
         ["due_date", "Fecha prevista", "date"],
         ["priority", "Prioridad", "select"],
+        ["description", "Nota", "textarea"],
       ],
     },
     payment: {
@@ -838,7 +839,9 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
                 required={type === "note"}
                 placeholder={type === "extra_work"
                   ? "Describí qué trabajo se realizó"
-                  : type === "payment" ? "Escribí una nota sobre la mensualidad" : undefined}
+                  : type === "payment"
+                    ? "Escribí una nota sobre la mensualidad"
+                    : type === "action" ? "Escribí una nota sobre la acción" : undefined}
                 onChange={(e) => setForm({ ...form, [name]: e.target.value })}
               />
             ) : (
@@ -1355,6 +1358,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit }) {
                           <p>
                             {fmtDate(a.due_date)} · {LABEL[a.priority] || a.priority}
                           </p>
+                          {a.description && <p>{a.description}</p>}
                           {a.status === "cancelled" && <span className="badge cancelled">Anulada</span>}
                         </div>
                         <IconButton
