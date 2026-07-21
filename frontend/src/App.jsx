@@ -738,6 +738,7 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
         ["amount", "Importe", "number"],
         ["due_date", "Vencimiento", "date"],
         ["status", "Estado", "payselect"],
+        ["notes", "Nota", "textarea"],
       ],
     },
     extra_work: {
@@ -835,7 +836,9 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
             ) : kind === "textarea" ? (
               <textarea
                 required={type === "note"}
-                placeholder={type === "extra_work" ? "Describí qué trabajo se realizó" : undefined}
+                placeholder={type === "extra_work"
+                  ? "Describí qué trabajo se realizó"
+                  : type === "payment" ? "Escribí una nota sobre la mensualidad" : undefined}
                 onChange={(e) => setForm({ ...form, [name]: e.target.value })}
               />
             ) : (
