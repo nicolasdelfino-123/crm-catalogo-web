@@ -89,6 +89,12 @@ def create_app(test_config=None):
 
     with app.app_context():
         db.create_all()
+        inspector = inspect(db.engine)
+        if "message_log" in inspector.get_table_names():
+            message_columns = {column["name"] for column in inspector.get_columns("message_log")}
+            if "entry_type" not in message_columns:
+                db.session.execute(text("ALTER TABLE message_log ADD COLUMN entry_type VARCHAR(20) DEFAULT 'daily' NOT NULL"))
+                db.session.commit()
         columns = {column["name"] for column in inspect(db.engine).get_columns("client")}
         if "acquisition_source" not in columns:
             db.session.execute(text("ALTER TABLE client ADD COLUMN acquisition_source VARCHAR(60)"))

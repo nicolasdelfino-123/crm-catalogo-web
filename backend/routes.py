@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response, current_app
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Integer, case, cast, func, or_
-from models import db, iso, Client, ClientAction, StandaloneAction, Payment, ClientMetric, ClientNote, ClientCredential, ActionTemplate
+from models import db, iso, Client, ClientAction, StandaloneAction, Payment, ClientMetric, ClientNote, ClientCredential, MessageLog, ActionTemplate
 
 api = Blueprint("api", __name__)
 
@@ -361,6 +361,44 @@ def credentials_delete(client_id):
         db.session.delete(client.credential)
         db.session.commit()
     return ok(None, "Credenciales eliminadas")
+
+
+@api.get("/messages")
+def messages_list():
+    items = MessageLog.query.order_by(MessageLog.sent_date.desc(), MessageLog.id.desc()).limit(500).all()
+    return ok([item.to_dict() for item in items])
+
+
+@api.post("/messages")
+def messages_create():
+    data = request.get_json(silent=True) or {}
+    channel = str(data.get("channel") or "").strip()
+    entry_type = str(data.get("entry_type") or "daily")
+    if entry_type not in {"daily", "monthly"}:
+        return error("Tipo de carga inválido", 422)
+    try:
+        quantity = int(data.get("quantity") or 0)
+        sent_date = (
+            date.fromisoformat(f'{data.get("month")}-01')
+            if entry_type == "monthly" and data.get("month")
+            else parse_date(data.get("sent_date")) or date.today()
+        )
+    except (ValueError, TypeError):
+        return error("Revisá la fecha y la cantidad", 422)
+    if not channel:
+        return error("Elegí un canal", 422)
+    if quantity <= 0:
+        return error("La cantidad debe ser mayor que cero", 422)
+    item = MessageLog(sent_date=sent_date, channel=channel, quantity=quantity, entry_type=entry_type, notes=str(data.get("notes") or "").strip() or None)
+    db.session.add(item); db.session.commit()
+    return ok(item.to_dict(), "Mensajes registrados", 201)
+
+
+@api.delete("/messages/<int:message_id>")
+def messages_delete(message_id):
+    item = MessageLog.query.get_or_404(message_id)
+    db.session.delete(item); db.session.commit()
+    return ok(None, "Registro eliminado")
 
 
 @api.post("/clients/<int:client_id>/generate-actions")

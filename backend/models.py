@@ -204,6 +204,23 @@ class ClientCredential(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class MessageLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sent_date = db.Column(db.Date, nullable=False, default=date.today, index=True)
+    channel = db.Column(db.String(60), nullable=False, index=True)
+    quantity = db.Column(db.Integer, nullable=False, default=0)
+    entry_type = db.Column(db.String(20), nullable=False, default="daily")
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "sent_date": iso(self.sent_date), "channel": self.channel,
+            "quantity": self.quantity, "entry_type": self.entry_type or "daily",
+            "notes": self.notes, "created_at": iso(self.created_at),
+        }
+
+
 class ActionTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(80), unique=True, nullable=False)

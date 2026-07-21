@@ -18,6 +18,31 @@ def client(app):
 def test_health(client): assert client.get("/api/health").status_code == 200
 
 
+def test_message_logs_can_be_created_listed_and_deleted(client):
+    created = client.post("/api/messages", json={
+        "sent_date": "2026-07-21", "channel": "business_whatsapp",
+        "quantity": 14, "notes": "Primera tanda",
+    })
+    assert created.status_code == 201
+    message_id = created.get_json()["data"]["id"]
+    listed = client.get("/api/messages").get_json()["data"]
+    assert listed[0]["quantity"] == 14
+    assert listed[0]["channel"] == "business_whatsapp"
+    assert client.delete(f"/api/messages/{message_id}").status_code == 200
+    assert client.get("/api/messages").get_json()["data"] == []
+
+
+def test_monthly_message_total_uses_selected_month(client):
+    created = client.post("/api/messages", json={
+        "entry_type": "monthly", "month": "2026-04",
+        "channel": "business_instagram", "quantity": 320,
+    })
+    assert created.status_code == 201
+    data = created.get_json()["data"]
+    assert data["sent_date"] == "2026-04-01"
+    assert data["entry_type"] == "monthly"
+
+
 def test_login_and_protected_api():
     secured_app = create_app({
         "TESTING": True,

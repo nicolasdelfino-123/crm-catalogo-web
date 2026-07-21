@@ -210,6 +210,7 @@ function Sidebar({ page, setPage, open, setOpen }) {
     ["clients", "Clientes", Users],
     ["agenda", "Agenda", CalendarDays],
     ["payments", "Pagos", WalletCards],
+    ["messages", "Mensajes", Mail],
   ];
   return (
     <aside className={`sidebar ${open ? "open" : ""}`}>
@@ -277,6 +278,7 @@ function Shell({ page, setPage, onLogout, children }) {
     clients: "Clientes",
     agenda: "Agenda de acciones",
     payments: "Pagos",
+    messages: "Mensajes enviados",
   };
   return (
     <div className="app-shell">
@@ -2539,6 +2541,69 @@ function AgendaItem({ action: a, onComplete, onEdit, onOpenClient }) {
     </article>
   );
 }
+function Messages() {
+  const today = new Date().toISOString().slice(0, 10);
+  const currentMonth = today.slice(0, 7);
+  const [items, setItems] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+  const [form, setForm] = useState({ entry_type: "monthly", month: currentMonth, sent_date: today, channel: "", quantity: "", notes: "" });
+  const [saving, setSaving] = useState(false);
+  const load = useCallback(() => api("/messages").then(setItems), []);
+  useEffect(() => { load(); }, [load]);
+  const monthItems = useMemo(
+    () => items.filter((item) => item.sent_date?.startsWith(selectedMonth)),
+    [items, selectedMonth],
+  );
+  const totals = useMemo(() => monthItems.reduce((result, item) => ({
+    ...result,
+    [item.channel]: (result[item.channel] || 0) + item.quantity,
+  }), {}), [monthItems]);
+  const todayTotal = items.filter((item) => item.entry_type !== "monthly" && item.sent_date === today).reduce((total, item) => total + item.quantity, 0);
+  const monthTotal = monthItems.reduce((total, item) => total + item.quantity, 0);
+  const monthLabel = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
+    .format(new Date(`${selectedMonth}-01T12:00:00Z`));
+  async function submit(event) {
+    event.preventDefault(); setSaving(true);
+    try {
+      await api("/messages", { method: "POST", body: JSON.stringify(form) });
+      const savedMonth = form.entry_type === "monthly" ? form.month : form.sent_date.slice(0, 7);
+      setSelectedMonth(savedMonth);
+      setForm({ ...form, channel: "", quantity: "", notes: "" });
+      await load();
+    } finally { setSaving(false); }
+  }
+  async function remove(item) {
+    if (!window.confirm(`¿Eliminar el registro de ${item.quantity} mensajes?`)) return;
+    await api(`/messages/${item.id}`, { method: "DELETE" }); load();
+  }
+  return (
+    <section className="page messages-page">
+      <div className="page-intro"><div><h2>Mensajes enviados</h2><p>Registrá cuántos mensajes mandaste por cada canal.</p></div></div>
+      <div className="message-overview">
+        <div className="message-today"><span><Mail size={20} /></span><div><small>Enviados hoy</small><strong>{todayTotal}</strong></div></div>
+        <div className="message-today month-total"><span><CalendarDays size={20} /></span><div><small>Total de {monthLabel}</small><strong>{monthTotal}</strong></div></div>
+        <label className="message-month-filter">Ver mes<input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} /></label>
+      </div>
+      <form className="message-form" onSubmit={submit}>
+        <label>Tipo de carga<select value={form.entry_type} onChange={(event) => setForm({ ...form, entry_type: event.target.value })}><option value="monthly">Total del mes</option><option value="daily">Detalle por día</option></select></label>
+        {form.entry_type === "monthly"
+          ? <label>Mes<input type="month" value={form.month} onChange={(event) => setForm({ ...form, month: event.target.value })} required /></label>
+          : <label>Fecha<input type="date" value={form.sent_date} onChange={(event) => setForm({ ...form, sent_date: event.target.value })} required /></label>}
+        <label>Canal<select value={form.channel} onChange={(event) => setForm({ ...form, channel: event.target.value })} required><option value="">Elegí un canal</option>{ACQUISITION_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+        <label>Cantidad<input type="number" min="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} required /></label>
+        <label className="message-notes">Nota opcional<input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Ej.: campaña de seguimiento" /></label>
+        <button className="primary" disabled={saving}><Plus size={17} />{saving ? "Guardando..." : "Registrar"}</button>
+      </form>
+      <div className="message-channel-totals">
+        <div className="all-channels-total"><small>Total · todos los canales</small><strong>{monthTotal}</strong><span>{monthLabel}</span></div>
+        {Object.entries(totals).sort(([first], [second]) => acquisitionLabel(first).localeCompare(acquisitionLabel(second), "es")).map(([channel, total]) => <div key={channel}><small>{acquisitionLabel(channel)}</small><strong>{total}</strong><span>mensajes</span></div>)}
+      </div>
+      <div className="table-wrap messages-table"><table><thead><tr><th>Período</th><th>Tipo</th><th>Canal</th><th>Cantidad</th><th>Nota</th><th /></tr></thead><tbody>{monthItems.map((item) => <tr key={item.id}><td><strong>{item.entry_type === "monthly" ? monthLabel : fmtDate(item.sent_date)}</strong></td><td>{item.entry_type === "monthly" ? "Total mensual" : "Carga diaria"}</td><td>{acquisitionLabel(item.channel)}</td><td><strong>{item.quantity}</strong></td><td>{item.notes || "—"}</td><td><IconButton label="Eliminar registro" onClick={() => remove(item)}><Trash2 /></IconButton></td></tr>)}</tbody></table></div>
+      {!monthItems.length && <Empty />}
+    </section>
+  );
+}
+
 function Payments() {
   const [items, setItems] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -2868,6 +2933,7 @@ export default function App() {
       {page === "clients" && <Clients />}
       {page === "agenda" && <Agenda />}
       {page === "payments" && <Payments />}
+      {page === "messages" && <Messages />}
     </Shell>
   );
 }
