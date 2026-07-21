@@ -149,7 +149,7 @@ def apply_client(client, data):
         raise ValueError("Completá los campos obligatorios: " + ", ".join(missing))
     if data.get("status") and data["status"] not in STATUSES:
         raise ValueError("Estado inválido")
-    text_fields = ["name", "business_name", "website_url", "instagram_username", "email", "phone", "country", "city", "acquisition_source", "currency", "status", "service_stage", "page_status", "link_in_bio_status", "prices_status", "images_status", "google_analytics_status", "qr_generated_status", "carousel_installed_status", "coupon_status", "best_sellers_status", "admin_load_status", "twelve_products_status", "domain_purchased_status", "notes_summary"]
+    text_fields = ["name", "business_name", "website_url", "instagram_username", "email", "phone", "country", "city", "acquisition_source", "currency", "status", "service_stage", "page_status", "link_in_bio_status", "story_status", "prices_status", "images_status", "google_analytics_status", "qr_generated_status", "carousel_installed_status", "coupon_status", "best_sellers_status", "admin_load_status", "twelve_products_status", "domain_purchased_status", "notes_summary"]
     for field in text_fields:
         if field in data:
             setattr(client, field, data[field] or None)

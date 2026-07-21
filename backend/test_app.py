@@ -223,6 +223,7 @@ def test_operational_statuses(client):
     }).get_json()["data"]
     detail = client.get(f'/api/clients/{created["id"]}').get_json()["data"]
     assert detail["google_analytics_status"] == "no"
+    assert detail["story_status"] == "no"
     assert detail["qr_generated_status"] == "no"
     assert detail["carousel_installed_status"] == "no"
     assert detail["coupon_status"] == "no"
@@ -230,10 +231,12 @@ def test_operational_statuses(client):
 
     updated = client.patch(f'/api/clients/{created["id"]}', json={
         "google_analytics_status": "yes", "qr_generated_status": "yes",
+        "story_status": "yes",
         "carousel_installed_status": "yes", "coupon_status": "yes",
         "best_sellers_status": "yes",
     }).get_json()["data"]
     assert updated["google_analytics_status"] == "yes"
+    assert updated["story_status"] == "yes"
     assert updated["qr_generated_status"] == "yes"
     assert updated["carousel_installed_status"] == "yes"
     assert updated["coupon_status"] == "yes"

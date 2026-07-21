@@ -1685,6 +1685,7 @@ function Summary({ client, onUpdate, onEdit }) {
         <h3>Estado operativo</h3>
         <div className="status-grid">
           <EditableStatus label="Link en bio" field="link_in_bio_status" value={client.link_in_bio_status} options={[["pending", "Pendiente"], ["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
+          <EditableStatus label="Historia" field="story_status" value={client.story_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
           <EditableStatus label="Precios" field="prices_status" value={client.prices_status} options={[["pending", "Pendiente"], ["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
           <EditableStatus label="Google Analytics" field="google_analytics_status" value={client.google_analytics_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
           <EditableStatus label="QR generado" field="qr_generated_status" value={client.qr_generated_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />

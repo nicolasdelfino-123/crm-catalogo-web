@@ -117,6 +117,9 @@ def create_app(test_config=None):
         if "google_analytics_status" not in columns:
             db.session.execute(text("ALTER TABLE client ADD COLUMN google_analytics_status VARCHAR(10) DEFAULT 'no'"))
             db.session.commit()
+        if "story_status" not in columns:
+            db.session.execute(text("ALTER TABLE client ADD COLUMN story_status VARCHAR(10) DEFAULT 'no'"))
+            db.session.commit()
         if "qr_generated_status" not in columns:
             db.session.execute(text("ALTER TABLE client ADD COLUMN qr_generated_status VARCHAR(10) DEFAULT 'no'"))
             db.session.commit()
