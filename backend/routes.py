@@ -1,14 +1,31 @@
 import csv
 import io
 import calendar
+import base64
+import hashlib
 from datetime import date, datetime, timedelta
-from flask import Blueprint, jsonify, request, Response
+from flask import Blueprint, jsonify, request, Response, current_app
+from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Integer, case, cast, func, or_
-from models import db, iso, Client, ClientAction, StandaloneAction, Payment, ClientMetric, ClientNote, ActionTemplate
+from models import db, iso, Client, ClientAction, StandaloneAction, Payment, ClientMetric, ClientNote, ClientCredential, ActionTemplate
 
 api = Blueprint("api", __name__)
 
 STATUSES = {"lead", "active", "at_risk", "paused", "cancelled"}
+
+
+def credential_cipher():
+    """Deriva una clave de cifrado estable sin guardar otra clave en la base."""
+    secret = current_app.config["JWT_SECRET_KEY"].encode("utf-8")
+    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(secret).digest()))
+
+
+def encrypt_credential(value):
+    return credential_cipher().encrypt(value.encode("utf-8")).decode("ascii")
+
+
+def decrypt_credential(value):
+    return credential_cipher().decrypt(value.encode("ascii")).decode("utf-8")
 
 
 def ok(data=None, message=None, status=200):
@@ -300,6 +317,47 @@ def clients_update(client_id):
 @api.delete("/clients/<int:client_id>")
 def clients_archive(client_id):
     client = Client.query.get_or_404(client_id); client.archived_at = datetime.utcnow(); db.session.commit(); return ok(None, "Cliente archivado")
+
+
+@api.get("/clients/<int:client_id>/credentials")
+def credentials_get(client_id):
+    client = Client.query.get_or_404(client_id)
+    if not client.credential:
+        return ok({"username": "", "password": "", "has_credentials": False})
+    try:
+        return ok({
+            "username": decrypt_credential(client.credential.username_encrypted),
+            "password": decrypt_credential(client.credential.password_encrypted),
+            "has_credentials": True,
+            "updated_at": iso(client.credential.updated_at),
+        })
+    except InvalidToken:
+        return error("No se pudieron descifrar las credenciales. Verificá la clave del servidor.", 500)
+
+
+@api.put("/clients/<int:client_id>/credentials")
+def credentials_save(client_id):
+    client = Client.query.get_or_404(client_id)
+    data = request.get_json(silent=True) or {}
+    username = str(data.get("username") or "").strip()
+    password = str(data.get("password") or "")
+    if not username or not password:
+        return error("Completá el usuario y la contraseña", 422)
+    credential = client.credential or ClientCredential(client=client)
+    credential.username_encrypted = encrypt_credential(username)
+    credential.password_encrypted = encrypt_credential(password)
+    db.session.add(credential)
+    db.session.commit()
+    return ok({"username": username, "password": password, "has_credentials": True, "updated_at": iso(credential.updated_at)}, "Credenciales guardadas")
+
+
+@api.delete("/clients/<int:client_id>/credentials")
+def credentials_delete(client_id):
+    client = Client.query.get_or_404(client_id)
+    if client.credential:
+        db.session.delete(client.credential)
+        db.session.commit()
+    return ok(None, "Credenciales eliminadas")
 
 
 @api.post("/clients/<int:client_id>/generate-actions")

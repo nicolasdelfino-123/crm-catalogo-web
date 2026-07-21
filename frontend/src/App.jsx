@@ -34,6 +34,8 @@ import {
   Eye,
   EyeOff,
   LogOut,
+  KeyRound,
+  Copy,
 } from "lucide-react";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ||
@@ -1164,6 +1166,50 @@ function EditableMonthlyAmount({ client, onSave }) {
   );
 }
 
+function ClientCredentials({ clientId }) {
+  const [form, setForm] = useState({ username: "", password: "" });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [message, setMessage] = useState("");
+  const [hasCredentials, setHasCredentials] = useState(false);
+  useEffect(() => {
+    api(`/clients/${clientId}/credentials`).then((data) => {
+      setForm({ username: data.username || "", password: data.password || "" });
+      setHasCredentials(Boolean(data.has_credentials));
+    }).catch((error) => setMessage(error.message)).finally(() => setLoading(false));
+  }, [clientId]);
+  async function submit(event) {
+    event.preventDefault(); setSaving(true); setMessage("");
+    try {
+      const saved = await api(`/clients/${clientId}/credentials`, { method: "PUT", body: JSON.stringify(form) });
+      setForm({ username: saved.username, password: saved.password });
+      setHasCredentials(true); setMessage("Credenciales guardadas correctamente.");
+    } catch (error) { setMessage(error.message); }
+    finally { setSaving(false); }
+  }
+  async function remove() {
+    if (!window.confirm("¿Eliminar el usuario y la contraseña guardados?")) return;
+    await api(`/clients/${clientId}/credentials`, { method: "DELETE" });
+    setForm({ username: "", password: "" }); setHasCredentials(false); setVisible(false); setMessage("Credenciales eliminadas.");
+  }
+  async function copy(value, label) {
+    await navigator.clipboard.writeText(value); setMessage(`${label} copiado.`);
+  }
+  if (loading) return <Loading />;
+  return (
+    <section className="credentials-card">
+      <div className="credentials-heading"><span><KeyRound size={20} /></span><div><h3>Acceso del cliente</h3><p>Estos datos se guardan cifrados y solo se cargan al abrir esta pestaña.</p></div></div>
+      <form onSubmit={submit}>
+        <label>Usuario<span className="credential-field"><input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} autoComplete="off" required /><IconButton type="button" label="Copiar usuario" onClick={() => copy(form.username, "Usuario")} disabled={!form.username}><Copy /></IconButton></span></label>
+        <label>Contraseña<span className="credential-field"><input type={visible ? "text" : "password"} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete="new-password" required /><IconButton type="button" label={visible ? "Ocultar contraseña" : "Mostrar contraseña"} onClick={() => setVisible(!visible)}>{visible ? <EyeOff /> : <Eye />}</IconButton><IconButton type="button" label="Copiar contraseña" onClick={() => copy(form.password, "Contraseña")} disabled={!form.password}><Copy /></IconButton></span></label>
+        {message && <p className="credential-message" role="status">{message}</p>}
+        <div className="form-actions">{hasCredentials && <button type="button" className="secondary credential-delete" onClick={remove}><Trash2 size={16} />Eliminar</button>}<button className="primary" disabled={saving}><Save size={16} />{saving ? "Guardando..." : "Guardar credenciales"}</button></div>
+      </form>
+    </section>
+  );
+}
+
 function DetailModal({ clientId, onClose, onRefresh, onEdit }) {
   const [client, setClient] = useState(null);
   const [tab, setTab] = useState("summary");
@@ -1244,6 +1290,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit }) {
     ["payments", "Pagos"],
     ["metrics", "Métricas"],
     ["notes", "Notas"],
+    ["credentials", "Usuario y contraseña"],
   ];
   return (
     <div className="modal-layer">
@@ -1560,6 +1607,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit }) {
               </div>
             </>
           )}
+          {tab === "credentials" && <ClientCredentials clientId={client.id} />}
         </div>
       </article>
     </div>

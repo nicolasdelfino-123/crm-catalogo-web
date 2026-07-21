@@ -1,7 +1,7 @@
 import pytest
 from datetime import date
 from app import create_app
-from models import db, Client, Payment, User
+from models import db, Client, Payment, User, ClientCredential
 from routes import advance_service_stage, sync_service_stages
 
 @pytest.fixture()
@@ -78,6 +78,35 @@ def test_create_and_list_client(client):
     payment = client.post(f'/api/clients/{created.get_json()["data"]["id"]}/payments', json={"amount": 30000, "currency": "ARS"})
     assert payment.status_code == 201
     assert payment.get_json()["data"]["due_date"] == "2026-08-01"
+
+
+def test_client_credentials_are_encrypted_and_loaded_separately(client, app):
+    created = client.post("/api/clients", json={
+        "name": "Cliente Acceso", "business_name": "Marca Acceso",
+        "signup_date": "2026-07-01", "country": "Argentina", "currency": "ARS",
+    }).get_json()["data"]
+    client_id = created["id"]
+
+    saved = client.put(f"/api/clients/{client_id}/credentials", json={
+        "username": "cliente@example.com", "password": "clave-muy-secreta",
+    })
+    assert saved.status_code == 200
+    assert saved.get_json()["data"]["username"] == "cliente@example.com"
+
+    detail = client.get(f"/api/clients/{client_id}").get_json()["data"]
+    assert "password" not in detail
+    assert "credential" not in detail
+
+    loaded = client.get(f"/api/clients/{client_id}/credentials").get_json()["data"]
+    assert loaded["username"] == "cliente@example.com"
+    assert loaded["password"] == "clave-muy-secreta"
+    with app.app_context():
+        stored = ClientCredential.query.filter_by(client_id=client_id).one()
+        assert "cliente@example.com" not in stored.username_encrypted
+        assert "clave-muy-secreta" not in stored.password_encrypted
+
+    assert client.delete(f"/api/clients/{client_id}/credentials").status_code == 200
+    assert client.get(f"/api/clients/{client_id}/credentials").get_json()["data"]["has_credentials"] is False
 
 
 def test_acquisition_summary_includes_client_details(client):

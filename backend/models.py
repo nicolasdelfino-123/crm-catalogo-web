@@ -66,6 +66,7 @@ class Client(db.Model):
     payments = db.relationship("Payment", backref="client", cascade="all, delete-orphan", lazy=True)
     metrics = db.relationship("ClientMetric", backref="client", cascade="all, delete-orphan", lazy=True)
     notes = db.relationship("ClientNote", backref="client", cascade="all, delete-orphan", lazy=True)
+    credential = db.relationship("ClientCredential", backref="client", cascade="all, delete-orphan", uselist=False, lazy=True)
 
     def summary(self):
         today = date.today()
@@ -193,6 +194,14 @@ class ClientNote(db.Model):
     is_pinned = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     def to_dict(self): return {"id": self.id, "content": self.content, "is_pinned": self.is_pinned, "created_at": iso(self.created_at)}
+
+
+class ClientCredential(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey("client.id"), nullable=False, unique=True, index=True)
+    username_encrypted = db.Column(db.Text, nullable=False)
+    password_encrypted = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class ActionTemplate(db.Model):

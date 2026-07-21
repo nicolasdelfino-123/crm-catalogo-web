@@ -42,4 +42,4 @@ La base local se guarda en `backend/instance/crm.db`. Para reiniciar los datos, 
 
 ## Seguridad
 
-No cargues contraseñas en notas. Esta primera versión deliberadamente no incluye credenciales de clientes. Si luego se agrega esa función, debe usar cifrado autenticado y un endpoint de revelado separado; nunca texto plano ni exportación CSV.
+Las credenciales de clientes se guardan con cifrado autenticado y se consultan mediante un endpoint separado, únicamente al abrir la pestaña correspondiente. No se incluyen en el detalle general ni en la exportación CSV. La clave se deriva de `JWT_SECRET_KEY`: conservá `backend/instance/.jwt-secret`, porque reemplazarla impide descifrar las credenciales existentes.
