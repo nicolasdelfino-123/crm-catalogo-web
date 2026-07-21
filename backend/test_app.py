@@ -50,6 +50,36 @@ def test_monthly_message_total_uses_selected_month(client):
     assert updated.get_json()["data"]["quantity"] == 450
 
 
+def test_expenses_monthly_balance_uses_paid_ars_income(client):
+    today = date.today()
+    month = today.strftime("%Y-%m")
+    created_client = client.post("/api/clients", json={
+        "name": "Cliente balance", "business_name": "Balance SA",
+        "signup_date": today.isoformat(), "country": "Argentina", "currency": "ARS",
+    }).get_json()["data"]
+    client.post(f'/api/clients/{created_client["id"]}/payments', json={
+        "amount": 100000, "currency": "ARS", "status": "paid", "payment_type": "extra_work",
+    })
+    client.post(f'/api/clients/{created_client["id"]}/payments', json={
+        "amount": 500, "currency": "USD", "status": "paid", "payment_type": "extra_work",
+    })
+    expense = client.post("/api/expenses", json={
+        "expense_date": today.isoformat(), "category": "server",
+        "description": "Servidor", "amount": 25000,
+    })
+    assert expense.status_code == 201
+    expense_id = expense.get_json()["data"]["id"]
+
+    result = client.get(f"/api/expenses?month={month}").get_json()["data"]
+    assert result["summary"] == {
+        "income_ars": 100000.0, "expenses_ars": 25000.0, "balance_ars": 75000.0,
+    }
+    updated = client.patch(f"/api/expenses/{expense_id}", json={"amount": 30000})
+    assert updated.status_code == 200
+    assert updated.get_json()["data"]["amount"] == 30000.0
+    assert client.delete(f"/api/expenses/{expense_id}").status_code == 200
+
+
 def test_login_and_protected_api():
     secured_app = create_app({
         "TESTING": True,

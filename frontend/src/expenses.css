@@ -1,0 +1,80 @@
+.expense-month {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.expense-month input,
+.expense-form input,
+.expense-form select {
+  min-height: 40px;
+  border: 1px solid #cbd5cf;
+  border-radius: 5px;
+  background: #fff;
+  padding: 8px 10px;
+  color: var(--ink);
+}
+
+.balance-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.balance-card {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--green);
+  border-radius: 7px;
+  background: #fff;
+}
+
+.balance-card.spent { border-left-color: var(--amber); }
+.balance-card.final { background: var(--green-bg); }
+.balance-card.final.negative { border-left-color: var(--red); background: var(--red-bg); }
+.balance-card small,
+.balance-card strong,
+.balance-card span { display: block; }
+.balance-card small { color: var(--muted); font-size: 11px; }
+.balance-card strong { margin: 8px 0 4px; font: 700 24px Manrope; }
+.balance-card span { color: var(--muted); font-size: 11px; }
+
+.expense-form {
+  display: grid;
+  grid-template-columns: 1.2fr .8fr 1.2fr .8fr 1.2fr auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.expense-form-title { grid-column: 1 / -1; }
+.expense-form-title h3 { margin: 4px 0 0; font: 700 17px Manrope; }
+.expense-form label { display: grid; gap: 5px; color: #57645d; font-size: 11px; font-weight: 600; }
+.expense-form-actions { display: flex; gap: 8px; }
+.expenses-table table { min-width: 850px; }
+.expenses-table td:last-child { white-space: nowrap; }
+.expenses-table .icon-btn { display: inline-grid; }
+
+@media (max-width: 1100px) {
+  .expense-form { grid-template-columns: repeat(2, 1fr); }
+  .expense-form-title { grid-column: 1 / -1; }
+  .expense-form-actions { justify-content: flex-end; }
+}
+
+@media (max-width: 680px) {
+  .expenses-page .page-intro { align-items: flex-end; }
+  .balance-grid { grid-template-columns: 1fr; gap: 8px; }
+  .balance-card { padding: 15px; }
+  .balance-card strong { font-size: 21px; }
+  .expense-form { grid-template-columns: 1fr; padding: 14px; }
+  .expense-form-title { grid-column: auto; }
+  .expense-form-actions { justify-content: stretch; }
+  .expense-form-actions button { flex: 1; }
+  .expenses-page .table-wrap { display: block; }
+}

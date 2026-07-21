@@ -177,6 +177,24 @@ class Payment(db.Model):
         return {**self.short(), "client_id": self.client_id, "client_name": self.client.name, "payment_type": self.payment_type, "period_year": self.period_year, "period_month": self.period_month, "due_date": iso(self.due_date), "payment_method": self.payment_method, "notes": self.notes}
 
 
+class Expense(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    expense_date = db.Column(db.Date, nullable=False, default=date.today, index=True)
+    category = db.Column(db.String(30), nullable=False, default="extra", index=True)
+    description = db.Column(db.String(180), nullable=False)
+    amount = db.Column(db.Numeric(14, 2), nullable=False)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "expense_date": iso(self.expense_date),
+            "category": self.category, "description": self.description,
+            "amount": float(self.amount), "currency": "ARS", "notes": self.notes,
+            "created_at": iso(self.created_at),
+        }
+
+
 class ClientMetric(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey("client.id"), nullable=False)

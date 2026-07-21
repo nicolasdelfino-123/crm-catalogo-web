@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response, current_app
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Integer, case, cast, func, or_
-from models import db, iso, Client, ClientAction, StandaloneAction, Payment, ClientMetric, ClientNote, ClientCredential, MessageLog, ActionTemplate
+from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, ClientMetric, ClientNote, ClientCredential, MessageLog, ActionTemplate
 
 api = Blueprint("api", __name__)
 
@@ -600,6 +600,80 @@ def payments_list():
         .all()
     )
     return ok([p.to_dict() for p in items])
+
+
+def apply_expense(expense, data):
+    if "amount" in data:
+        amount = float(data.get("amount") or 0)
+        if amount <= 0:
+            raise ValueError("El importe debe ser mayor que cero")
+        expense.amount = amount
+    if "expense_date" in data:
+        expense.expense_date = parse_date(data.get("expense_date"))
+    if not expense.expense_date:
+        raise ValueError("Elegí la fecha del gasto")
+    if "category" in data:
+        if data["category"] not in {"server", "extra"}:
+            raise ValueError("Tipo de gasto inválido")
+        expense.category = data["category"]
+    if "description" in data:
+        expense.description = (data.get("description") or "").strip()
+    if not expense.description:
+        raise ValueError("Escribí el concepto del gasto")
+    if "notes" in data:
+        expense.notes = (data.get("notes") or "").strip() or None
+
+
+@api.get("/expenses")
+def expenses_list():
+    month = request.args.get("month") or date.today().strftime("%Y-%m")
+    try:
+        month_start = datetime.strptime(month, "%Y-%m").date().replace(day=1)
+        month_end = add_calendar_months(month_start, 1)
+    except ValueError:
+        return error("Mes inválido", 422)
+    expenses = Expense.query.filter(
+        Expense.expense_date >= month_start, Expense.expense_date < month_end,
+    ).order_by(Expense.expense_date.desc(), Expense.id.desc()).all()
+    paid_ars = Payment.query.filter(
+        Payment.status == "paid", Payment.currency == "ARS",
+        Payment.paid_at >= datetime.combine(month_start, datetime.min.time()),
+        Payment.paid_at < datetime.combine(month_end, datetime.min.time()),
+    ).all()
+    income = sum(float(payment.amount) for payment in paid_ars)
+    spent = sum(float(expense.amount) for expense in expenses)
+    return ok({
+        "month": month, "items": [expense.to_dict() for expense in expenses],
+        "summary": {"income_ars": income, "expenses_ars": spent, "balance_ars": income - spent},
+    })
+
+
+@api.post("/expenses")
+def expenses_create():
+    try:
+        expense = Expense()
+        apply_expense(expense, request.get_json() or {})
+        db.session.add(expense); db.session.commit()
+        return ok(expense.to_dict(), "Gasto registrado", 201)
+    except (ValueError, TypeError) as exc:
+        db.session.rollback(); return error(str(exc), 422)
+
+
+@api.patch("/expenses/<int:expense_id>")
+def expenses_update(expense_id):
+    expense = Expense.query.get_or_404(expense_id)
+    try:
+        apply_expense(expense, request.get_json() or {})
+        db.session.commit(); return ok(expense.to_dict(), "Gasto actualizado")
+    except (ValueError, TypeError) as exc:
+        db.session.rollback(); return error(str(exc), 422)
+
+
+@api.delete("/expenses/<int:expense_id>")
+def expenses_delete(expense_id):
+    expense = Expense.query.get_or_404(expense_id)
+    db.session.delete(expense); db.session.commit()
+    return ok(None, "Gasto eliminado")
 
 
 @api.post("/clients/<int:client_id>/metrics")
