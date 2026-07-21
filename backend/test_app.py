@@ -158,6 +158,17 @@ def test_client_accepts_no_signup_status(client):
     assert filtered["pagination"]["total"] == 1
 
 
+def test_clients_can_be_filtered_by_cancelled_status(client):
+    client.post("/api/clients", json={
+        "name": "Cliente cancelado", "business_name": "Marca cancelada",
+        "signup_date": "2026-07-01", "country": "Argentina", "currency": "ARS",
+        "status": "cancelled",
+    })
+    filtered = client.get("/api/clients?status=cancelled").get_json()["data"]
+    assert filtered["pagination"]["total"] == 1
+    assert filtered["items"][0]["status"] == "cancelled"
+
+
 def test_client_credentials_are_encrypted_and_loaded_separately(client, app):
     created = client.post("/api/clients", json={
         "name": "Cliente Acceso", "business_name": "Marca Acceso",

@@ -1948,6 +1948,7 @@ function Clients() {
             <option value="active">Activos</option>
             <option value="at_risk">En riesgo</option>
             <option value="paused">Pausados</option>
+            <option value="cancelled">Cancelados</option>
             <option value="no_signup">Sin alta</option>
           </select>
         </label>
