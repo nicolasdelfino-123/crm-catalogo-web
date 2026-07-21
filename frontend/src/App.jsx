@@ -39,6 +39,7 @@ import {
   Copy,
 } from "lucide-react";
 import "./expenses.css";
+import "./payment-summary.css";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ||
   (import.meta.env.DEV
@@ -2744,6 +2745,7 @@ function Expenses() {
 function Payments() {
   const [items, setItems] = useState([]);
   const [editing, setEditing] = useState(null);
+  const [summaryDetail, setSummaryDetail] = useState(null);
   const [clientQuery, setClientQuery] = useState("");
   const [clientNameOrder, setClientNameOrder] = useState("asc");
   const [dueDateOrder, setDueDateOrder] = useState(null);
@@ -2843,6 +2845,9 @@ function Payments() {
     await api(`/payments/${payment.id}`, { method: "DELETE" });
     load();
   }
+  function showSummary(title, predicate) {
+    setSummaryDetail({ title, items: items.filter(predicate) });
+  }
   return (
     <section className="page">
       <div className="page-intro">
@@ -2851,41 +2856,41 @@ function Payments() {
           <p>Mensualidades, señas y trabajos extra por cliente.</p>
         </div>
       </div>
-      <div className="global-paid-total">
+      <button type="button" className="global-paid-total payment-summary-trigger" onClick={() => showSummary("Todos los pagos completados", (payment) => payment.status === "paid")}>
         <div><span className="eyebrow">Total general realizado</span><h3>Todos los pagos completados</h3></div>
         <div>{Object.entries(paidTotals).map(([currency, total]) => <strong key={currency}>{fmtMoney(total, currency)}</strong>)}{!Object.keys(paidTotals).length && <span>Sin pagos completados</span>}</div>
-      </div>
+      </button>
       <div className="payment-summary">
         {paymentCurrencies.map((currency) => (
-          <div key={`monthly-paid-${currency}`}>
+          <button type="button" className="payment-summary-trigger" key={`monthly-paid-${currency}`} onClick={() => showSummary(`Mensualidades pagadas · ${currency}`, (payment) => payment.currency === currency && payment.status === "paid" && payment.payment_type === "monthly")}>
             <small>Pagos Mensualidades · {currency}</small>
             <strong>{fmtMoney(monthlyPaidTotals[currency] || 0, currency)}</strong>
-          </div>
+          </button>
         ))}
         {paymentCurrencies.map((currency) => (
-          <div key={`extra-work-paid-${currency}`}>
+          <button type="button" className="payment-summary-trigger" key={`extra-work-paid-${currency}`} onClick={() => showSummary(`Trabajos extra pagados · ${currency}`, (payment) => payment.currency === currency && payment.status === "paid" && payment.payment_type !== "monthly")}>
             <small>Pagos Trabajos extra · {currency}</small>
             <strong>{fmtMoney(extraWorkPaidTotals[currency] || 0, currency)}</strong>
-          </div>
+          </button>
         ))}
         {paymentCurrencies.map((currency) => (
-          <div key={`total-paid-${currency}`}>
+          <button type="button" className="payment-summary-trigger" key={`total-paid-${currency}`} onClick={() => showSummary(`Todos los pagos completados · ${currency}`, (payment) => payment.currency === currency && payment.status === "paid")}>
             <small>Pagos Totales · {currency}</small>
             <strong>{fmtMoney(
               (monthlyPaidTotals[currency] || 0) + (extraWorkPaidTotals[currency] || 0),
               currency,
             )}</strong>
-          </div>
+          </button>
         ))}
         {Object.entries(totals).filter(([key]) => !key.endsWith("-paid")).map(([key, total]) => {
           const [currency, status] = key.split("-");
           return (
-            <div key={key}>
+            <button type="button" className="payment-summary-trigger" key={key} onClick={() => showSummary(`${LABEL[status] || status} · ${currency}`, (payment) => payment.currency === currency && payment.status === status)}>
               <small>
                 {LABEL[status] || status} · {currency}
               </small>
               <strong>{fmtMoney(total, currency)}</strong>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -2981,6 +2986,17 @@ function Payments() {
           <div className="payment-edit-modal">
             <div className="modal-head"><div><span className="eyebrow">{editing.client_name}</span><h2>Editar pago</h2></div><IconButton label="Cerrar" onClick={() => setEditing(null)}><X /></IconButton></div>
             <PaymentEditor payment={editing} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />
+          </div>
+        </div>
+      )}
+      {summaryDetail && (
+        <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && setSummaryDetail(null)}>
+          <div className="payment-summary-modal">
+            <div className="modal-head"><div><span className="eyebrow">Desglose del total</span><h2>{summaryDetail.title}</h2></div><IconButton label="Cerrar" onClick={() => setSummaryDetail(null)}><X /></IconButton></div>
+            <div className="summary-payment-count">{summaryDetail.items.length} {summaryDetail.items.length === 1 ? "pago incluido" : "pagos incluidos"}</div>
+            {summaryDetail.items.length ? (
+              <div className="table-wrap summary-payments-table"><table><thead><tr><th>Cliente</th><th>Importe</th><th>Concepto</th><th>Vencimiento</th><th>Fecha de pago</th><th>Estado</th></tr></thead><tbody>{summaryDetail.items.map((payment) => <tr key={payment.id}><td><strong>{payment.client_name}</strong></td><td><strong>{fmtMoney(payment.amount, payment.currency)}</strong></td><td>{LABEL[payment.payment_type] || payment.payment_type}</td><td>{fmtDate(payment.due_date)}</td><td>{payment.paid_at ? fmtDate(payment.paid_at) : "Todavía no pagado"}</td><td>{badge(payment.status)}</td></tr>)}</tbody></table></div>
+            ) : <div className="summary-payment-empty">Este total no contiene pagos.</div>}
           </div>
         </div>
       )}
