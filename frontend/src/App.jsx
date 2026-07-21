@@ -143,6 +143,7 @@ const fmtDate = (value) =>
       timeZone: "UTC",
     }).format(new Date(`${value.slice(0, 10)}T12:00:00Z`))
     : "Sin fecha";
+const billingDay = (value) => value ? Number(value.slice(8, 10)) : 32;
 const fmtMoney = (value, currency = "ARS") =>
   new Intl.NumberFormat("es-AR", {
     style: "currency",
@@ -1849,15 +1850,21 @@ function Clients() {
   const [form, setForm] = useState(null);
   const [clientToDelete, setClientToDelete] = useState(null);
   const [toast, setToast] = useState("");
-  const [sort, setSort] = useState({ by: "service_stage", dir: "asc" });
+  const [sort, setSort] = useState({ by: "billing_day", dir: "asc" });
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(
-        await api(
-          `/clients?search=${encodeURIComponent(query)}&status=${status}&acquisition_source=${encodeURIComponent(acquisition)}&sort_by=${sort.by}&sort_dir=${sort.dir}&per_page=100`,
-        ),
+      const result = await api(
+        `/clients?search=${encodeURIComponent(query)}&status=${status}&acquisition_source=${encodeURIComponent(acquisition)}&sort_by=${sort.by}&sort_dir=${sort.dir}&per_page=100`,
       );
+      if (sort.by === "billing_day") {
+        const direction = sort.dir === "desc" ? -1 : 1;
+        result.items = [...result.items].sort((first, second) => {
+          const dayDifference = billingDay(first.signup_date) - billingDay(second.signup_date);
+          return dayDifference ? dayDifference * direction : first.name.localeCompare(second.name, "es");
+        });
+      }
+      setData(result);
     } finally {
       setLoading(false);
     }
@@ -1960,6 +1967,12 @@ function Clients() {
               <thead>
                 <tr>
                   <Th
+                    label="Día cobro"
+                    name="billing_day"
+                    sort={sort}
+                    toggle={toggleSort}
+                  />
+                  <Th
                     label="Cliente"
                     name="name"
                     sort={sort}
@@ -1993,6 +2006,9 @@ function Clients() {
               <tbody>
                 {data.items.map((c) => (
                   <tr key={c.id} onClick={() => setSelected(c.id)}>
+                    <td className="billing-day-cell">
+                      <strong>{billingDay(c.signup_date)}</strong>
+                    </td>
                     <td>
                       <strong>{c.name}</strong>
                       <span>{c.business_name}</span>
@@ -2077,6 +2093,10 @@ function Clients() {
                   </IconButton>
                 </div>
                 <dl>
+                  <div>
+                    <dt>Día de cobro</dt>
+                    <dd>{billingDay(c.signup_date)}</dd>
+                  </div>
                   <div>
                     <dt>Renueva</dt>
                     <dd>{fmtDate(c.next_renewal_date)}</dd>

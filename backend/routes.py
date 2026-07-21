@@ -255,7 +255,10 @@ def clients_list():
     for field in ["status", "service_stage", "country", "currency", "acquisition_source"]:
         if request.args.get(field): query = query.filter(getattr(Client, field) == request.args[field])
     sort_by = request.args.get("sort_by", "name")
-    if sort_by == "service_stage":
+    if sort_by == "billing_day":
+        # Ordena solamente por el número de día (1-31), sin considerar mes ni año.
+        column = func.extract("day", Client.signup_date)
+    elif sort_by == "service_stage":
         # Las etapas se guardan como texto, pero en la tabla deben seguir el
         # orden natural de los meses (mes 2 antes que mes 10).
         column = case(

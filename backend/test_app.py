@@ -243,6 +243,24 @@ def test_general_table_sorts_stages_by_month(client):
     assert [item["name"] for item in descending] == ["Mes cinco", "Mes cuatro", "Mes tres", "Mes dos", "Mes uno"]
 
 
+def test_general_table_sorts_by_signup_day_ignoring_month_and_year(client):
+    common = {"country": "Argentina", "currency": "ARS"}
+    for name, signup_date in [
+        ("Día veinte", "2024-01-20"),
+        ("Día dos", "2026-12-02"),
+        ("Día once", "2025-06-11"),
+    ]:
+        assert client.post("/api/clients", json={
+            **common, "name": name, "business_name": name, "signup_date": signup_date,
+        }).status_code == 201
+
+    ascending = client.get("/api/clients?sort_by=billing_day&sort_dir=asc").get_json()["data"]["items"]
+    descending = client.get("/api/clients?sort_by=billing_day&sort_dir=desc").get_json()["data"]["items"]
+
+    assert [item["name"] for item in ascending] == ["Día dos", "Día once", "Día veinte"]
+    assert [item["name"] for item in descending] == ["Día veinte", "Día once", "Día dos"]
+
+
 def test_editing_client_counts_updates_account_evolution(client):
     created = client.post("/api/clients", json={
         "name": "Cliente Métricas", "business_name": "Marca Métricas",
