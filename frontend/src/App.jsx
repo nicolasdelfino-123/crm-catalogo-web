@@ -2546,6 +2546,7 @@ function Messages() {
   const currentMonth = today.slice(0, 7);
   const [items, setItems] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+  const [selectedChannel, setSelectedChannel] = useState("");
   const [form, setForm] = useState({ entry_type: "monthly", month: currentMonth, sent_date: today, channel: "", quantity: "", notes: "" });
   const [saving, setSaving] = useState(false);
   const load = useCallback(() => api("/messages").then(setItems), []);
@@ -2554,12 +2555,21 @@ function Messages() {
     () => items.filter((item) => item.sent_date?.startsWith(selectedMonth)),
     [items, selectedMonth],
   );
-  const totals = useMemo(() => monthItems.reduce((result, item) => ({
+  const filteredMonthItems = useMemo(
+    () => selectedChannel ? monthItems.filter((item) => item.channel === selectedChannel) : monthItems,
+    [monthItems, selectedChannel],
+  );
+  const filteredAllItems = useMemo(
+    () => selectedChannel ? items.filter((item) => item.channel === selectedChannel) : items,
+    [items, selectedChannel],
+  );
+  const totals = useMemo(() => filteredMonthItems.reduce((result, item) => ({
     ...result,
     [item.channel]: (result[item.channel] || 0) + item.quantity,
-  }), {}), [monthItems]);
-  const todayTotal = items.filter((item) => item.entry_type !== "monthly" && item.sent_date === today).reduce((total, item) => total + item.quantity, 0);
-  const monthTotal = monthItems.reduce((total, item) => total + item.quantity, 0);
+  }), {}), [filteredMonthItems]);
+  const todayTotal = filteredAllItems.filter((item) => item.entry_type !== "monthly" && item.sent_date === today).reduce((total, item) => total + item.quantity, 0);
+  const monthTotal = filteredMonthItems.reduce((total, item) => total + item.quantity, 0);
+  const allTimeTotal = filteredAllItems.reduce((total, item) => total + item.quantity, 0);
   const monthLabel = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
     .format(new Date(`${selectedMonth}-01T12:00:00Z`));
   async function submit(event) {
@@ -2582,7 +2592,9 @@ function Messages() {
       <div className="message-overview">
         <div className="message-today"><span><Mail size={20} /></span><div><small>Enviados hoy</small><strong>{todayTotal}</strong></div></div>
         <div className="message-today month-total"><span><CalendarDays size={20} /></span><div><small>Total de {monthLabel}</small><strong>{monthTotal}</strong></div></div>
+        <div className="message-today all-time-total"><span><ChartNoAxesColumnIncreasing size={20} /></span><div><small>Total de todos los meses</small><strong>{allTimeTotal}</strong></div></div>
         <label className="message-month-filter">Ver mes<input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} /></label>
+        <label className="message-month-filter">Ver canal<select value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)}><option value="">Todos los canales</option>{ACQUISITION_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
       </div>
       <form className="message-form" onSubmit={submit}>
         <label>Tipo de carga<select value={form.entry_type} onChange={(event) => setForm({ ...form, entry_type: event.target.value })}><option value="monthly">Total del mes</option><option value="daily">Detalle por día</option></select></label>
@@ -2598,8 +2610,8 @@ function Messages() {
         <div className="all-channels-total"><small>Total · todos los canales</small><strong>{monthTotal}</strong><span>{monthLabel}</span></div>
         {Object.entries(totals).sort(([first], [second]) => acquisitionLabel(first).localeCompare(acquisitionLabel(second), "es")).map(([channel, total]) => <div key={channel}><small>{acquisitionLabel(channel)}</small><strong>{total}</strong><span>mensajes</span></div>)}
       </div>
-      <div className="table-wrap messages-table"><table><thead><tr><th>Período</th><th>Tipo</th><th>Canal</th><th>Cantidad</th><th>Nota</th><th /></tr></thead><tbody>{monthItems.map((item) => <tr key={item.id}><td><strong>{item.entry_type === "monthly" ? monthLabel : fmtDate(item.sent_date)}</strong></td><td>{item.entry_type === "monthly" ? "Total mensual" : "Carga diaria"}</td><td>{acquisitionLabel(item.channel)}</td><td><strong>{item.quantity}</strong></td><td>{item.notes || "—"}</td><td><IconButton label="Eliminar registro" onClick={() => remove(item)}><Trash2 /></IconButton></td></tr>)}</tbody></table></div>
-      {!monthItems.length && <Empty />}
+      <div className="table-wrap messages-table"><table><thead><tr><th>Período</th><th>Tipo</th><th>Canal</th><th>Cantidad</th><th>Nota</th><th /></tr></thead><tbody>{filteredMonthItems.map((item) => <tr key={item.id}><td><strong>{item.entry_type === "monthly" ? monthLabel : fmtDate(item.sent_date)}</strong></td><td>{item.entry_type === "monthly" ? "Total mensual" : "Carga diaria"}</td><td>{acquisitionLabel(item.channel)}</td><td><strong>{item.quantity}</strong></td><td>{item.notes || "—"}</td><td><IconButton label="Eliminar registro" onClick={() => remove(item)}><Trash2 /></IconButton></td></tr>)}</tbody></table></div>
+      {!filteredMonthItems.length && <Empty />}
     </section>
   );
 }
