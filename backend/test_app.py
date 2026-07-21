@@ -96,6 +96,19 @@ def test_acquisition_summary_includes_client_details(client):
     assert channel["clients"][0]["signup_date"] == "2026-07-01"
 
 
+def test_new_clients_can_be_filtered_by_month(client):
+    for name, signup_date in [("Cliente junio", "2026-06-15"), ("Cliente julio", "2026-07-10")]:
+        client.post("/api/clients", json={
+            "name": name, "business_name": name, "signup_date": signup_date,
+            "country": "Argentina", "currency": "ARS",
+        })
+
+    june = client.get("/api/dashboard/new-clients?month=2026-06")
+    assert june.status_code == 200
+    assert [item["name"] for item in june.get_json()["data"]] == ["Cliente junio"]
+    assert client.get("/api/dashboard/new-clients?month=junio").status_code == 422
+
+
 def test_operational_statuses(client):
     created = client.post("/api/clients", json={
         "name": "Cliente Operativo", "business_name": "Marca Operativa",

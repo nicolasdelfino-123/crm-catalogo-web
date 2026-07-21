@@ -628,6 +628,33 @@ def acquisition_summary():
     return ok({"total": total, "items": items})
 
 
+@api.get("/dashboard/new-clients")
+def new_clients_by_month():
+    month = request.args.get("month", date.today().strftime("%Y-%m"))
+    try:
+        month_start = date.fromisoformat(f"{month}-01")
+    except ValueError:
+        return error("El mes debe tener el formato AAAA-MM", 422)
+    month_end = add_calendar_months(month_start, 1)
+    clients = Client.query.filter(
+        Client.archived_at.is_(None),
+        Client.signup_date >= month_start,
+        Client.signup_date < month_end,
+    ).order_by(Client.signup_date.desc(), Client.name.asc()).all()
+    return ok([
+        {
+            "id": client.id,
+            "name": client.name,
+            "business_name": client.business_name,
+            "status": client.status,
+            "service_stage": client.service_stage,
+            "signup_date": iso(client.signup_date),
+            "next_renewal_date": iso(client.next_renewal_date),
+        }
+        for client in clients
+    ])
+
+
 @api.get("/action-templates")
 def templates_list(): return ok([t.to_dict() for t in ActionTemplate.query.order_by(ActionTemplate.sort_order).all()])
 

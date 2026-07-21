@@ -364,14 +364,29 @@ function Dashboard({ goClients }) {
 function DashboardMetricModal({ title, metricKey, items, onClose }) {
   const actionMetric = metricKey === "pending_actions" || metricKey === "overdue_actions";
   const [dateOrder, setDateOrder] = useState(metricKey === "active_clients" ? "desc" : "asc");
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [monthlyItems, setMonthlyItems] = useState(items);
+  const [loadingMonth, setLoadingMonth] = useState(false);
+  async function changeMonth(event) {
+    const month = event.target.value;
+    setSelectedMonth(month);
+    if (!month) return;
+    setLoadingMonth(true);
+    try {
+      setMonthlyItems(await api(`/dashboard/new-clients?month=${month}`));
+    } finally {
+      setLoadingMonth(false);
+    }
+  }
+  const sourceItems = metricKey === "new_clients_month" ? monthlyItems : items;
   const displayedItems = useMemo(() => {
     const dateField = metricKey === "pending_actions"
       ? "due_date"
       : metricKey === "active_clients"
         ? "signup_date"
         : null;
-    if (!dateField) return items;
-    return [...items].sort((first, second) => {
+    if (!dateField) return sourceItems;
+    return [...sourceItems].sort((first, second) => {
       const firstDate = first[dateField];
       const secondDate = second[dateField];
       if (!firstDate && !secondDate) return first.id - second.id;
@@ -380,18 +395,30 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
       const comparison = firstDate.localeCompare(secondDate);
       return (dateOrder === "asc" ? comparison : -comparison) || first.id - second.id;
     });
-  }, [items, metricKey, dateOrder]);
+  }, [sourceItems, metricKey, dateOrder]);
   return (
     <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="dashboard-metric-modal" role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
           <div>
             <span className="eyebrow">Detalle del resumen</span>
-            <h2>{title} ({items.length})</h2>
+            <h2>{title} ({sourceItems.length})</h2>
           </div>
           <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
         </div>
         <div className="dashboard-metric-list">
+          {metricKey === "new_clients_month" && (
+            <div className="dashboard-month-filter">
+              <label>
+                Ver altas del mes
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={changeMonth}
+                />
+              </label>
+            </div>
+          )}
           {(metricKey === "pending_actions" || metricKey === "active_clients") && (
             <div className="dashboard-metric-toolbar">
               <button
@@ -406,7 +433,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
               </button>
             </div>
           )}
-          {displayedItems.map((item) => (
+          {!loadingMonth && displayedItems.map((item) => (
             <article key={item.id}>
               <div>
                 <strong>{actionMetric ? item.title : item.name}</strong>
@@ -435,7 +462,8 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
               </div>
             </article>
           ))}
-          {!displayedItems.length && <Empty />}
+          {loadingMonth && <Loading />}
+          {!loadingMonth && !displayedItems.length && <Empty />}
         </div>
       </section>
     </div>
