@@ -12,6 +12,20 @@
 .vps-form label { display: grid; gap: 5px; color: #57645d; font-size: 11px; font-weight: 600; }
 .vps-form input,.vps-form select,.vps-items select { min-height: 40px; border: 1px solid #cbd5cf; border-radius: 5px; background: #fff; padding: 8px 10px; color: var(--ink); }
 .vps-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.vps-search { position: relative; z-index: 5; margin-bottom: 18px; }
+.vps-search > label { display: flex; align-items: center; gap: 9px; width: min(620px,100%); min-height: 44px; padding: 0 12px; border: 1px solid #cbd5cf; border-radius: 6px; background: #fff; }
+.vps-search > label > svg { width: 18px; color: var(--muted); }
+.vps-search > label input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; }
+.vps-search > label button { display: grid; place-items: center; padding: 5px; border: 0; background: transparent; color: var(--muted); }
+.vps-search-results { position: absolute; top: calc(100% + 5px); left: 0; width: min(620px,100%); max-height: 300px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; box-shadow: 0 14px 35px rgba(23,33,29,.16); }
+.vps-search-results article { display: flex; align-items: center; gap: 12px; padding: 11px 13px; border-bottom: 1px solid #e7ebe8; }
+.vps-search-results article:last-child { border-bottom: 0; }
+.vps-search-results article > div { min-width: 0; flex: 1; }
+.vps-search-results strong,.vps-search-results span { display: block; }
+.vps-search-results strong { font-size: 13px; }
+.vps-search-results span { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.vps-search-results b { flex: 0 0 auto; padding: 5px 7px; border-radius: 4px; background: var(--green-bg); color: var(--green); font-size: 10px; }
+.vps-search-results p { margin: 0; padding: 20px 13px; color: var(--muted); font-size: 12px; text-align: center; }
 .vps-card { min-width: 0; border: 1px solid var(--line); background: #fff; }
 .vps-card > header { display: flex; align-items: center; gap: 12px; padding: 17px; border-bottom: 1px solid var(--line); }
 .vps-card > header > span { display: grid; place-items: center; width: 39px; height: 39px; border-radius: 6px; color: var(--green); background: var(--green-bg); }

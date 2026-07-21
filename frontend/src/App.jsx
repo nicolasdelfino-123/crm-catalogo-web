@@ -2678,6 +2678,7 @@ function Messages() {
 function Vps() {
   const [data, setData] = useState({ items: [], counts: { vape: 0, shatha: 0 } });
   const [clients, setClients] = useState([]);
+  const [query, setQuery] = useState("");
   const [form, setForm] = useState({ vps_name: "vape", selection: "", custom_name: "" });
   const [saving, setSaving] = useState(false);
   const load = useCallback(() => Promise.all([
@@ -2687,6 +2688,12 @@ function Vps() {
   }), []);
   useEffect(() => { load(); }, [load]);
   const assignedClientIds = useMemo(() => new Set(data.items.filter((item) => item.client_id).map((item) => item.client_id)), [data.items]);
+  const searchResults = useMemo(() => {
+    const normalized = query.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
+    if (!normalized) return [];
+    return data.items.filter((item) => `${item.name} ${item.business_name}`
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es").includes(normalized));
+  }, [data.items, query]);
   async function submit(event) {
     event.preventDefault(); setSaving(true);
     try {
@@ -2722,6 +2729,10 @@ function Vps() {
         {form.selection === "custom" && <label>Nombre personalizado<input value={form.custom_name} onChange={(event) => setForm({ ...form, custom_name: event.target.value })} placeholder="Nombre de la aplicación" required autoFocus /></label>}
         <button className="primary" disabled={saving}><Plus size={17} />{saving ? "Agregando…" : "Agregar"}</button>
       </form>
+      <div className="vps-search">
+        <label><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente o aplicación..." />{query && <button type="button" aria-label="Limpiar búsqueda" onClick={() => setQuery("")}><X size={16} /></button>}</label>
+        {query.trim() && <div className="vps-search-results">{searchResults.map((item) => <article key={item.id}><div><strong>{item.name}</strong><span>{item.business_name}</span></div><b>{item.vps_name === "vape" ? "VPS Vape" : "VPS Shatha"}</b></article>)}{!searchResults.length && <p>No se encontró ningún cliente o aplicación asignada.</p>}</div>}
+      </div>
       <div className="vps-lists">
         {servers.map(([id, title]) => {
           const entries = data.items.filter((item) => item.vps_name === id);
