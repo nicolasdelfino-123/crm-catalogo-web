@@ -643,3 +643,24 @@ def test_undated_actions_are_separate_and_support_description_and_status(client)
     }).get_json()["data"]
     assert reopened["description"] == "Descripción actualizada"
     assert reopened["status"] == "pending"
+
+
+def test_undated_action_can_be_assigned_to_a_client(client):
+    customer = client.post("/api/clients", json={
+        "name": "Cliente agenda", "business_name": "Agenda SA",
+        "signup_date": "2026-07-01", "country": "Argentina", "currency": "ARS",
+    }).get_json()["data"]
+
+    created = client.post(f'/api/clients/{customer["id"]}/actions', json={
+        "title": "Nota pendiente del cliente", "description": "Resolver cuando sea posible",
+        "due_date": None, "priority": "medium",
+    })
+    assert created.status_code == 201
+    action_id = created.get_json()["data"]["id"]
+
+    undated = client.get("/api/actions?view=undated&status=pending").get_json()["data"]
+    dated = client.get("/api/actions?view=all&status=pending").get_json()["data"]
+    assigned = next(item for item in undated if item["id"] == action_id)
+    assert assigned["client_id"] == customer["id"]
+    assert assigned["client_name"] == "Cliente agenda"
+    assert not any(item["id"] == action_id for item in dated)

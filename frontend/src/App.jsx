@@ -2412,14 +2412,26 @@ function AgendaNewAction({ undated, onClose, onSaved }) {
   });
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    api("/clients?per_page=100&sort_by=name&sort_dir=asc").then((result) => setClients(result.items));
+    let active = true;
+    async function loadAllClients() {
+      const first = await api("/clients?per_page=100&page=1&sort_by=name&sort_dir=asc");
+      const remaining = await Promise.all(
+        Array.from({ length: Math.max(0, first.pagination.pages - 1) }, (_, index) =>
+          api(`/clients?per_page=100&page=${index + 2}&sort_by=name&sort_dir=asc`),
+        ),
+      );
+      if (active) setClients([first, ...remaining].flatMap((result) => result.items));
+    }
+    loadAllClients();
+    return () => { active = false; };
   }, []);
   async function submit(event) {
     event.preventDefault();
     setSaving(true);
     try {
       const customContext = form.client_id === "__custom";
-      await api(undated || customContext ? "/standalone-actions" : `/clients/${form.client_id}/actions`, {
+      const unassignedUndated = undated && !form.client_id;
+      await api(unassignedUndated || customContext ? "/standalone-actions" : `/clients/${form.client_id}/actions`, {
         method: "POST",
         body: JSON.stringify({
           context_name: undated ? undefined : customContext ? form.custom_context : undefined,
@@ -2446,7 +2458,14 @@ function AgendaNewAction({ undated, onClose, onSaved }) {
           <div className="form-grid">
             {undated ? (
               <>
-                <label className="span-2">Título<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="¿Qué tenés pendiente?" required autoFocus /></label>
+                <label className="span-2">
+                  Cliente
+                  <select value={form.client_id} onChange={(event) => setForm({ ...form, client_id: event.target.value })} autoFocus>
+                    <option value="">Sin asignar</option>
+                    {clients.map((client) => <option value={client.id} key={client.id}>{client.name} · {client.business_name}</option>)}
+                  </select>
+                </label>
+                <label className="span-2">Título<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="¿Qué tenés pendiente?" required /></label>
                 <label className="span-2">Descripción<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Agregá los detalles necesarios..." required /></label>
               </>
             ) : (

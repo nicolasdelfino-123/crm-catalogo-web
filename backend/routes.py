@@ -450,6 +450,10 @@ def actions_list():
         # En el calendario los cobros se proyectan para cada mes; se excluye
         # la única acción persistida para no mostrar el mismo cobro dos veces.
         query = query.filter(ClientAction.action_type != "collection")
+    if request.args.get("view") == "undated":
+        query = query.filter(ClientAction.due_date.is_(None))
+    else:
+        query = query.filter(ClientAction.due_date.isnot(None))
     if request.args.get("status") == "pending":
         query = query.filter(ClientAction.status.in_(["pending", "in_progress"]))
     elif request.args.get("status"):
@@ -466,7 +470,7 @@ def actions_list():
             )
         except ValueError:
             return error("Mes inválido", 422)
-    items = [] if request.args.get("view") == "undated" else query.order_by(ClientAction.due_date.asc()).limit(250).all()
+    items = query.order_by(ClientAction.due_date.asc()).limit(250).all()
     result = [{**a.to_dict(), "client_id": a.client.id, "client_name": a.client.name, "business_name": a.client.business_name} for a in items]
     standalone_query = StandaloneAction.query
     if request.args.get("view") == "undated":
