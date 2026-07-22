@@ -1950,6 +1950,7 @@ function Clients() {
           <SlidersHorizontal />
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Todos los estados</option>
+            <option value="active_no_signup">Activos y sin alta</option>
             <option value="active">Activos</option>
             <option value="at_risk">En riesgo</option>
             <option value="paused">Pausados</option>

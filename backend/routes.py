@@ -252,7 +252,12 @@ def clients_list():
     if search:
         term = f"%{search}%"
         query = query.filter(or_(Client.name.ilike(term), Client.business_name.ilike(term), Client.instagram_username.ilike(term), Client.email.ilike(term)))
-    for field in ["status", "service_stage", "country", "currency", "acquisition_source"]:
+    requested_status = request.args.get("status")
+    if requested_status == "active_no_signup":
+        query = query.filter(Client.status.in_(("active", "no_signup")))
+    elif requested_status:
+        query = query.filter(Client.status == requested_status)
+    for field in ["service_stage", "country", "currency", "acquisition_source"]:
         if request.args.get(field): query = query.filter(getattr(Client, field) == request.args[field])
     sort_by = request.args.get("sort_by", "name")
     if sort_by == "billing_day":
