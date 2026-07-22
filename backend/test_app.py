@@ -238,7 +238,8 @@ def test_monthly_forecast_includes_only_billable_client_statuses(client):
         })
     forecast = client.get("/api/payments/monthly-forecast").get_json()["data"]
     assert forecast["totals"] == {"ARS": 50000.0, "USD": 50.0}
-    assert {item["name"] for item in forecast["items"]} == {"Activo ARS", "En riesgo ARS", "Sin alta USD"}
+    assert {item["name"] for item in forecast["items"]} == {"Activo ARS", "En riesgo ARS", "Sin alta USD", "Sin importe"}
+    assert next(item for item in forecast["items"] if item["name"] == "Sin importe")["amount"] == 0
 
 
 def test_client_credentials_are_encrypted_and_loaded_separately(client, app):
