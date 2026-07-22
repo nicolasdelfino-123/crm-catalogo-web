@@ -42,6 +42,7 @@ import {
 import "./expenses.css";
 import "./payment-summary.css";
 import "./vps.css";
+import "./instagram-links.css";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ||
   (import.meta.env.DEV
@@ -140,6 +141,9 @@ const acquisitionLabel = (value) => {
   if (!value || value === "not_set") return "Sin registrar";
   return ACQUISITION_OPTIONS.find(([id]) => id === value)?.[1] || value;
 };
+const instagramUrl = (value) => value
+  ? `https://www.instagram.com/${value.trim().replace(/^@/, "")}/`
+  : null;
 const fmtDate = (value) =>
   value
     ? new Intl.DateTimeFormat("es-AR", {
@@ -1656,7 +1660,7 @@ function Summary({ client, onUpdate, onEdit }) {
       `${client.city ? client.city + ", " : ""}${client.country}`,
       MapPin,
     ],
-    ["Instagram", client.instagram_username || "Sin cargar", Instagram],
+    ["Instagram", client.instagram_username || "Sin cargar", Instagram, instagramUrl(client.instagram_username)],
     ["Adquisición", acquisitionLabel(client.acquisition_source), ChartNoAxesColumnIncreasing],
     ["Email", client.email || "Sin cargar", Mail],
     ["Teléfono", client.phone || "Sin cargar", Phone],
@@ -1670,12 +1674,12 @@ function Summary({ client, onUpdate, onEdit }) {
             <Edit3 />
           </IconButton>
         </div>
-        {contact.map(([label, value, Icon]) => (
+        {contact.map(([label, value, Icon, href]) => (
           <div className="info-row" key={label}>
             <Icon />
             <span>
               <small>{label}</small>
-              <strong>{value}</strong>
+              {href ? <a className="instagram-link" href={href} target="_blank" rel="noreferrer">{value}<ExternalLink size={13} /></a> : <strong>{value}</strong>}
             </span>
           </div>
         ))}
@@ -1798,7 +1802,7 @@ function AcquisitionModal({ onClose }) {
                               <span>{[client.city, client.country].filter(Boolean).join(", ") || "Sin ubicación"}</span>
                             </div>
                             <div className="acquisition-contact">
-                              {client.instagram_username && <span>@{client.instagram_username.replace(/^@/, "")}</span>}
+                              {client.instagram_username && <a className="instagram-link" href={instagramUrl(client.instagram_username)} target="_blank" rel="noreferrer">{client.instagram_username}<ExternalLink size={11} /></a>}
                               {client.phone && <span>{client.phone}</span>}
                               {client.email && <span>{client.email}</span>}
                               {!client.instagram_username && !client.phone && !client.email && <span>Sin contacto registrado</span>}

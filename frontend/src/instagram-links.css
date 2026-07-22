@@ -1,0 +1,25 @@
+.instagram-link {
+  display: inline-flex !important;
+  width: max-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 5px;
+  color: var(--green) !important;
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.instagram-link:hover {
+  text-decoration: underline;
+}
+
+.instagram-link svg {
+  flex: 0 0 auto;
+}
+
+.acquisition-contact .instagram-link {
+  margin-top: 3px;
+  font-size: 9px;
+}
