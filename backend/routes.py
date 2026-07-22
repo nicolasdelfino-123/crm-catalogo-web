@@ -466,9 +466,13 @@ def actions_list():
             )
         except ValueError:
             return error("Mes inválido", 422)
-    items = query.order_by(ClientAction.due_date.asc()).limit(250).all()
+    items = [] if request.args.get("view") == "undated" else query.order_by(ClientAction.due_date.asc()).limit(250).all()
     result = [{**a.to_dict(), "client_id": a.client.id, "client_name": a.client.name, "business_name": a.client.business_name} for a in items]
     standalone_query = StandaloneAction.query
+    if request.args.get("view") == "undated":
+        standalone_query = standalone_query.filter(StandaloneAction.due_date.is_(None))
+    else:
+        standalone_query = standalone_query.filter(StandaloneAction.due_date.isnot(None))
     if request.args.get("status") == "pending":
         standalone_query = standalone_query.filter(StandaloneAction.status.in_(["pending", "in_progress"]))
     elif request.args.get("status"):
@@ -493,10 +497,14 @@ def actions_list():
 @api.post("/standalone-actions")
 def standalone_actions_create():
     data = request.get_json() or {}
-    if not data.get("context_name", "").strip() or not data.get("title", "").strip():
-        return error("Completá para quién o para qué es y el nombre de la acción", 422)
+    if not data.get("title", "").strip():
+        return error("El título es obligatorio", 422)
+    context_name = (data.get("context_name") or "").strip()
+    if data.get("due_date") and not context_name:
+        return error("Completá para quién o para qué es", 422)
     action = StandaloneAction(
-        context_name=data["context_name"].strip(), title=data["title"].strip(),
+        context_name=context_name or "Tarea sin fecha", title=data["title"].strip(),
+        description=(data.get("description") or "").strip() or None,
         due_date=parse_date(data.get("due_date")), priority=data.get("priority", "medium"),
         status="pending",
     )
@@ -513,6 +521,7 @@ def standalone_actions_update(action_id):
     if "title" in data:
         if not data["title"].strip(): return error("El título es obligatorio", 422)
         action.title = data["title"].strip()
+    if "description" in data: action.description = (data["description"] or "").strip() or None
     if "due_date" in data: action.due_date = parse_date(data["due_date"])
     if "priority" in data: action.priority = data["priority"]
     if "status" in data:

@@ -617,3 +617,29 @@ def test_standalone_action_appears_in_calendar_and_can_be_completed(client):
     client.patch(f"/api/standalone-actions/{action_id}", json={"status": "completed"})
     completed = client.get("/api/actions?view=calendar&month=2026-09&status=completed").get_json()["data"]
     assert any(item["id"] == action["id"] for item in completed)
+
+
+def test_undated_actions_are_separate_and_support_description_and_status(client):
+    created = client.post("/api/standalone-actions", json={
+        "title": "Revisar integración", "description": "Comprobar el acceso y documentar cambios",
+        "due_date": None, "priority": "medium",
+    })
+    assert created.status_code == 201
+    action = created.get_json()["data"]
+    assert action["description"] == "Comprobar el acceso y documentar cambios"
+    assert action["due_date"] is None
+
+    undated = client.get("/api/actions?view=undated&status=pending").get_json()["data"]
+    dated = client.get("/api/actions?view=all&status=pending").get_json()["data"]
+    assert any(item["id"] == action["id"] for item in undated)
+    assert not any(item["id"] == action["id"] for item in dated)
+
+    action_id = action["id"].replace("standalone-", "")
+    client.patch(f"/api/standalone-actions/{action_id}", json={"status": "completed"})
+    completed = client.get("/api/actions?view=undated&status=completed").get_json()["data"]
+    assert any(item["id"] == action["id"] for item in completed)
+    reopened = client.patch(f"/api/standalone-actions/{action_id}", json={
+        "status": "pending", "description": "Descripción actualizada",
+    }).get_json()["data"]
+    assert reopened["description"] == "Descripción actualizada"
+    assert reopened["status"] == "pending"

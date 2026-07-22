@@ -2211,11 +2211,11 @@ function Agenda() {
   useEffect(() => {
     load();
   }, [load]);
-  async function complete(action) {
+  async function setAgendaStatus(action, status) {
     const actionId = action.standalone ? String(action.id).replace("standalone-", "") : action.id;
     await api(`/${action.standalone ? "standalone-actions" : "actions"}/${actionId}`, {
       method: "PATCH",
-      body: JSON.stringify({ status: "completed" }),
+      body: JSON.stringify({ status }),
     });
     load();
   }
@@ -2273,6 +2273,7 @@ function Agenda() {
           ["overdue", "Vencidas"],
           ["all", "Todas"],
           ["calendar", "Calendario"],
+          ["undated", "Sin fecha"],
         ].map(([id, label]) => (
           <button
             className={view === id ? "active" : ""}
@@ -2297,7 +2298,7 @@ function Agenda() {
           </button>
         ))}
       </div>
-      {view !== "calendar" && (
+      {view !== "calendar" && view !== "undated" && (
         <div className="agenda-sort-toolbar">
           <button
             type="button"
@@ -2337,7 +2338,7 @@ function Agenda() {
               <h3>Acciones del {fmtDate(selectedCalendarDate)}</h3>
               <div className="agenda-list">
                 {selectedDayItems.map((a) => (
-                  <AgendaItem key={a.id} action={a} onComplete={complete} onEdit={setEditingAgendaAction} onOpenClient={setSelectedAgendaClient} />
+                  <AgendaItem key={a.id} action={a} onStatus={setAgendaStatus} onEdit={setEditingAgendaAction} onOpenClient={setSelectedAgendaClient} />
                 ))}
                 {!selectedDayItems.length && <p>Sin acciones para este día.</p>}
               </div>
@@ -2347,13 +2348,14 @@ function Agenda() {
       ) : (
         <div className="agenda-list">
         {sortedAgendaItems.map((a) => (
-          <AgendaItem key={a.id} action={a} onComplete={complete} onEdit={setEditingAgendaAction} onOpenClient={setSelectedAgendaClient} />
+          <AgendaItem key={a.id} action={a} onStatus={setAgendaStatus} onEdit={setEditingAgendaAction} onOpenClient={setSelectedAgendaClient} />
           ))}
         </div>
       )}
       {view !== "calendar" && !items.length && <Empty />}
       {showNewAction && (
         <AgendaNewAction
+          undated={view === "undated"}
           onClose={() => setShowNewAction(false)}
           onSaved={() => {
             setShowNewAction(false);
@@ -2397,13 +2399,14 @@ function Agenda() {
   );
 }
 
-function AgendaNewAction({ onClose, onSaved }) {
+function AgendaNewAction({ undated, onClose, onSaved }) {
   const [clients, setClients] = useState([]);
   const [actionPreset, setActionPreset] = useState("");
   const [form, setForm] = useState({
     client_id: "",
     custom_context: "",
     title: "",
+    description: "",
     due_date: new Date().toISOString().slice(0, 10),
     priority: "medium",
   });
@@ -2416,12 +2419,13 @@ function AgendaNewAction({ onClose, onSaved }) {
     setSaving(true);
     try {
       const customContext = form.client_id === "__custom";
-      await api(customContext ? "/standalone-actions" : `/clients/${form.client_id}/actions`, {
+      await api(undated || customContext ? "/standalone-actions" : `/clients/${form.client_id}/actions`, {
         method: "POST",
         body: JSON.stringify({
-          context_name: customContext ? form.custom_context : undefined,
-          title: actionPreset === "__custom" ? form.title : actionPreset,
-          due_date: form.due_date,
+          context_name: undated ? undefined : customContext ? form.custom_context : undefined,
+          title: undated ? form.title : actionPreset === "__custom" ? form.title : actionPreset,
+          description: form.description,
+          due_date: undated ? null : form.due_date,
           priority: form.priority,
           status: "pending",
         }),
@@ -2435,11 +2439,18 @@ function AgendaNewAction({ onClose, onSaved }) {
     <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className="form-modal agenda-action-modal">
         <div className="modal-head">
-          <div><span className="eyebrow">Agenda</span><h2>Agregar acción pendiente</h2></div>
+          <div><span className="eyebrow">Agenda</span><h2>{undated ? "Agregar acción sin fecha" : "Agregar acción pendiente"}</h2></div>
           <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
         </div>
         <form onSubmit={submit}>
           <div className="form-grid">
+            {undated ? (
+              <>
+                <label className="span-2">Título<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="¿Qué tenés pendiente?" required autoFocus /></label>
+                <label className="span-2">Descripción<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Agregá los detalles necesarios..." required /></label>
+              </>
+            ) : (
+              <>
             <label className="span-2">
               Cliente
               <select value={form.client_id} onChange={(event) => setForm({ ...form, client_id: event.target.value })} required>
@@ -2472,6 +2483,8 @@ function AgendaNewAction({ onClose, onSaved }) {
                 <option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option>
               </select>
             </label>
+              </>
+            )}
           </div>
           <div className="form-actions">
             <button type="button" className="secondary" onClick={onClose}>Cancelar</button>
@@ -2489,6 +2502,7 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
     context_name: action.client_name,
     due_date: action.due_date || "",
     priority: action.priority || "medium",
+    description: action.description || "",
   });
   const [saving, setSaving] = useState(false);
   async function submit(event) {
@@ -2520,7 +2534,8 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
               <label className="span-2">Cliente<input value={`${action.client_name} · ${action.business_name}`} readOnly /></label>
             )}
             <label className="span-2">Acción<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
-            <label>Fecha<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>
+            {!action.due_date && <label className="span-2">Descripción<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} required /></label>}
+            {action.due_date && <label>Fecha<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>}
             <label>Prioridad<select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label>
           </div>
           <div className="form-actions">
@@ -2533,7 +2548,7 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
   );
 }
 
-function AgendaItem({ action: a, onComplete, onEdit, onOpenClient }) {
+function AgendaItem({ action: a, onStatus, onEdit, onOpenClient }) {
   const openClient = () => a.client_id && onOpenClient(a.client_id);
   return (
           <article
@@ -2554,7 +2569,7 @@ function AgendaItem({ action: a, onComplete, onEdit, onOpenClient }) {
               <time>{fmtDate(a.due_date)}</time>
               <h3>{a.title}</h3>
               <p>
-                {a.client_name} · {a.business_name}{a.projected ? " · Cobro previsto" : ""}
+                {a.description || `${a.client_name} · ${a.business_name}${a.projected ? " · Cobro previsto" : ""}`}
               </p>
             </div>
             {badge(a.status)}
@@ -2562,12 +2577,15 @@ function AgendaItem({ action: a, onComplete, onEdit, onOpenClient }) {
             {a.status !== "completed" && !a.projected && (
         <button
           className="secondary small"
-                onClick={(event) => { event.stopPropagation(); onComplete(a); }}
+                onClick={(event) => { event.stopPropagation(); onStatus(a, "completed"); }}
         >
           <Check size={16} />
           Completar
         </button>
       )}
+            {a.status === "completed" && !a.projected && (
+              <button className="secondary small" onClick={(event) => { event.stopPropagation(); onStatus(a, "pending"); }}><RotateCcw size={16} />Reabrir</button>
+            )}
     </article>
   );
 }

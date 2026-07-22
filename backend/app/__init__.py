@@ -95,6 +95,11 @@ def create_app(test_config=None):
             if "entry_type" not in message_columns:
                 db.session.execute(text("ALTER TABLE message_log ADD COLUMN entry_type VARCHAR(20) DEFAULT 'daily' NOT NULL"))
                 db.session.commit()
+        if "standalone_action" in inspector.get_table_names():
+            action_columns = {column["name"] for column in inspector.get_columns("standalone_action")}
+            if "description" not in action_columns:
+                db.session.execute(text("ALTER TABLE standalone_action ADD COLUMN description TEXT"))
+                db.session.commit()
         columns = {column["name"] for column in inspect(db.engine).get_columns("client")}
         if "acquisition_source" not in columns:
             db.session.execute(text("ALTER TABLE client ADD COLUMN acquisition_source VARCHAR(60)"))

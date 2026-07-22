@@ -141,6 +141,7 @@ class StandaloneAction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     context_name = db.Column(db.String(180), nullable=False)
     title = db.Column(db.String(180), nullable=False)
+    description = db.Column(db.Text)
     status = db.Column(db.String(30), nullable=False, default="pending", index=True)
     priority = db.Column(db.String(20), default="medium")
     due_date = db.Column(db.Date, index=True)
@@ -149,7 +150,7 @@ class StandaloneAction(db.Model):
 
     def to_dict(self):
         return {
-            "id": f"standalone-{self.id}", "title": self.title, "description": None,
+            "id": f"standalone-{self.id}", "title": self.title, "description": self.description,
             "action_type": "standalone", "status": self.status, "priority": self.priority,
             "due_date": iso(self.due_date), "completed_at": iso(self.completed_at),
             "result_notes": None, "client_name": self.context_name,
