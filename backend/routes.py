@@ -62,6 +62,64 @@ def billing_date_in_month(client, year, month):
     return date(year, month, day)
 
 
+def sync_overdue_monthly_payments(clients, today=None):
+    """Materializa mensualidades vencidas y actualiza su estado visible."""
+    today = today or date.today()
+    changed = []
+    for client in clients:
+        if client.status not in ("active", "at_risk") or not client.signup_date:
+            continue
+        for payment in client.payments:
+            if (payment.payment_type == "monthly" and payment.status == "pending"
+                    and payment.due_date and payment.due_date < today):
+                payment.status = "overdue"
+                changed.append(payment)
+        existing_months = {
+            (payment.due_date.year, payment.due_date.month)
+            for payment in client.payments
+            if payment.payment_type == "monthly" and payment.due_date
+        }
+        due_date = add_calendar_months(client.signup_date, 1)
+        while due_date < today:
+            period = (due_date.year, due_date.month)
+            if period not in existing_months:
+                payment = Payment(
+                    client=client,
+                    amount=client.payment_amount or 0,
+                    currency=client.currency,
+                    payment_type="monthly",
+                    period_year=due_date.year,
+                    period_month=due_date.month,
+                    due_date=due_date,
+                    status="overdue",
+                    notes="Generado automáticamente al vencer la mensualidad.",
+                )
+                db.session.add(payment)
+                changed.append(payment)
+                existing_months.add(period)
+            due_date = add_calendar_months(due_date, 1)
+    return changed
+
+
+def payment_collection_item(payment):
+    return {
+        "id": f"payment-collection-{payment.id}",
+        "title": f"Cobrar a {payment.client.name}",
+        "description": "Mensualidad pendiente de pago.",
+        "action_type": "collection_payment",
+        "status": "pending",
+        "priority": "urgent" if payment.due_date and payment.due_date < date.today() else "high",
+        "due_date": iso(payment.due_date),
+        "completed_at": None,
+        "result_notes": None,
+        "client_id": payment.client_id,
+        "client_name": payment.client.name,
+        "business_name": payment.client.business_name,
+        "projected": True,
+        "payment_id": payment.id,
+    }
+
+
 def projected_collection_items(clients, year, month):
     """Proyecta cobros mensuales sin persistir doce acciones por cliente."""
     items = []
@@ -72,12 +130,14 @@ def projected_collection_items(clients, year, month):
         first_billing = add_calendar_months(client.signup_date, 1)
         if target_month < (first_billing.year, first_billing.month):
             continue
-        has_monthly_payment = any(
-            payment.payment_type == "monthly" and payment.due_date
-            and (payment.due_date.year, payment.due_date.month) == target_month
-            for payment in client.payments
-        )
-        if has_monthly_payment:
+        monthly_payment = next((payment for payment in client.payments
+            if payment.payment_type == "monthly" and payment.due_date
+            and (payment.due_date.year, payment.due_date.month) == target_month), None)
+        if (monthly_payment and monthly_payment.status in ("pending", "partial", "overdue")
+                and monthly_payment.due_date < date.today()):
+            items.append(payment_collection_item(monthly_payment))
+            continue
+        if monthly_payment:
             continue
         due_date = billing_date_in_month(client, year, month)
         items.append({
@@ -301,7 +361,10 @@ def clients_create():
 @api.get("/clients/<int:client_id>")
 def clients_detail(client_id):
     client = Client.query.get_or_404(client_id)
-    if advance_service_stage(client) or ensure_collection_action(client):
+    overdue_created = sync_overdue_monthly_payments([client])
+    stage_changed = advance_service_stage(client)
+    collections_changed = ensure_collection_action(client)
+    if overdue_created or stage_changed or collections_changed:
         db.session.commit()
     return ok(client.detail())
 
@@ -439,7 +502,7 @@ def actions_generate(client_id):
 @api.get("/actions")
 def actions_list():
     existing_clients = Client.query.filter(Client.archived_at.is_(None)).all()
-    collection_actions_changed = False
+    collection_actions_changed = bool(sync_overdue_monthly_payments(existing_clients))
     for client in existing_clients:
         collection_actions_changed = advance_service_stage(client) or collection_actions_changed
         collection_actions_changed = ensure_collection_action(client) or collection_actions_changed
@@ -491,6 +554,14 @@ def actions_list():
             StandaloneAction.due_date < add_calendar_months(month_start, 1),
         )
     result.extend(action.to_dict() for action in standalone_query.order_by(StandaloneAction.due_date.asc()).limit(250).all())
+    if request.args.get("status") == "pending" and request.args.get("view") == "overdue":
+        overdue_payments = Payment.query.join(Client).filter(
+            Client.archived_at.is_(None), Payment.payment_type == "monthly",
+            Payment.status.in_(("pending", "partial", "overdue")),
+            Payment.due_date < date.today(),
+        ).order_by(Payment.due_date.asc()).all()
+        result.extend(payment_collection_item(payment) for payment in overdue_payments)
+        result.sort(key=lambda item: (item["due_date"] or "9999-12-31", str(item["id"])))
     if request.args.get("view") == "calendar" and request.args.get("status") == "pending" and request.args.get("month"):
         year, month = request.args["month"].split("-")
         result.extend(projected_collection_items(existing_clients, int(year), int(month)))
@@ -610,6 +681,9 @@ def payments_delete(payment_id):
 
 @api.get("/payments")
 def payments_list():
+    clients = Client.query.filter(Client.archived_at.is_(None)).all()
+    if sync_overdue_monthly_payments(clients):
+        db.session.commit()
     items = (
         Payment.query.join(Client)
         .filter(Client.archived_at.is_(None))
@@ -835,6 +909,8 @@ def notes_delete(note_id):
 def dashboard():
     today = date.today(); month_start = today.replace(day=1)
     clients = Client.query.filter(Client.archived_at.is_(None)).all()
+    if sync_overdue_monthly_payments(clients, today):
+        db.session.commit()
     actions = ClientAction.query.join(Client).filter(
         Client.archived_at.is_(None),
         or_(ClientAction.action_type != "collection", ClientAction.action_type.is_(None)),
@@ -846,6 +922,7 @@ def dashboard():
     active_clients = [c for c in clients if c.status == "active"]
     at_risk_clients = [c for c in clients if c.status == "at_risk"]
     pending_actions = [a for a in actions if a.status in ("pending", "in_progress")]
+    overdue_payments = [p for p in payments if p.payment_type == "monthly" and p.status in ("pending", "partial", "overdue") and p.due_date and p.due_date < today]
     overdue_actions = [a for a in pending_actions if a.due_date and a.due_date < today]
     renewals_week = [c for c in clients if c.next_renewal_date and today <= c.next_renewal_date <= today + timedelta(days=7)]
     new_clients_month = [c for c in clients if c.signup_date >= month_start]
@@ -868,14 +945,14 @@ def dashboard():
 
     data = {
         "active_clients": len(active_clients), "at_risk_clients": len(at_risk_clients),
-        "pending_actions": len(pending_actions), "overdue_actions": len(overdue_actions),
+        "pending_actions": len(pending_actions) + len(overdue_payments), "overdue_actions": len(overdue_actions) + len(overdue_payments),
         "renewals_week": len(renewals_week), "new_clients_month": len(new_clients_month),
         "collected": money,
         "details": {
             "active_clients": [client_item(c) for c in active_clients],
             "at_risk_clients": [client_item(c) for c in at_risk_clients],
-            "pending_actions": [action_item(a) for a in pending_actions],
-            "overdue_actions": [action_item(a) for a in overdue_actions],
+            "pending_actions": [action_item(a) for a in pending_actions] + [payment_collection_item(p) for p in overdue_payments],
+            "overdue_actions": [action_item(a) for a in overdue_actions] + [payment_collection_item(p) for p in overdue_payments],
             "renewals_week": [client_item(c) for c in renewals_week],
             "new_clients_month": [client_item(c) for c in new_clients_month],
         },

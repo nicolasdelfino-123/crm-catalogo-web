@@ -1239,9 +1239,9 @@ function ClientCredentials({ clientId }) {
   );
 }
 
-function DetailModal({ clientId, onClose, onRefresh, onEdit }) {
+function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summary" }) {
   const [client, setClient] = useState(null);
-  const [tab, setTab] = useState("summary");
+  const [tab, setTab] = useState(initialTab);
   const [adding, setAdding] = useState(null);
   const [editingAction, setEditingAction] = useState(null);
   const [editingPayment, setEditingPayment] = useState(null);
@@ -2866,6 +2866,8 @@ function Payments() {
   const [forecast, setForecast] = useState({ items: [], totals: {} });
   const [editing, setEditing] = useState(null);
   const [summaryDetail, setSummaryDetail] = useState(null);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [clientForm, setClientForm] = useState(null);
   const [clientQuery, setClientQuery] = useState("");
   const [clientNameOrder, setClientNameOrder] = useState("asc");
   const [dueDateOrder, setDueDateOrder] = useState(null);
@@ -2962,7 +2964,15 @@ function Payments() {
   }, [items, clientQuery, clientNameOrder, dueDateOrder, statusOrder]);
   async function setPaymentStatus(id, status) {
     await api(`/payments/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
-    load();
+    setSummaryDetail((current) => current?.kind === "payments" ? {
+      ...current,
+      items: current.items.map((payment) => payment.id === id ? {
+        ...payment,
+        status,
+        paid_at: status === "paid" ? new Date().toISOString() : null,
+      } : payment),
+    } : current);
+    await load();
   }
   async function removePayment(payment) {
     if (!window.confirm(`¿Eliminar el pago de ${payment.client_name}?`)) return;
@@ -2978,6 +2988,10 @@ function Payments() {
       items: forecast.items.filter((client) => client.currency === currency),
       kind: "forecast",
     });
+  }
+  function openClientPayments(clientId) {
+    setSummaryDetail(null);
+    setSelectedClient(clientId);
   }
   return (
     <section className="page">
@@ -3132,12 +3146,31 @@ function Payments() {
             <div className="modal-head"><div><span className="eyebrow">Desglose del total</span><h2>{summaryDetail.title}</h2></div><IconButton label="Cerrar" onClick={() => setSummaryDetail(null)}><X /></IconButton></div>
             <div className="summary-payment-count">{summaryDetail.items.length} {summaryDetail.kind === "forecast" ? summaryDetail.items.length === 1 ? "cliente incluido" : "clientes incluidos" : summaryDetail.items.length === 1 ? "pago incluido" : "pagos incluidos"}</div>
             {summaryDetail.items.length && summaryDetail.kind === "payments" ? (
-              <div className="table-wrap summary-payments-table"><table><thead><tr><th>Cliente</th><th>Importe</th><th>Concepto</th><th>Vencimiento</th><th>Fecha de pago</th><th>Estado</th></tr></thead><tbody>{summaryDetail.items.map((payment) => <tr key={payment.id}><td><strong>{payment.client_name}</strong></td><td><strong>{fmtMoney(payment.amount, payment.currency)}</strong></td><td>{LABEL[payment.payment_type] || payment.payment_type}</td><td>{fmtDate(payment.due_date)}</td><td>{payment.paid_at ? fmtDate(payment.paid_at) : "Todavía no pagado"}</td><td>{badge(payment.status)}</td></tr>)}</tbody></table></div>
+              <div className="table-wrap summary-payments-table"><table><thead><tr><th>Cliente</th><th>Importe</th><th>Concepto</th><th>Vencimiento</th><th>Fecha de pago</th><th>Estado</th><th>Acción</th></tr></thead><tbody>{summaryDetail.items.map((payment) => <tr key={payment.id} className="clickable-payment-row" tabIndex={0} role="button" onClick={() => openClientPayments(payment.client_id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openClientPayments(payment.client_id); } }}><td><button type="button" className="client-link" onClick={(event) => { event.stopPropagation(); openClientPayments(payment.client_id); }}>{payment.client_name}</button></td><td><strong>{fmtMoney(payment.amount, payment.currency)}</strong></td><td>{LABEL[payment.payment_type] || payment.payment_type}</td><td>{fmtDate(payment.due_date)}</td><td>{payment.paid_at ? fmtDate(payment.paid_at) : "Todavía no pagado"}</td><td>{badge(payment.status)}</td><td>{payment.status !== "paid" ? <button className="text-btn complete" onClick={(event) => { event.stopPropagation(); setPaymentStatus(payment.id, "paid"); }}><Check size={16} />Marcar pagado</button> : <span>Pagado</span>}</td></tr>)}</tbody></table></div>
             ) : summaryDetail.items.length ? (
               <div className="table-wrap summary-payments-table forecast-detail-table"><table><thead><tr><th>Cliente</th><th>Negocio</th><th>Estado</th><th>Mensualidad</th></tr></thead><tbody>{summaryDetail.items.map((client) => <tr key={client.id}><td><strong>{client.name}</strong></td><td>{client.business_name}</td><td>{badge(client.status)}</td><td><strong>{client.amount > 0 ? fmtMoney(client.amount, client.currency) : "Sin monto configurado"}</strong></td></tr>)}</tbody></table></div>
             ) : <div className="summary-payment-empty">Este total no contiene registros.</div>}
           </div>
         </div>
+      )}
+      {selectedClient && (
+        <DetailModal
+          clientId={selectedClient}
+          initialTab="payments"
+          onClose={() => setSelectedClient(null)}
+          onRefresh={load}
+          onEdit={(client) => {
+            setSelectedClient(null);
+            setClientForm(client);
+          }}
+        />
+      )}
+      {clientForm && (
+        <ClientForm
+          client={clientForm}
+          onClose={() => setClientForm(null)}
+          onSaved={() => { setClientForm(null); load(); }}
+        />
       )}
     </section>
   );

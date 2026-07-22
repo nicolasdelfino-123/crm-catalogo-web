@@ -1,5 +1,5 @@
 import pytest
-from datetime import date
+from datetime import date, timedelta
 from app import create_app
 from models import db, Client, Payment, User, ClientCredential
 from routes import advance_service_stage, sync_service_stages
@@ -522,6 +522,33 @@ def test_monthly_collections_only_exist_as_calendar_projections(client, app):
 
     assert len(next_charge) == 1 and next_charge[0]["due_date"] == "2026-09-10"
     assert not any(action["title"] == "Cobrar a Cliente existente" for action in completed)
+
+
+def test_overdue_calendar_charge_becomes_pending_payment_and_overdue_action(client):
+    today = date.today()
+    signup = today - timedelta(days=32)
+    customer = client.post("/api/clients", json={
+        "name": "José", "business_name": "José tienda",
+        "signup_date": signup.isoformat(), "country": "Argentina", "currency": "ARS",
+        "payment_amount": 15000, "status": "active", "generate_schedule": False,
+    }).get_json()["data"]
+
+    payments = client.get("/api/payments").get_json()["data"]
+    overdue_payments = [p for p in payments if p["client_id"] == customer["id"] and p["status"] == "overdue"]
+    assert overdue_payments
+    payment = overdue_payments[-1]
+    assert payment["amount"] == 15000
+
+    overdue = client.get("/api/actions?view=overdue&status=pending").get_json()["data"]
+    assert any(item.get("payment_id") == payment["id"] and item["client_name"] == "José" for item in overdue)
+
+    month = payment["due_date"][:7]
+    calendar_items = client.get(f"/api/actions?view=calendar&month={month}&status=pending").get_json()["data"]
+    assert any(item.get("payment_id") == payment["id"] for item in calendar_items)
+
+    client.patch(f'/api/payments/{payment["id"]}', json={"status": "paid"})
+    detail = client.get(f'/api/clients/{customer["id"]}').get_json()["data"]
+    assert any(p["id"] == payment["id"] and p["status"] == "paid" for p in detail["payments"])
 
 
 def test_scheduled_monthly_payment_suppresses_charge_but_extra_work_does_not(client):
