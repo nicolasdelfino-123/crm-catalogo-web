@@ -1684,9 +1684,9 @@ function Summary({ client, onUpdate, onEdit }) {
           </div>
         ))}
         {client.website_url && (
-          <a href={client.website_url} target="_blank" rel="noreferrer">
+          <a className="website-link" href={client.website_url} target="_blank" rel="noreferrer" title={client.website_url}>
             <ExternalLink size={15} />
-            Abrir sitio web
+            {client.website_url}
           </a>
         )}
       </section>
