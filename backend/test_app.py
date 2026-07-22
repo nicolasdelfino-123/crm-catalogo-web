@@ -242,6 +242,26 @@ def test_monthly_forecast_includes_only_billable_client_statuses(client):
     assert next(item for item in forecast["items"] if item["name"] == "Sin importe")["amount"] == 0
 
 
+def test_monthly_forecast_sums_active_and_multiple_no_signup_clients_together(client):
+    for name, status, amount in [
+        ("Activo mensual", "active", 30000),
+        ("Sin alta uno", "no_signup", 18000),
+        ("Sin alta dos", "no_signup", 22000),
+    ]:
+        response = client.post("/api/clients", json={
+            "name": name, "business_name": name, "signup_date": "2026-07-01",
+            "country": "Argentina", "currency": "ARS",
+            "payment_amount": amount, "status": status,
+        })
+        assert response.status_code == 201
+
+    forecast = client.get("/api/payments/monthly-forecast").get_json()["data"]
+    assert forecast["totals"]["ARS"] == 70000.0
+    assert {item["name"] for item in forecast["items"]} == {
+        "Activo mensual", "Sin alta uno", "Sin alta dos",
+    }
+
+
 def test_client_credentials_are_encrypted_and_loaded_separately(client, app):
     created = client.post("/api/clients", json={
         "name": "Cliente Acceso", "business_name": "Marca Acceso",

@@ -2587,9 +2587,10 @@ function AgendaItem({ action: a, onStatus, onEdit, onOpenClient }) {
             <div>
               <time>{fmtDate(a.due_date)}</time>
               <h3>{a.title}</h3>
-              <p>
-                {a.description || `${a.client_name} · ${a.business_name}${a.projected ? " · Cobro previsto" : ""}`}
-              </p>
+              {a.client_id && <p>{a.client_name} · {a.business_name}</p>}
+              {(a.description || !a.client_id || a.projected) && (
+                <p>{a.description || `${a.client_name} · ${a.business_name}`}{a.projected ? " · Cobro previsto" : ""}</p>
+              )}
             </div>
             {badge(a.status)}
             {!a.projected && <IconButton label={`Editar ${a.title}`} onClick={(event) => { event.stopPropagation(); onEdit(a); }}><Edit3 /></IconButton>}
