@@ -189,11 +189,22 @@ const stageLabel = (value) => {
   const monthNumber = Number(value?.match(/^month_(\d+)$/)?.[1]);
   return monthNumber ? `${monthNumber}.º mes` : LABEL[value] || value || "Sin definir";
 };
-const badge = (value) => (
-  <span className={`badge ${value} ${/^month_\d+$/.test(value || "") ? "third_month" : ""}`}>
-    {stageLabel(value)}
-  </span>
-);
+const stageMonthNumber = (value) => {
+  const namedMonths = { first_month: 1, second_month: 2, third_month: 3 };
+  return namedMonths[value] || Number(value?.match(/^month_(\d+)$/)?.[1]) || 0;
+};
+const badge = (value) => {
+  const monthNumber = stageMonthNumber(value);
+  const monthHue = monthNumber ? Math.round((monthNumber * 137.508) % 360) : null;
+  return (
+    <span
+      className={`badge ${value} ${monthNumber ? "service-month" : ""}`}
+      style={monthNumber ? { "--month-hue": monthHue } : undefined}
+    >
+      {stageLabel(value)}
+    </span>
+  );
+};
 function IconButton({ label, children, ...props }) {
   return (
     <button className="icon-btn" aria-label={label} title={label} {...props}>
@@ -479,7 +490,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
                 ) : metricKey === "active_clients" ? (
                   <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong>{badge(item.service_stage)}</>
                 ) : (
-                  <><small>Etapa</small><strong>{stageLabel(item.service_stage)}</strong>{badge(item.status)}</>
+                  <><small>Etapa</small>{badge(item.service_stage)}{badge(item.status)}</>
                 )}
               </div>
             </article>
@@ -1837,7 +1848,8 @@ function AcquisitionModal({ onClose }) {
                             </div>
                             <div>
                               {badge(client.status)}
-                              <span>{stageLabel(client.service_stage)} · Alta {fmtDate(client.signup_date)}</span>
+                              {badge(client.service_stage)}
+                              <span>Alta {fmtDate(client.signup_date)}</span>
                             </div>
                             <div>
                               <strong>{fmtMoney(client.payment_amount, client.currency)}</strong>
