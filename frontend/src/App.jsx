@@ -401,6 +401,7 @@ function Dashboard({ goClients }) {
 function DashboardMetricModal({ title, metricKey, items, onClose }) {
   const actionMetric = metricKey === "pending_actions" || metricKey === "overdue_actions";
   const [dateOrder, setDateOrder] = useState(metricKey === "active_clients" ? "desc" : "asc");
+  const [activeStatusFilter, setActiveStatusFilter] = useState("active_no_signup");
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [monthlyItems, setMonthlyItems] = useState(items);
   const [loadingMonth, setLoadingMonth] = useState(false);
@@ -416,14 +417,28 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
     }
   }
   const sourceItems = metricKey === "new_clients_month" ? monthlyItems : items;
+  const filteredSourceItems = metricKey === "active_clients"
+    ? sourceItems.filter((item) => {
+        if (activeStatusFilter === "active") {
+          return ["active", "at_risk"].includes(item.status);
+        }
+        if (activeStatusFilter === "no_signup") {
+          return item.status === "no_signup";
+        }
+        if (activeStatusFilter === "at_risk") {
+          return item.status === "at_risk";
+        }
+        return ["active", "at_risk", "no_signup"].includes(item.status);
+      })
+    : sourceItems;
   const displayedItems = useMemo(() => {
     const dateField = metricKey === "pending_actions"
       ? "due_date"
       : metricKey === "active_clients"
         ? "signup_date"
         : null;
-    if (!dateField) return sourceItems;
-    return [...sourceItems].sort((first, second) => {
+    if (!dateField) return filteredSourceItems;
+    return [...filteredSourceItems].sort((first, second) => {
       const firstDate = first[dateField];
       const secondDate = second[dateField];
       if (!firstDate && !secondDate) return first.id - second.id;
@@ -432,14 +447,14 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
       const comparison = firstDate.localeCompare(secondDate);
       return (dateOrder === "asc" ? comparison : -comparison) || first.id - second.id;
     });
-  }, [sourceItems, metricKey, dateOrder]);
+  }, [filteredSourceItems, metricKey, dateOrder]);
   return (
     <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="dashboard-metric-modal" role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
           <div>
             <span className="eyebrow">Detalle del resumen</span>
-            <h2>{title} ({sourceItems.length})</h2>
+            <h2>{title} ({displayedItems.length})</h2>
           </div>
           <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
         </div>
@@ -458,6 +473,20 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
           )}
           {(metricKey === "pending_actions" || metricKey === "active_clients") && (
             <div className="dashboard-metric-toolbar">
+              {metricKey === "active_clients" && (
+                <label className="dashboard-status-filter">
+                  Estado
+                  <select
+                    value={activeStatusFilter}
+                    onChange={(event) => setActiveStatusFilter(event.target.value)}
+                  >
+                    <option value="active_no_signup">Activos y sin alta</option>
+                    <option value="active">Activos</option>
+                    <option value="no_signup">Solo sin alta</option>
+                    <option value="at_risk">Solo en riesgo</option>
+                  </select>
+                </label>
+              )}
               <button
                 type="button"
                 className="secondary small"
