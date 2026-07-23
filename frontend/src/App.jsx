@@ -346,7 +346,7 @@ function Dashboard({ goClients }) {
           <h2>Lo importante, a primera vista</h2>
           <p>Estado comercial y tareas que requieren movimiento.</p>
         </div>
-        <button className="primary" onClick={goClients}>
+        <button className="primary" onClick={() => goClients()}>
           <Users size={18} />
           Ver clientes
         </button>
@@ -357,7 +357,13 @@ function Dashboard({ goClients }) {
             type="button"
             className="metric metric-button"
             key={key}
-            onClick={() => setSelectedMetric({ key, label })}
+            onClick={() => {
+              if (key === "active_clients") {
+                goClients("active_no_signup");
+                return;
+              }
+              setSelectedMetric({ key, label });
+            }}
             aria-label={`Ver detalle de ${label}`}
           >
             <span className={color}>
@@ -1970,10 +1976,10 @@ function DeleteClientModal({ client, onClose, onConfirm }) {
   );
 }
 
-function Clients() {
+function Clients({ initialStatus = "" }) {
   const [data, setData] = useState({ items: [], pagination: {} });
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(initialStatus);
   const [acquisition, setAcquisition] = useState("");
   const [stageMonth, setStageMonth] = useState("");
   const [customStageMonth, setCustomStageMonth] = useState("");
@@ -3398,6 +3404,7 @@ function Login({ onAuthenticated }) {
 }
 export default function App() {
   const [page, setPage] = useState("clients");
+  const [clientStatusFilter, setClientStatusFilter] = useState("");
   const [session, setSession] = useState(() => ({ checking: Boolean(getToken()), user: null }));
   useEffect(() => {
     const expire = () => setSession({ checking: false, user: null });
@@ -3413,12 +3420,19 @@ export default function App() {
   if (session.checking) return <div className="login-page"><Loading /></div>;
   if (!session.user) return <Login onAuthenticated={(user) => setSession({ checking: false, user })} />;
   const logout = () => { clearSession(); setSession({ checking: false, user: null }); };
+  const navigatePage = (nextPage) => {
+    if (nextPage === "clients") setClientStatusFilter("");
+    setPage(nextPage);
+  };
   return (
-    <Shell page={page} setPage={setPage} onLogout={logout}>
+    <Shell page={page} setPage={navigatePage} onLogout={logout}>
       {page === "dashboard" && (
-        <Dashboard goClients={() => setPage("clients")} />
+        <Dashboard goClients={(statusFilter = "") => {
+          setClientStatusFilter(statusFilter);
+          setPage("clients");
+        }} />
       )}{" "}
-      {page === "clients" && <Clients />}
+      {page === "clients" && <Clients key={clientStatusFilter || "all"} initialStatus={clientStatusFilter} />}
       {page === "agenda" && <Agenda />}
       {page === "payments" && <Payments />}
       {page === "expenses" && <Expenses />}

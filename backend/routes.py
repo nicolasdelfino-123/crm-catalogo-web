@@ -921,7 +921,7 @@ def dashboard():
     money = {}
     for p in payments:
         if p.status == "paid" and p.paid_at and p.paid_at.date() >= month_start: money[p.currency] = money.get(p.currency, 0) + float(p.amount)
-    active_clients = [c for c in clients if c.status == "active"]
+    active_clients = [c for c in clients if c.status in ("active", "at_risk", "no_signup")]
     at_risk_clients = [c for c in clients if c.status == "at_risk"]
     pending_actions = [a for a in actions if a.status in ("pending", "in_progress")]
     overdue_payments = [p for p in payments if p.payment_type == "monthly" and p.status in ("pending", "partial", "overdue") and p.due_date and p.due_date < today]
