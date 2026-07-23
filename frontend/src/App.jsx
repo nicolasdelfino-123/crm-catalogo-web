@@ -1961,6 +1961,8 @@ function Clients() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [acquisition, setAcquisition] = useState("");
+  const [stageMonth, setStageMonth] = useState("");
+  const [customStageMonth, setCustomStageMonth] = useState("");
   const [showAcquisition, setShowAcquisition] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -1968,11 +1970,21 @@ function Clients() {
   const [clientToDelete, setClientToDelete] = useState(null);
   const [toast, setToast] = useState("");
   const [sort, setSort] = useState({ by: "billing_day", dir: "asc" });
+  const selectedServiceStage = stageMonth === "custom"
+    ? Number(customStageMonth) > 6 ? `month_${Number(customStageMonth)}` : ""
+    : {
+        1: "first_month",
+        2: "second_month",
+        3: "third_month",
+        4: "month_4",
+        5: "month_5",
+        6: "month_6",
+      }[stageMonth] || "";
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const result = await api(
-        `/clients?search=${encodeURIComponent(query)}&status=${status}&acquisition_source=${encodeURIComponent(acquisition)}&sort_by=${sort.by}&sort_dir=${sort.dir}&per_page=100`,
+        `/clients?search=${encodeURIComponent(query)}&status=${status}&service_stage=${encodeURIComponent(selectedServiceStage)}&acquisition_source=${encodeURIComponent(acquisition)}&sort_by=${sort.by}&sort_dir=${sort.dir}&per_page=100`,
       );
       if (sort.by === "billing_day") {
         const direction = sort.dir === "desc" ? -1 : 1;
@@ -1985,7 +1997,7 @@ function Clients() {
     } finally {
       setLoading(false);
     }
-  }, [query, status, acquisition, sort]);
+  }, [query, status, selectedServiceStage, acquisition, sort]);
   useEffect(() => {
     const id = setTimeout(load, 250);
     return () => clearTimeout(id);
@@ -2050,6 +2062,39 @@ function Clients() {
             <option value="no_signup">Sin alta</option>
           </select>
         </label>
+        <label className="filter stage-month-filter">
+          <CalendarDays />
+          <select
+            value={stageMonth}
+            onChange={(event) => {
+              setStageMonth(event.target.value);
+              if (event.target.value !== "custom") setCustomStageMonth("");
+            }}
+          >
+            <option value="">Todos los meses</option>
+            <option value="1">Mes 1</option>
+            <option value="2">Mes 2</option>
+            <option value="3">Mes 3</option>
+            <option value="4">Mes 4</option>
+            <option value="5">Mes 5</option>
+            <option value="6">Mes 6</option>
+            <option value="custom">Otro mes…</option>
+          </select>
+        </label>
+        {stageMonth === "custom" && (
+          <label className="filter custom-stage-month">
+            <span>Mes</span>
+            <input
+              type="number"
+              min="7"
+              step="1"
+              value={customStageMonth}
+              onChange={(event) => setCustomStageMonth(event.target.value)}
+              placeholder="7 o más"
+              aria-label="Número de mes de la etapa"
+            />
+          </label>
+        )}
         <label className="filter acquisition-filter">
           <ChartNoAxesColumnIncreasing />
           <select
@@ -2062,12 +2107,14 @@ function Clients() {
             ))}
           </select>
         </label>
-        {(query || status || acquisition) && (
+        {(query || status || stageMonth || acquisition) && (
           <button
             className="text-btn"
             onClick={() => {
               setQuery("");
               setStatus("");
+              setStageMonth("");
+              setCustomStageMonth("");
               setAcquisition("");
             }}
           >
