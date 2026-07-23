@@ -357,13 +357,7 @@ function Dashboard({ goClients }) {
             type="button"
             className="metric metric-button"
             key={key}
-            onClick={() => {
-              if (key === "active_clients") {
-                goClients("active_no_signup");
-                return;
-              }
-              setSelectedMetric({ key, label });
-            }}
+            onClick={() => setSelectedMetric({ key, label })}
             aria-label={`Ver detalle de ${label}`}
           >
             <span className={color}>
@@ -498,7 +492,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
                 ) : metricKey === "new_clients_month" ? (
                   <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong></>
                 ) : metricKey === "active_clients" ? (
-                  <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong>{badge(item.service_stage)}</>
+                  <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong>{badge(item.status)}{badge(item.service_stage)}</>
                 ) : (
                   <><small>Etapa</small>{badge(item.service_stage)}{badge(item.status)}</>
                 )}
@@ -1976,10 +1970,10 @@ function DeleteClientModal({ client, onClose, onConfirm }) {
   );
 }
 
-function Clients({ initialStatus = "" }) {
+function Clients() {
   const [data, setData] = useState({ items: [], pagination: {} });
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState(initialStatus);
+  const [status, setStatus] = useState("");
   const [acquisition, setAcquisition] = useState("");
   const [stageMonth, setStageMonth] = useState("");
   const [customStageMonth, setCustomStageMonth] = useState("");
@@ -3404,7 +3398,6 @@ function Login({ onAuthenticated }) {
 }
 export default function App() {
   const [page, setPage] = useState("clients");
-  const [clientStatusFilter, setClientStatusFilter] = useState("");
   const [session, setSession] = useState(() => ({ checking: Boolean(getToken()), user: null }));
   useEffect(() => {
     const expire = () => setSession({ checking: false, user: null });
@@ -3420,19 +3413,12 @@ export default function App() {
   if (session.checking) return <div className="login-page"><Loading /></div>;
   if (!session.user) return <Login onAuthenticated={(user) => setSession({ checking: false, user })} />;
   const logout = () => { clearSession(); setSession({ checking: false, user: null }); };
-  const navigatePage = (nextPage) => {
-    if (nextPage === "clients") setClientStatusFilter("");
-    setPage(nextPage);
-  };
   return (
-    <Shell page={page} setPage={navigatePage} onLogout={logout}>
+    <Shell page={page} setPage={setPage} onLogout={logout}>
       {page === "dashboard" && (
-        <Dashboard goClients={(statusFilter = "") => {
-          setClientStatusFilter(statusFilter);
-          setPage("clients");
-        }} />
+        <Dashboard goClients={() => setPage("clients")} />
       )}{" "}
-      {page === "clients" && <Clients key={clientStatusFilter || "all"} initialStatus={clientStatusFilter} />}
+      {page === "clients" && <Clients />}
       {page === "agenda" && <Agenda />}
       {page === "payments" && <Payments />}
       {page === "expenses" && <Expenses />}
