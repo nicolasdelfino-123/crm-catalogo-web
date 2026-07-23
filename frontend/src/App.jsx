@@ -1260,6 +1260,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
   const [editingNote, setEditingNote] = useState(null);
   const [actionView, setActionView] = useState("pending");
   const [focusedActionId, setFocusedActionId] = useState(null);
+  const [paymentView, setPaymentView] = useState("all");
   const load = useCallback(
     () => api(`/clients/${clientId}`).then(setClient),
     [clientId],
@@ -1342,6 +1343,21 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
         </div>
       </div>
     );
+  const visiblePayments = client.payments.filter((payment) =>
+    paymentView === "all"
+      ? true
+      : paymentView === "extra_work"
+        ? payment.payment_type === "extra_work"
+        : payment.payment_type !== "extra_work",
+  );
+  const paidVisiblePayments = visiblePayments.filter(
+    (payment) => payment.status === "paid",
+  );
+  const paymentViewLabel = {
+    all: "Todos",
+    monthly: "Mensualidades",
+    extra_work: "Trabajos extra",
+  }[paymentView];
   const tabs = [
     ["summary", "Resumen"],
     ["actions", "Acciones"],
@@ -1569,22 +1585,35 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
               <div className="tab-head">
                 <h3>Historial de pagos</h3>
                 <div className="payment-add-buttons">
+                  <label className="payment-history-filter">
+                    <span>Mostrar</span>
+                    <select
+                      value={paymentView}
+                      onChange={(event) => {
+                        setPaymentView(event.target.value);
+                        setEditingPayment(null);
+                      }}
+                    >
+                      <option value="all">Todos</option>
+                      <option value="monthly">Mensualidades</option>
+                      <option value="extra_work">Trabajos extra</option>
+                    </select>
+                  </label>
                   <button className="secondary small" onClick={() => setAdding("payment")}><Plus size={16} />Registrar mensualidad</button>
                   <button className="secondary small" onClick={() => setAdding("extra_work")}><Plus size={16} />Registrar trabajo extra</button>
                 </div>
               </div>
               <div className="client-payment-totals">
                 {Object.entries(
-                  client.payments
-                    .filter((payment) => payment.status === "paid")
+                  paidVisiblePayments
                     .reduce((totals, payment) => ({
                       ...totals,
                       [payment.currency]: (totals[payment.currency] || 0) + payment.amount,
                     }), {}),
                 ).map(([currency, total]) => (
-                  <div key={currency}><small>Total cobrado · {currency}</small><strong>{fmtMoney(total, currency)}</strong></div>
+                  <div key={currency}><small>Total cobrado · {paymentViewLabel} · {currency}</small><strong>{fmtMoney(total, currency)}</strong></div>
                 ))}
-                {!client.payments.some((payment) => payment.status === "paid") && <span className="no-paid">Todavía no hay pagos completados.</span>}
+                {!paidVisiblePayments.length && <span className="no-paid">No hay cobros completados en “{paymentViewLabel}”.</span>}
               </div>
               {(adding === "payment" || adding === "extra_work") && (
                 <MiniForm
@@ -1599,7 +1628,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
                 />
               )}
               <div className="item-list">
-                {client.payments.map((p) => editingPayment === p.id ? (
+                {visiblePayments.map((p) => editingPayment === p.id ? (
                   <PaymentEditor key={p.id} payment={p} onCancel={() => setEditingPayment(null)} onSaved={() => { setEditingPayment(null); load(); onRefresh(); }} />
                 ) : (
                   <div className="list-item" key={p.id}>
@@ -1624,6 +1653,11 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
                     )}
                   </div>
                 ))}
+                {!visiblePayments.length && (
+                  <div className="payment-filter-empty">
+                    No hay pagos registrados en “{paymentViewLabel}”.
+                  </div>
+                )}
               </div>
             </>
           )}
