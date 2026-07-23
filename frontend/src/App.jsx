@@ -1987,13 +1987,13 @@ function Clients() {
   const selectedServiceStage = stageMonth === "custom"
     ? Number(customStageMonth) > 6 ? `month_${Number(customStageMonth)}` : ""
     : {
-        1: "first_month",
-        2: "second_month",
-        3: "third_month",
-        4: "month_4",
-        5: "month_5",
-        6: "month_6",
-      }[stageMonth] || "";
+      1: "first_month",
+      2: "second_month",
+      3: "third_month",
+      4: "month_4",
+      5: "month_5",
+      6: "month_6",
+    }[stageMonth] || "";
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -2068,12 +2068,12 @@ function Clients() {
           <SlidersHorizontal />
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Todos los estados</option>
+            <option value="no_signup">Sin alta</option>
             <option value="active_no_signup">Activos y sin alta</option>
             <option value="active">Activos</option>
             <option value="at_risk">En riesgo</option>
             <option value="paused">Pausados</option>
             <option value="cancelled">Cancelados</option>
-            <option value="no_signup">Sin alta</option>
           </select>
         </label>
         <label className="filter stage-month-filter">
@@ -2496,8 +2496,8 @@ function Agenda() {
         </div>
       ) : (
         <div className="agenda-list">
-        {sortedAgendaItems.map((a) => (
-          <AgendaItem key={a.id} action={a} onStatus={setAgendaStatus} onEdit={setEditingAgendaAction} onOpenClient={setSelectedAgendaClient} />
+          {sortedAgendaItems.map((a) => (
+            <AgendaItem key={a.id} action={a} onStatus={setAgendaStatus} onEdit={setEditingAgendaAction} onOpenClient={setSelectedAgendaClient} />
           ))}
         </div>
       )}
@@ -2619,38 +2619,38 @@ function AgendaNewAction({ undated, onClose, onSaved }) {
               </>
             ) : (
               <>
-            <label className="span-2">
-              Cliente
-              <select value={form.client_id} onChange={(event) => setForm({ ...form, client_id: event.target.value })} required>
-                <option value="">Elegí un cliente</option>
-                {clients.map((client) => <option value={client.id} key={client.id}>{client.name} · {client.business_name}</option>)}
-                <option value="__custom">PERSONALIZADO / SIN CLIENTE...</option>
-              </select>
-            </label>
-            {form.client_id === "__custom" && (
-              <label className="span-2">
-                ¿Para quién o para qué es?
-                <input value={form.custom_context} onChange={(event) => setForm({ ...form, custom_context: event.target.value })} placeholder="Ej.: proveedor, trámite, tarea interna..." required />
-              </label>
-            )}
-            <label className="span-2">
-              Acción
-              <select value={actionPreset} onChange={(event) => setActionPreset(event.target.value)} required>
-                <option value="">Elegí una acción</option>
-                {ACTION_PRESETS.map((preset) => <option value={preset} key={preset}>{preset}</option>)}
-                <option value="__custom">ACCIÓN PERSONALIZADA...</option>
-              </select>
-            </label>
-            {actionPreset === "__custom" && (
-              <label className="span-2">Nombre de la acción<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
-            )}
-            <label>Fecha<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>
-            <label>
-              Prioridad
-              <select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}>
-                <option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option>
-              </select>
-            </label>
+                <label className="span-2">
+                  Cliente
+                  <select value={form.client_id} onChange={(event) => setForm({ ...form, client_id: event.target.value })} required>
+                    <option value="">Elegí un cliente</option>
+                    {clients.map((client) => <option value={client.id} key={client.id}>{client.name} · {client.business_name}</option>)}
+                    <option value="__custom">PERSONALIZADO / SIN CLIENTE...</option>
+                  </select>
+                </label>
+                {form.client_id === "__custom" && (
+                  <label className="span-2">
+                    ¿Para quién o para qué es?
+                    <input value={form.custom_context} onChange={(event) => setForm({ ...form, custom_context: event.target.value })} placeholder="Ej.: proveedor, trámite, tarea interna..." required />
+                  </label>
+                )}
+                <label className="span-2">
+                  Acción
+                  <select value={actionPreset} onChange={(event) => setActionPreset(event.target.value)} required>
+                    <option value="">Elegí una acción</option>
+                    {ACTION_PRESETS.map((preset) => <option value={preset} key={preset}>{preset}</option>)}
+                    <option value="__custom">ACCIÓN PERSONALIZADA...</option>
+                  </select>
+                </label>
+                {actionPreset === "__custom" && (
+                  <label className="span-2">Nombre de la acción<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
+                )}
+                <label>Fecha<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>
+                <label>
+                  Prioridad
+                  <select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}>
+                    <option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option>
+                  </select>
+                </label>
               </>
             )}
           </div>
@@ -2719,42 +2719,42 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
 function AgendaItem({ action: a, onStatus, onEdit, onOpenClient }) {
   const openClient = () => a.client_id && onOpenClient(a.client_id);
   return (
-          <article
-            key={a.id}
-            className={a.client_id ? "clickable-action" : ""}
-            onClick={openClient}
-            role={a.client_id ? "button" : undefined}
-            tabIndex={a.client_id ? 0 : undefined}
-            onKeyDown={(event) => {
-              if (a.client_id && (event.key === "Enter" || event.key === " ")) {
-                event.preventDefault();
-                openClient();
-              }
-            }}
-          >
+    <article
+      key={a.id}
+      className={a.client_id ? "clickable-action" : ""}
+      onClick={openClient}
+      role={a.client_id ? "button" : undefined}
+      tabIndex={a.client_id ? 0 : undefined}
+      onKeyDown={(event) => {
+        if (a.client_id && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          openClient();
+        }
+      }}
+    >
       <div className={`priority ${a.priority}`} />
-            <div>
-              <time>{fmtDate(a.due_date)}</time>
-              <h3>{a.title}</h3>
-              {a.client_id && <p>{a.client_name} · {a.business_name}</p>}
-              {(a.description || !a.client_id || a.projected) && (
-                <p>{a.description || `${a.client_name} · ${a.business_name}`}{a.projected ? " · Cobro previsto" : ""}</p>
-              )}
-            </div>
-            {badge(a.status)}
-            {!a.projected && <IconButton label={`Editar ${a.title}`} onClick={(event) => { event.stopPropagation(); onEdit(a); }}><Edit3 /></IconButton>}
-            {a.status !== "completed" && !a.projected && (
+      <div>
+        <time>{fmtDate(a.due_date)}</time>
+        <h3>{a.title}</h3>
+        {a.client_id && <p>{a.client_name} · {a.business_name}</p>}
+        {(a.description || !a.client_id || a.projected) && (
+          <p>{a.description || `${a.client_name} · ${a.business_name}`}{a.projected ? " · Cobro previsto" : ""}</p>
+        )}
+      </div>
+      {badge(a.status)}
+      {!a.projected && <IconButton label={`Editar ${a.title}`} onClick={(event) => { event.stopPropagation(); onEdit(a); }}><Edit3 /></IconButton>}
+      {a.status !== "completed" && !a.projected && (
         <button
           className="secondary small"
-                onClick={(event) => { event.stopPropagation(); onStatus(a, "completed"); }}
+          onClick={(event) => { event.stopPropagation(); onStatus(a, "completed"); }}
         >
           <Check size={16} />
           Completar
         </button>
       )}
-            {a.status === "completed" && !a.projected && (
-              <button className="secondary small" onClick={(event) => { event.stopPropagation(); onStatus(a, "pending"); }}><RotateCcw size={16} />Reabrir</button>
-            )}
+      {a.status === "completed" && !a.projected && (
+        <button className="secondary small" onClick={(event) => { event.stopPropagation(); onStatus(a, "pending"); }}><RotateCcw size={16} />Reabrir</button>
+      )}
     </article>
   );
 }
