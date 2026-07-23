@@ -3200,7 +3200,22 @@ function Payments() {
           </thead>
           <tbody>
             {sortedItems.map((p) => (
-              <tr key={p.id}>
+              <tr
+                key={p.id}
+                className="clickable-payment-row"
+                tabIndex={0}
+                role="button"
+                onClick={() => openClientPayments(p.client_id)}
+                onKeyDown={(event) => {
+                  if (
+                    event.target === event.currentTarget &&
+                    (event.key === "Enter" || event.key === " ")
+                  ) {
+                    event.preventDefault();
+                    openClientPayments(p.client_id);
+                  }
+                }}
+              >
                 <td>
                   <strong>{p.client_name}</strong>
                 </td>
@@ -3210,7 +3225,7 @@ function Payments() {
                 <td>{LABEL[p.payment_type] || p.payment_type}</td>
                 <td>{fmtDate(p.due_date)}</td>
                 <td>{badge(p.status)}</td>
-                <td className="payment-actions">
+                <td className="payment-actions" onClick={(event) => event.stopPropagation()}>
                   <IconButton label="Editar pago" onClick={() => setEditing(p)}><Edit3 /></IconButton>
                   <IconButton label="Eliminar pago" onClick={() => removePayment(p)}><Trash2 /></IconButton>
                   {p.status !== "paid" ? <button className="text-btn complete" onClick={() => setPaymentStatus(p.id, "paid")}><Check />Pagado</button> : <button className="text-btn" onClick={() => setPaymentStatus(p.id, "pending")}><RotateCcw />Reabrir</button>}
@@ -3236,7 +3251,7 @@ function Payments() {
             {summaryDetail.items.length && summaryDetail.kind === "payments" ? (
               <div className="table-wrap summary-payments-table"><table><thead><tr><th>Cliente</th><th>Importe</th><th>Concepto</th><th>Vencimiento</th><th>Fecha de pago</th><th>Estado</th><th>Acción</th></tr></thead><tbody>{summaryDetail.items.map((payment) => <tr key={payment.id} className="clickable-payment-row" tabIndex={0} role="button" onClick={() => openClientPayments(payment.client_id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openClientPayments(payment.client_id); } }}><td><button type="button" className="client-link" onClick={(event) => { event.stopPropagation(); openClientPayments(payment.client_id); }}>{payment.client_name}</button></td><td><strong>{fmtMoney(payment.amount, payment.currency)}</strong></td><td>{LABEL[payment.payment_type] || payment.payment_type}</td><td>{fmtDate(payment.due_date)}</td><td>{payment.paid_at ? fmtDate(payment.paid_at) : "Todavía no pagado"}</td><td>{badge(payment.status)}</td><td>{payment.status !== "paid" ? <button className="text-btn complete" onClick={(event) => { event.stopPropagation(); setPaymentStatus(payment.id, "paid"); }}><Check size={16} />Marcar pagado</button> : <span>Pagado</span>}</td></tr>)}</tbody></table></div>
             ) : summaryDetail.items.length ? (
-              <div className="table-wrap summary-payments-table forecast-detail-table"><table><thead><tr><th>Cliente</th><th>Negocio</th><th>Estado</th><th>Mensualidad</th></tr></thead><tbody>{summaryDetail.items.map((client) => <tr key={client.id}><td><strong>{client.name}</strong></td><td>{client.business_name}</td><td>{badge(client.status)}</td><td><strong>{client.amount > 0 ? fmtMoney(client.amount, client.currency) : "Sin monto configurado"}</strong></td></tr>)}</tbody></table></div>
+              <div className="table-wrap summary-payments-table forecast-detail-table"><table><thead><tr><th>Cliente</th><th>Negocio</th><th>Estado</th><th>Mensualidad</th></tr></thead><tbody>{summaryDetail.items.map((client) => <tr key={client.id} className="clickable-payment-row" tabIndex={0} role="button" onClick={() => openClientPayments(client.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openClientPayments(client.id); } }}><td><button type="button" className="client-link" onClick={(event) => { event.stopPropagation(); openClientPayments(client.id); }}>{client.name}</button></td><td>{client.business_name}</td><td>{badge(client.status)}</td><td><strong>{client.amount > 0 ? fmtMoney(client.amount, client.currency) : "Sin monto configurado"}</strong></td></tr>)}</tbody></table></div>
             ) : <div className="summary-payment-empty">Este total no contiene registros.</div>}
           </div>
         </div>
