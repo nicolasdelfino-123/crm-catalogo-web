@@ -314,7 +314,9 @@ def clients_list():
         query = query.filter(or_(Client.name.ilike(term), Client.business_name.ilike(term), Client.instagram_username.ilike(term), Client.email.ilike(term)))
     requested_status = request.args.get("status")
     if requested_status == "active_no_signup":
-        query = query.filter(Client.status.in_(("active", "no_signup")))
+        query = query.filter(Client.status.in_(("active", "at_risk", "no_signup")))
+    elif requested_status == "active":
+        query = query.filter(Client.status.in_(("active", "at_risk")))
     elif requested_status:
         query = query.filter(Client.status == requested_status)
     for field in ["service_stage", "country", "currency", "acquisition_source"]:

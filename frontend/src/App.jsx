@@ -2072,7 +2072,6 @@ function Clients() {
             <option value="active_no_signup">Activos y sin alta</option>
             <option value="active">Activos</option>
             <option value="at_risk">En riesgo</option>
-            <option value="paused">Pausados</option>
             <option value="cancelled">Cancelados</option>
           </select>
         </label>

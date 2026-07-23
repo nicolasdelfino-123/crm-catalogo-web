@@ -211,14 +211,34 @@ def test_clients_can_be_filtered_by_cancelled_status(client):
 
 
 def test_clients_can_be_filtered_by_active_and_no_signup(client):
-    for name, status in [("Cliente activo", "active"), ("Cliente sin alta", "no_signup"), ("Cliente pausado", "paused")]:
+    for name, status in [
+        ("Cliente activo", "active"),
+        ("Cliente en riesgo", "at_risk"),
+        ("Cliente sin alta", "no_signup"),
+        ("Cliente pausado", "paused"),
+    ]:
         client.post("/api/clients", json={
             "name": name, "business_name": name, "signup_date": "2026-07-01",
             "country": "Argentina", "currency": "ARS", "status": status,
         })
     filtered = client.get("/api/clients?status=active_no_signup").get_json()["data"]
+    assert filtered["pagination"]["total"] == 3
+    assert {item["status"] for item in filtered["items"]} == {"active", "at_risk", "no_signup"}
+
+
+def test_active_client_filter_includes_at_risk_clients(client):
+    for name, status in [
+        ("Cliente activo", "active"),
+        ("Cliente en riesgo", "at_risk"),
+        ("Cliente pausado", "paused"),
+    ]:
+        client.post("/api/clients", json={
+            "name": name, "business_name": name, "signup_date": "2026-07-01",
+            "country": "Argentina", "currency": "ARS", "status": status,
+        })
+    filtered = client.get("/api/clients?status=active").get_json()["data"]
     assert filtered["pagination"]["total"] == 2
-    assert {item["status"] for item in filtered["items"]} == {"active", "no_signup"}
+    assert {item["status"] for item in filtered["items"]} == {"active", "at_risk"}
 
 
 def test_monthly_forecast_includes_only_billable_client_statuses(client):
