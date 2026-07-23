@@ -984,6 +984,7 @@ def acquisition_summary():
                     "signup_date": iso(client.signup_date),
                     "city": client.city,
                     "country": client.country,
+                    "website_url": client.website_url,
                     "instagram_username": client.instagram_username,
                     "email": client.email,
                     "phone": client.phone,

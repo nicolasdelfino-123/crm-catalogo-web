@@ -144,6 +144,10 @@ const acquisitionLabel = (value) => {
 const instagramUrl = (value) => value
   ? `https://www.instagram.com/${value.trim().replace(/^@/, "")}/`
   : null;
+const externalUrl = (value) => {
+  if (!value) return null;
+  return /^https?:\/\//i.test(value.trim()) ? value.trim() : `https://${value.trim()}`;
+};
 const fmtDate = (value) =>
   value
     ? new Intl.DateTimeFormat("es-AR", {
@@ -1890,10 +1894,20 @@ function AcquisitionModal({ onClose }) {
                               <span>{[client.city, client.country].filter(Boolean).join(", ") || "Sin ubicación"}</span>
                             </div>
                             <div className="acquisition-contact">
-                              {client.instagram_username && <a className="instagram-link" href={instagramUrl(client.instagram_username)} target="_blank" rel="noreferrer">{client.instagram_username}<ExternalLink size={11} /></a>}
+                              {client.website_url ? (
+                                <a className="instagram-link" href={externalUrl(client.website_url)} target="_blank" rel="noreferrer">
+                                  {client.website_url}
+                                  <ExternalLink size={11} />
+                                </a>
+                              ) : client.instagram_username ? (
+                                <a className="instagram-link" href={instagramUrl(client.instagram_username)} target="_blank" rel="noreferrer">
+                                  {client.instagram_username}
+                                  <ExternalLink size={11} />
+                                </a>
+                              ) : null}
                               {client.phone && <span>{client.phone}</span>}
                               {client.email && <span>{client.email}</span>}
-                              {!client.instagram_username && !client.phone && !client.email && <span>Sin contacto registrado</span>}
+                              {!client.website_url && !client.instagram_username && !client.phone && !client.email && <span>Sin contacto registrado</span>}
                             </div>
                           </div>
                         ))}
