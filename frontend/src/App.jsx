@@ -1248,6 +1248,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
   const [editingMetric, setEditingMetric] = useState(null);
   const [editingNote, setEditingNote] = useState(null);
   const [actionView, setActionView] = useState("pending");
+  const [focusedActionId, setFocusedActionId] = useState(null);
   const load = useCallback(
     () => api(`/clients/${clientId}`).then(setClient),
     [clientId],
@@ -1262,6 +1263,23 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
       window.removeEventListener("keydown", esc);
     };
   }, [load, onClose]);
+  useEffect(() => {
+    if (tab !== "actions" || !focusedActionId) return;
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById(`client-action-${focusedActionId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [tab, actionView, focusedActionId]);
+  function openAction(actionId) {
+    if (!actionId) return;
+    setAdding(null);
+    setEditingAction(null);
+    setActionView("pending");
+    setFocusedActionId(actionId);
+    setTab("actions");
+  }
   async function patchAction(id, status) {
     await api(`/actions/${id}`, {
       method: "PATCH",
@@ -1362,19 +1380,41 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
             <span>Próximo vencimiento</span>
           </div>
           <EditableMonthlyAmount client={client} onSave={patchClient} />
-          <div>
-            <small>Próxima acción</small>
-            <strong>{client.next_action?.title || "Sin pendientes"}</strong>
-            <span>{fmtDate(client.next_action?.due_date)}</span>
+          <div className="quick-action-stat">
+            <button
+              type="button"
+              onClick={() => openAction(client.next_action?.id)}
+              disabled={!client.next_action}
+              aria-label={client.next_action ? `Ver próxima acción: ${client.next_action.title}` : "No hay acciones pendientes"}
+            >
+              <small>Próxima acción</small>
+              <strong>{client.next_action?.title || "Sin pendientes"}</strong>
+              <span>{fmtDate(client.next_action?.due_date)}</span>
+            </button>
           </div>
-          <div className={client.overdue_actions_count ? "danger" : ""}>
-            <small>Acciones vencidas</small>
-            <strong>{client.overdue_actions_count}</strong>
-            <span>
-              {client.overdue_actions_count
-                ? "Requiere atención"
-                : "Todo al día"}
-            </span>
+          <div className={`quick-action-stat ${client.overdue_actions_count ? "danger" : ""}`}>
+            <button
+              type="button"
+              onClick={() => {
+                const overdue = client.actions.find(
+                  (action) =>
+                    ["pending", "in_progress"].includes(action.status) &&
+                    action.due_date &&
+                    new Date(action.due_date) < new Date(),
+                );
+                openAction(overdue?.id);
+              }}
+              disabled={!client.overdue_actions_count}
+              aria-label={client.overdue_actions_count ? `Ver ${client.overdue_actions_count} acciones vencidas` : "No hay acciones vencidas"}
+            >
+              <small>Acciones vencidas</small>
+              <strong>{client.overdue_actions_count}</strong>
+              <span>
+                {client.overdue_actions_count
+                  ? "Requiere atención"
+                  : "Todo al día"}
+              </span>
+            </button>
           </div>
         </div>
         <div className="tabs" role="tablist">
@@ -1385,6 +1425,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
                 setTab(id);
                 setAdding(null);
                 setEditingAction(null);
+                setFocusedActionId(null);
               }}
               key={id}
             >
@@ -1451,7 +1492,8 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
                       />
                     ) : (
                       <div
-                        className={`list-item ${a.status === "pending" && a.due_date && new Date(a.due_date) < new Date() ? "overdue" : ""} ${a.status === "cancelled" ? "cancelled-action" : ""}`}
+                        id={`client-action-${a.id}`}
+                        className={`list-item ${["pending", "in_progress"].includes(a.status) && a.due_date && new Date(a.due_date) < new Date() ? "overdue" : ""} ${a.status === "cancelled" ? "cancelled-action" : ""} ${focusedActionId === a.id ? "focused-action" : ""}`}
                         key={a.id}
                       >
                         <span className="item-check">
