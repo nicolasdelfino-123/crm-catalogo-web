@@ -338,6 +338,7 @@ function Dashboard({ goClients }) {
     ["overdue_actions", "Acciones vencidas", data.overdue_actions, AlertTriangle, "red"],
     ["renewals_week", "Renuevan esta semana", data.renewals_week, CalendarDays, "violet"],
     ["new_clients_month", "Altas del mes", data.new_clients_month, TrendingUp, "green"],
+    ["sold_clients_month", "Ventas del mes", data.sold_clients_month, ReceiptText, "amber"],
   ];
   return (
     <section className="page">
@@ -400,6 +401,7 @@ function Dashboard({ goClients }) {
 
 function DashboardMetricModal({ title, metricKey, items, onClose }) {
   const actionMetric = metricKey === "pending_actions" || metricKey === "overdue_actions";
+  const monthlyClientMetric = metricKey === "new_clients_month" || metricKey === "sold_clients_month";
   const [dateOrder, setDateOrder] = useState(metricKey === "active_clients" ? "desc" : "asc");
   const [activeStatusFilter, setActiveStatusFilter] = useState("active_no_signup");
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -411,12 +413,15 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
     if (!month) return;
     setLoadingMonth(true);
     try {
-      setMonthlyItems(await api(`/dashboard/new-clients?month=${month}`));
+      const endpoint = metricKey === "sold_clients_month"
+        ? "/dashboard/sold-clients"
+        : "/dashboard/new-clients";
+      setMonthlyItems(await api(`${endpoint}?month=${month}`));
     } finally {
       setLoadingMonth(false);
     }
   }
-  const sourceItems = metricKey === "new_clients_month" ? monthlyItems : items;
+  const sourceItems = monthlyClientMetric ? monthlyItems : items;
   const filteredSourceItems = metricKey === "active_clients"
     ? sourceItems.filter((item) => {
         if (activeStatusFilter === "active") {
@@ -459,10 +464,10 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
           <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
         </div>
         <div className="dashboard-metric-list">
-          {metricKey === "new_clients_month" && (
+          {monthlyClientMetric && (
             <div className="dashboard-month-filter">
               <label>
-                Ver altas del mes
+                {metricKey === "sold_clients_month" ? "Ver ventas del mes" : "Ver altas del mes"}
                 <input
                   type="month"
                   value={selectedMonth}
@@ -520,6 +525,8 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
                   <><small>Renovación</small><strong>{fmtDate(item.next_renewal_date)}</strong></>
                 ) : metricKey === "new_clients_month" ? (
                   <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong></>
+                ) : metricKey === "sold_clients_month" ? (
+                  <><small>Fecha de venta</small><strong>{fmtDate(item.sale_date)}</strong>{badge(item.status)}</>
                 ) : metricKey === "active_clients" ? (
                   <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong>{badge(item.status)}{badge(item.service_stage)}</>
                 ) : (
@@ -540,6 +547,7 @@ function ClientForm({ client, onClose, onSaved }) {
   const initial = client || {
     name: "",
     business_name: "",
+    sale_date: new Date().toISOString().slice(0, 10),
     signup_date: new Date().toISOString().slice(0, 10),
     next_renewal_date: "",
     country: "Argentina",
@@ -683,6 +691,15 @@ function ClientForm({ client, onClose, onSaved }) {
           <fieldset>
             <legend>Servicio y cobro</legend>
             <div className="form-grid">
+              <label>
+                Fecha de venta
+                <input
+                  type="date"
+                  name="sale_date"
+                  value={form.sale_date || ""}
+                  onChange={change}
+                />
+              </label>
               <label>
                 {form.status === "no_signup" ? "Fecha de alta" : "Fecha de alta *"}
                 {form.status === "no_signup" ? (

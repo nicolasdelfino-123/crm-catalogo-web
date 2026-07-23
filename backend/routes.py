@@ -213,7 +213,7 @@ def apply_client(client, data):
     for field in text_fields:
         if field in data:
             setattr(client, field, data[field] or None)
-    for field in ["signup_date", "next_renewal_date"]:
+    for field in ["sale_date", "signup_date", "next_renewal_date"]:
         if field in data:
             setattr(client, field, parse_date(data[field]))
     if "signup_date" in data and client.signup_date and not data.get("next_renewal_date"):
@@ -927,12 +927,15 @@ def dashboard():
     overdue_payments = [p for p in payments if p.payment_type == "monthly" and p.status in ("pending", "partial", "overdue") and p.due_date and p.due_date < today]
     overdue_actions = [a for a in pending_actions if a.due_date and a.due_date < today]
     renewals_week = [c for c in clients if c.next_renewal_date and today <= c.next_renewal_date <= today + timedelta(days=7)]
-    new_clients_month = [c for c in clients if c.signup_date >= month_start]
+    next_month_start = add_calendar_months(month_start, 1)
+    new_clients_month = [c for c in clients if month_start <= c.signup_date < next_month_start]
+    sold_clients_month = [c for c in clients if c.sale_date and month_start <= c.sale_date < next_month_start]
 
     def client_item(client):
         return {
             "id": client.id, "name": client.name, "business_name": client.business_name,
             "status": client.status, "service_stage": client.service_stage,
+            "sale_date": iso(client.sale_date),
             "signup_date": client.signup_date.isoformat() if client.signup_date else None,
             "next_renewal_date": client.next_renewal_date.isoformat() if client.next_renewal_date else None,
         }
@@ -949,6 +952,7 @@ def dashboard():
         "active_clients": len(active_clients), "at_risk_clients": len(at_risk_clients),
         "pending_actions": len(pending_actions) + len(overdue_payments), "overdue_actions": len(overdue_actions) + len(overdue_payments),
         "renewals_week": len(renewals_week), "new_clients_month": len(new_clients_month),
+        "sold_clients_month": len(sold_clients_month),
         "collected": money,
         "details": {
             "active_clients": [client_item(c) for c in active_clients],
@@ -957,6 +961,7 @@ def dashboard():
             "overdue_actions": [action_item(a) for a in overdue_actions] + [payment_collection_item(p) for p in overdue_payments],
             "renewals_week": [client_item(c) for c in renewals_week],
             "new_clients_month": [client_item(c) for c in new_clients_month],
+            "sold_clients_month": [client_item(c) for c in sold_clients_month],
         },
     }
     return ok(data)
@@ -1023,6 +1028,33 @@ def new_clients_by_month():
             "service_stage": client.service_stage,
             "signup_date": iso(client.signup_date),
             "next_renewal_date": iso(client.next_renewal_date),
+        }
+        for client in clients
+    ])
+
+
+@api.get("/dashboard/sold-clients")
+def sold_clients_by_month():
+    month = request.args.get("month", date.today().strftime("%Y-%m"))
+    try:
+        month_start = date.fromisoformat(f"{month}-01")
+    except ValueError:
+        return error("El mes debe tener el formato AAAA-MM", 422)
+    month_end = add_calendar_months(month_start, 1)
+    clients = Client.query.filter(
+        Client.archived_at.is_(None),
+        Client.sale_date >= month_start,
+        Client.sale_date < month_end,
+    ).order_by(Client.sale_date.desc(), Client.name.asc()).all()
+    return ok([
+        {
+            "id": client.id,
+            "name": client.name,
+            "business_name": client.business_name,
+            "status": client.status,
+            "service_stage": client.service_stage,
+            "sale_date": iso(client.sale_date),
+            "signup_date": iso(client.signup_date),
         }
         for client in clients
     ])

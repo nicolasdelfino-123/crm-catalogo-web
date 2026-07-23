@@ -37,6 +37,7 @@ class Client(db.Model):
     acquisition_source = db.Column(db.String(60), index=True)
     currency = db.Column(db.String(8), nullable=False, default="ARS")
     payment_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    sale_date = db.Column(db.Date, index=True)
     signup_date = db.Column(db.Date, nullable=False, default=date.today, index=True)
     next_renewal_date = db.Column(db.Date, index=True)
     status = db.Column(db.String(30), nullable=False, default="active", index=True)
@@ -77,7 +78,7 @@ class Client(db.Model):
         return {
             "id": self.id, "name": self.name, "business_name": self.business_name,
             "country": self.country, "city": self.city, "acquisition_source": self.acquisition_source, "currency": self.currency,
-            "payment_amount": float(self.payment_amount or 0), "signup_date": iso(self.signup_date),
+            "payment_amount": float(self.payment_amount or 0), "sale_date": iso(self.sale_date), "signup_date": iso(self.signup_date),
             "next_renewal_date": iso(self.next_renewal_date), "status": self.status,
             "service_stage": self.service_stage, "link_in_bio_status": self.link_in_bio_status,
             "story_status": self.story_status or "no",

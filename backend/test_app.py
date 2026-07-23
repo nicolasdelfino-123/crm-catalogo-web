@@ -340,6 +340,28 @@ def test_new_clients_can_be_filtered_by_month(client):
     assert client.get("/api/dashboard/new-clients?month=junio").status_code == 422
 
 
+def test_sold_clients_use_sale_date_instead_of_signup_date(client):
+    created = client.post("/api/clients", json={
+        "name": "Cliente vendido en junio",
+        "business_name": "Venta junio alta julio",
+        "sale_date": "2026-06-29",
+        "signup_date": "2026-07-05",
+        "country": "Argentina",
+        "currency": "ARS",
+    })
+    assert created.status_code == 201
+    assert created.get_json()["data"]["sale_date"] == "2026-06-29"
+
+    june_sales = client.get("/api/dashboard/sold-clients?month=2026-06")
+    july_sales = client.get("/api/dashboard/sold-clients?month=2026-07")
+    july_signups = client.get("/api/dashboard/new-clients?month=2026-07")
+
+    assert [item["name"] for item in june_sales.get_json()["data"]] == ["Cliente vendido en junio"]
+    assert july_sales.get_json()["data"] == []
+    assert [item["name"] for item in july_signups.get_json()["data"]] == ["Cliente vendido en junio"]
+    assert client.get("/api/dashboard/sold-clients?month=junio").status_code == 422
+
+
 def test_operational_statuses(client):
     created = client.post("/api/clients", json={
         "name": "Cliente Operativo", "business_name": "Marca Operativa",

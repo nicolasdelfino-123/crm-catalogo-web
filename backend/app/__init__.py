@@ -101,6 +101,9 @@ def create_app(test_config=None):
                 db.session.execute(text("ALTER TABLE standalone_action ADD COLUMN description TEXT"))
                 db.session.commit()
         columns = {column["name"] for column in inspect(db.engine).get_columns("client")}
+        if "sale_date" not in columns:
+            db.session.execute(text("ALTER TABLE client ADD COLUMN sale_date DATE"))
+            db.session.commit()
         if "acquisition_source" not in columns:
             db.session.execute(text("ALTER TABLE client ADD COLUMN acquisition_source VARCHAR(60)"))
             db.session.commit()
