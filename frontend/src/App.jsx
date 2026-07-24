@@ -1912,6 +1912,19 @@ function Summary({ client, onUpdate, onEdit }) {
             {client.website_url}
           </a>
         )}
+        <div className="info-row">
+          <Server />
+          <span>
+            <small>VPS</small>
+            <strong>
+              {client.vps_name === "vape"
+                ? "VPS Vape"
+                : client.vps_name === "shatha"
+                  ? "VPS Shatha"
+                  : "Sin asignar"}
+            </strong>
+          </span>
+        </div>
       </section>
       <section>
         <h3>Estado operativo</h3>

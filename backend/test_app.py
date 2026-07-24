@@ -106,6 +106,7 @@ def test_vps_assignments_support_clients_and_custom_apps(client):
     assigned = client.post("/api/vps", json={"vps_name": "vape", "client_id": customer["id"]})
     assert assigned.status_code == 201
     assignment_id = assigned.get_json()["data"]["id"]
+    assert client.get(f'/api/clients/{customer["id"]}').get_json()["data"]["vps_name"] == "vape"
     custom = client.post("/api/vps", json={
         "vps_name": "shatha", "custom_name": "Aplicación interna",
     })
@@ -115,10 +116,12 @@ def test_vps_assignments_support_clients_and_custom_apps(client):
     assert duplicate.status_code == 422
     moved = client.patch(f"/api/vps/{assignment_id}", json={"vps_name": "shatha"})
     assert moved.status_code == 200
+    assert client.get(f'/api/clients/{customer["id"]}').get_json()["data"]["vps_name"] == "shatha"
     listed = client.get("/api/vps").get_json()["data"]
     assert listed["counts"] == {"vape": 0, "shatha": 2}
     assert {item["name"] for item in listed["items"]} == {"Cliente VPS", "Aplicación interna"}
     assert client.delete(f"/api/vps/{assignment_id}").status_code == 200
+    assert client.get(f'/api/clients/{customer["id"]}').get_json()["data"]["vps_name"] is None
 
 
 def test_login_and_protected_api():

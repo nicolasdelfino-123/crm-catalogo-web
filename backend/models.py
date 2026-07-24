@@ -69,6 +69,13 @@ class Client(db.Model):
     metrics = db.relationship("ClientMetric", backref="client", cascade="all, delete-orphan", lazy=True)
     notes = db.relationship("ClientNote", backref="client", cascade="all, delete-orphan", lazy=True)
     credential = db.relationship("ClientCredential", backref="client", cascade="all, delete-orphan", uselist=False, lazy=True)
+    vps_assignment = db.relationship(
+        "VpsAssignment",
+        back_populates="client",
+        cascade="all, delete-orphan",
+        uselist=False,
+        lazy=True,
+    )
 
     def summary(self):
         today = date.today()
@@ -107,6 +114,7 @@ class Client(db.Model):
             "active_products_count": self.active_products_count or 0,
             "domain_purchased_status": self.domain_purchased_status,
             "web_sales_count": self.web_sales_count or 0,
+            "vps_name": self.vps_assignment.vps_name if self.vps_assignment else None,
             "notes_summary": self.notes_summary,
             "actions": [a.to_dict() for a in sorted(self.actions, key=lambda x: x.due_date or date.max)],
             "payments": [p.to_dict() for p in sorted(self.payments, key=lambda x: x.due_date or date.min, reverse=True)],
@@ -205,7 +213,7 @@ class VpsAssignment(db.Model):
     client_id = db.Column(db.Integer, db.ForeignKey("client.id"), unique=True, index=True)
     custom_name = db.Column(db.String(180))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    client = db.relationship("Client")
+    client = db.relationship("Client", back_populates="vps_assignment")
 
     def to_dict(self):
         return {
