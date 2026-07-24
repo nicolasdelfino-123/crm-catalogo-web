@@ -157,9 +157,17 @@ const fmtDate = (value) =>
       timeZone: "UTC",
     }).format(new Date(`${value.slice(0, 10)}T12:00:00Z`))
     : "Sin fecha";
-const fmtMonth = (value) => value
-  ? new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${value.slice(0, 7)}-01T12:00:00Z`))
-  : "Sin mes";
+const fmtMonth = (value) => {
+  if (value === "all") return "Todos los meses";
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(value || "")) return "Sin mes";
+  const parsed = new Date(`${value}-01T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return "Sin mes";
+  return new Intl.DateTimeFormat("es-AR", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(parsed);
+};
 const billingDay = (value) => value ? Number(value.slice(8, 10)) : 32;
 const fmtMoney = (value, currency = "ARS") =>
   new Intl.NumberFormat("es-AR", {
