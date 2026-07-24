@@ -340,6 +340,7 @@ function Dashboard({ goClients }) {
   const [incomeMonth, setIncomeMonth] = useState(new Date().toISOString().slice(0, 7));
   const [incomeType, setIncomeType] = useState("all");
   const [incomeTotals, setIncomeTotals] = useState({ ARS: 0, USD: 0 });
+  const [incomeMonths, setIncomeMonths] = useState([]);
   const [incomeLoading, setIncomeLoading] = useState(true);
   useEffect(() => {
     api("/dashboard/summary").then(setData);
@@ -348,7 +349,10 @@ function Dashboard({ goClients }) {
     let active = true;
     api(`/dashboard/income?month=${incomeMonth}&payment_type=${incomeType}`)
       .then((result) => {
-        if (active) setIncomeTotals(result.totals);
+        if (active) {
+          setIncomeTotals(result.totals);
+          setIncomeMonths(result.available_months || []);
+        }
       })
       .finally(() => {
         if (active) setIncomeLoading(false);
@@ -398,7 +402,9 @@ function Dashboard({ goClients }) {
       </div>
       <div className="dashboard-band">
         <div className="dashboard-income-copy">
-          <span className="eyebrow">Cobrado en {fmtMonth(incomeMonth)}</span>
+          <span className="eyebrow">
+            {incomeMonth === "all" ? "Cobrado en todos los meses" : `Cobrado en ${fmtMonth(incomeMonth)}`}
+          </span>
           <h3>Ingresos separados por moneda</h3>
           <p>
             {incomeType === "monthly"
@@ -411,15 +417,23 @@ function Dashboard({ goClients }) {
         <div className="dashboard-income-controls">
           <label>
             Mes
-            <input
-              type="month"
+            <select
               value={incomeMonth}
               onChange={(event) => {
-                if (!event.target.value) return;
                 setIncomeLoading(true);
                 setIncomeMonth(event.target.value);
               }}
-            />
+            >
+              <option value="all">Todos los meses</option>
+              {!incomeMonths.includes(new Date().toISOString().slice(0, 7)) && (
+                <option value={new Date().toISOString().slice(0, 7)}>
+                  {fmtMonth(new Date().toISOString().slice(0, 7))}
+                </option>
+              )}
+              {incomeMonths.map((month) => (
+                <option value={month} key={month}>{fmtMonth(month)}</option>
+              ))}
+            </select>
           </label>
           <label>
             Tipo de ingreso

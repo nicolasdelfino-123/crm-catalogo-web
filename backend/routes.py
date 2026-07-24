@@ -973,26 +973,36 @@ def dashboard_income():
     payment_type = request.args.get("payment_type", "all")
     if payment_type not in {"all", "monthly", "extra_work"}:
         return error("El tipo de pago debe ser all, monthly o extra_work", 422)
-    try:
-        month_start = date.fromisoformat(f"{month}-01")
-    except ValueError:
-        return error("El mes debe tener el formato AAAA-MM", 422)
-    month_end = add_calendar_months(month_start, 1)
-    start_at = datetime.combine(month_start, datetime.min.time())
-    end_at = datetime.combine(month_end, datetime.min.time())
-    query = Payment.query.filter(
-        Payment.status == "paid",
-        Payment.paid_at >= start_at,
-        Payment.paid_at < end_at,
-    )
+    month_start = month_end = None
+    if month != "all":
+        try:
+            month_start = date.fromisoformat(f"{month}-01")
+        except ValueError:
+            return error("El mes debe tener el formato AAAA-MM o ser all", 422)
+        month_end = add_calendar_months(month_start, 1)
+    query = Payment.query.filter(Payment.status == "paid")
     if payment_type == "monthly":
         query = query.filter(Payment.payment_type == "monthly")
     elif payment_type == "extra_work":
         query = query.filter(Payment.payment_type == "extra_work")
     totals = {"ARS": 0, "USD": 0}
-    for payment in query.all():
+    paid_payments = query.all()
+    available_months = sorted({
+        (payment.due_date or (payment.paid_at.date() if payment.paid_at else None)).strftime("%Y-%m")
+        for payment in Payment.query.filter(Payment.status == "paid").all()
+        if payment.due_date or payment.paid_at
+    }, reverse=True)
+    for payment in paid_payments:
+        payment_date = payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
+        if month_start and (not payment_date or not month_start <= payment_date < month_end):
+            continue
         totals[payment.currency] = totals.get(payment.currency, 0) + float(payment.amount)
-    return ok({"month": month, "payment_type": payment_type, "totals": totals})
+    return ok({
+        "month": month,
+        "payment_type": payment_type,
+        "totals": totals,
+        "available_months": available_months,
+    })
 
 
 @api.get("/dashboard/acquisition")
