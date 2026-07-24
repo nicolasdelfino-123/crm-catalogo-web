@@ -369,7 +369,18 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
         "signup_date": "2026-06-01",
         "country": "Argentina",
         "currency": "ARS",
+        "payment_amount": 80000,
     }).get_json()["data"]
+    client.post("/api/clients", json={
+        "name": "Cliente en riesgo USD", "business_name": "Riesgo",
+        "signup_date": "2026-06-01", "country": "Argentina", "currency": "USD",
+        "payment_amount": 40, "status": "at_risk",
+    })
+    client.post("/api/clients", json={
+        "name": "Cliente todavía sin alta", "business_name": "Sin alta",
+        "signup_date": "2026-06-01", "country": "Argentina", "currency": "ARS",
+        "payment_amount": 90000, "status": "no_signup",
+    })
     with app.app_context():
         db.session.add_all([
             Payment(client_id=created["id"], amount=100000, currency="ARS", payment_type="monthly", status="paid", due_date=date(2026, 6, 5), paid_at=datetime(2026, 7, 2)),
@@ -384,6 +395,7 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
     june_extras = client.get("/api/dashboard/income?month=2026-06&payment_type=extra_work").get_json()["data"]["totals"]
     july_total = client.get("/api/dashboard/income?month=2026-07&payment_type=all").get_json()["data"]["totals"]
     all_months = client.get("/api/dashboard/income?month=all&payment_type=all").get_json()["data"]
+    monthly_forecast = client.get("/api/dashboard/income?payment_type=monthly_forecast").get_json()["data"]["totals"]
 
     assert june_total == {"ARS": 100000.0, "USD": 50.0}
     assert june_monthly == {"ARS": 100000.0, "USD": 0}
@@ -391,6 +403,7 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
     assert july_total == {"ARS": 25000.0, "USD": 0}
     assert all_months["totals"] == {"ARS": 125000.0, "USD": 50.0}
     assert all_months["available_months"] == ["2026-07", "2026-06"]
+    assert monthly_forecast == {"ARS": 80000.0, "USD": 40.0}
     assert client.get("/api/dashboard/income?month=junio").status_code == 422
     assert client.get("/api/dashboard/income?payment_type=otro").status_code == 422
 

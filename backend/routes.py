@@ -971,8 +971,27 @@ def dashboard():
 def dashboard_income():
     month = request.args.get("month", date.today().strftime("%Y-%m"))
     payment_type = request.args.get("payment_type", "all")
-    if payment_type not in {"all", "monthly", "extra_work"}:
-        return error("El tipo de pago debe ser all, monthly o extra_work", 422)
+    if payment_type not in {"all", "monthly", "extra_work", "monthly_forecast"}:
+        return error("El tipo de pago debe ser all, monthly, extra_work o monthly_forecast", 422)
+    if payment_type == "monthly_forecast":
+        totals = {"ARS": 0, "USD": 0}
+        active_clients = Client.query.filter(
+            Client.archived_at.is_(None),
+            Client.status.in_(("active", "at_risk")),
+        ).all()
+        for client in active_clients:
+            totals[client.currency] = totals.get(client.currency, 0) + float(client.payment_amount or 0)
+        available_months = sorted({
+            (payment.due_date or (payment.paid_at.date() if payment.paid_at else None)).strftime("%Y-%m")
+            for payment in Payment.query.filter(Payment.status == "paid").all()
+            if payment.due_date or payment.paid_at
+        }, reverse=True)
+        return ok({
+            "month": None,
+            "payment_type": payment_type,
+            "totals": totals,
+            "available_months": available_months,
+        })
     month_start = month_end = None
     if month != "all":
         try:

@@ -411,11 +411,17 @@ function Dashboard({ goClients }) {
       <div className="dashboard-band">
         <div className="dashboard-income-copy">
           <span className="eyebrow">
-            {incomeMonth === "all" ? "Cobrado en todos los meses" : `Cobrado en ${fmtMonth(incomeMonth)}`}
+            {incomeType === "monthly_forecast"
+              ? "Mensualidad actual estimada"
+              : incomeMonth === "all"
+                ? "Cobrado en todos los meses"
+                : `Cobrado en ${fmtMonth(incomeMonth)}`}
           </span>
           <h3>Ingresos separados por moneda</h3>
           <p>
-            {incomeType === "monthly"
+            {incomeType === "monthly_forecast"
+              ? "Proyección de clientes activos y en riesgo que ya tienen alta."
+              : incomeType === "monthly"
               ? "Solo mensualidades cobradas."
               : incomeType === "extra_work"
                 ? "Solo trabajos extra cobrados."
@@ -427,6 +433,7 @@ function Dashboard({ goClients }) {
             Mes
             <select
               value={incomeMonth}
+              disabled={incomeType === "monthly_forecast"}
               onChange={(event) => {
                 setIncomeLoading(true);
                 setIncomeMonth(event.target.value);
@@ -455,6 +462,7 @@ function Dashboard({ goClients }) {
               <option value="all">Total: mensualidades + extras</option>
               <option value="monthly">Solo mensualidades</option>
               <option value="extra_work">Solo trabajos extra</option>
+              <option value="monthly_forecast">Mensualidad actual a cobrar</option>
             </select>
           </label>
         </div>
