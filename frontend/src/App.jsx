@@ -3537,7 +3537,17 @@ function Login({ onAuthenticated }) {
 }
 export default function App() {
   const [page, setPage] = useState("clients");
+  const [visitedPages, setVisitedPages] = useState(() => new Set(["clients"]));
   const [session, setSession] = useState(() => ({ checking: Boolean(getToken()), user: null }));
+  const navigate = useCallback((nextPage) => {
+    setVisitedPages((current) => {
+      if (current.has(nextPage)) return current;
+      const next = new Set(current);
+      next.add(nextPage);
+      return next;
+    });
+    setPage(nextPage);
+  }, []);
   useEffect(() => {
     const expire = () => setSession({ checking: false, user: null });
     window.addEventListener("crm-session-expired", expire);
@@ -3553,16 +3563,30 @@ export default function App() {
   if (!session.user) return <Login onAuthenticated={(user) => setSession({ checking: false, user })} />;
   const logout = () => { clearSession(); setSession({ checking: false, user: null }); };
   return (
-    <Shell page={page} setPage={setPage} onLogout={logout}>
-      {page === "dashboard" && (
-        <Dashboard goClients={() => setPage("clients")} />
-      )}{" "}
-      {page === "clients" && <Clients />}
-      {page === "agenda" && <Agenda />}
-      {page === "payments" && <Payments />}
-      {page === "expenses" && <Expenses />}
-      {page === "vps" && <Vps />}
-      {page === "messages" && <Messages />}
+    <Shell page={page} setPage={navigate} onLogout={logout}>
+      {(visitedPages.has("dashboard") || page === "dashboard") && (
+        <div hidden={page !== "dashboard"}>
+          <Dashboard goClients={() => navigate("clients")} />
+        </div>
+      )}
+      {(visitedPages.has("clients") || page === "clients") && (
+        <div hidden={page !== "clients"}><Clients /></div>
+      )}
+      {(visitedPages.has("agenda") || page === "agenda") && (
+        <div hidden={page !== "agenda"}><Agenda /></div>
+      )}
+      {(visitedPages.has("payments") || page === "payments") && (
+        <div hidden={page !== "payments"}><Payments /></div>
+      )}
+      {(visitedPages.has("expenses") || page === "expenses") && (
+        <div hidden={page !== "expenses"}><Expenses /></div>
+      )}
+      {(visitedPages.has("vps") || page === "vps") && (
+        <div hidden={page !== "vps"}><Vps /></div>
+      )}
+      {(visitedPages.has("messages") || page === "messages") && (
+        <div hidden={page !== "messages"}><Messages /></div>
+      )}
     </Shell>
   );
 }
