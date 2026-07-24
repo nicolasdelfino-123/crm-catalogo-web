@@ -209,6 +209,16 @@ const badge = (value) => {
     </span>
   );
 };
+function useEscapeClose(onClose, enabled = true) {
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const close = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [enabled, onClose]);
+}
 function IconButton({ label, children, ...props }) {
   return (
     <button className="icon-btn" aria-label={label} title={label} {...props}>
@@ -327,9 +337,24 @@ function Shell({ page, setPage, onLogout, children }) {
 function Dashboard({ goClients }) {
   const [data, setData] = useState(null);
   const [selectedMetric, setSelectedMetric] = useState(null);
+  const [incomeMonth, setIncomeMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [incomeType, setIncomeType] = useState("all");
+  const [incomeTotals, setIncomeTotals] = useState({ ARS: 0, USD: 0 });
+  const [incomeLoading, setIncomeLoading] = useState(true);
   useEffect(() => {
     api("/dashboard/summary").then(setData);
   }, []);
+  useEffect(() => {
+    let active = true;
+    api(`/dashboard/income?month=${incomeMonth}&payment_type=${incomeType}`)
+      .then((result) => {
+        if (active) setIncomeTotals(result.totals);
+      })
+      .finally(() => {
+        if (active) setIncomeLoading(false);
+      });
+    return () => { active = false; };
+  }, [incomeMonth, incomeType]);
   if (!data) return <Loading />;
   const cards = [
     ["active_clients", "Clientes activos", data.active_clients, Users, "green"],
@@ -372,19 +397,48 @@ function Dashboard({ goClients }) {
         ))}
       </div>
       <div className="dashboard-band">
-        <div>
-          <span className="eyebrow">Cobrado este mes</span>
+        <div className="dashboard-income-copy">
+          <span className="eyebrow">Cobrado en {fmtMonth(incomeMonth)}</span>
           <h3>Ingresos separados por moneda</h3>
-          <p>Los totales no mezclan ARS con USD.</p>
+          <p>
+            {incomeType === "monthly"
+              ? "Solo mensualidades cobradas."
+              : incomeType === "extra_work"
+                ? "Solo trabajos extra cobrados."
+                : "Mensualidades y trabajos extra cobrados."}
+          </p>
         </div>
-        <div className="money-list">
-          {Object.entries(data.collected).length ? (
-            Object.entries(data.collected).map(([currency, total]) => (
-              <strong key={currency}>{fmtMoney(total, currency)}</strong>
-            ))
-          ) : (
-            <span>Sin cobros registrados</span>
-          )}
+        <div className="dashboard-income-controls">
+          <label>
+            Mes
+            <input
+              type="month"
+              value={incomeMonth}
+              onChange={(event) => {
+                if (!event.target.value) return;
+                setIncomeLoading(true);
+                setIncomeMonth(event.target.value);
+              }}
+            />
+          </label>
+          <label>
+            Tipo de ingreso
+            <select
+              value={incomeType}
+              onChange={(event) => {
+                setIncomeLoading(true);
+                setIncomeType(event.target.value);
+              }}
+            >
+              <option value="all">Total: mensualidades + extras</option>
+              <option value="monthly">Solo mensualidades</option>
+              <option value="extra_work">Solo trabajos extra</option>
+            </select>
+          </label>
+        </div>
+        <div className={`money-list ${incomeLoading ? "loading-totals" : ""}`}>
+          <span><small>Pesos</small><strong>{fmtMoney(incomeTotals.ARS || 0, "ARS")}</strong></span>
+          <span><small>Dólares</small><strong>{fmtMoney(incomeTotals.USD || 0, "USD")}</strong></span>
         </div>
       </div>
       {selectedMetric && (
@@ -407,6 +461,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [monthlyItems, setMonthlyItems] = useState(items);
   const [loadingMonth, setLoadingMonth] = useState(false);
+  useEscapeClose(onClose);
   async function changeMonth(event) {
     const month = event.target.value;
     setSelectedMonth(month);
@@ -578,6 +633,7 @@ function ClientForm({ client, onClose, onSaved }) {
     !isKnownAcquisition ? initial.acquisition_source || "" : "",
   );
   const [saving, setSaving] = useState(false);
+  useEscapeClose(onClose, !saving);
   const change = (e) =>
     setForm((v) => {
       const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
@@ -2605,6 +2661,7 @@ function AgendaNewAction({ undated, onClose, onSaved }) {
     priority: "medium",
   });
   const [saving, setSaving] = useState(false);
+  useEscapeClose(onClose, !saving);
   useEffect(() => {
     let active = true;
     async function loadAllClients() {
@@ -2718,6 +2775,7 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
     description: action.description || "",
   });
   const [saving, setSaving] = useState(false);
+  useEscapeClose(onClose, !saving);
   async function submit(event) {
     event.preventDefault();
     setSaving(true);
@@ -2814,6 +2872,7 @@ function Messages() {
   const [form, setForm] = useState({ entry_type: "monthly", month: currentMonth, sent_date: today, channel: "", quantity: "", notes: "" });
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
+  useEscapeClose(() => setEditing(null), Boolean(editing));
   const load = useCallback(() => api("/messages").then(setItems), []);
   useEffect(() => { load(); }, [load]);
   const availableMonths = useMemo(
@@ -3066,6 +3125,10 @@ function Payments() {
   const [clientNameOrder, setClientNameOrder] = useState("asc");
   const [dueDateOrder, setDueDateOrder] = useState(null);
   const [statusOrder, setStatusOrder] = useState(null);
+  useEscapeClose(() => {
+    if (editing) setEditing(null);
+    else setSummaryDetail(null);
+  }, Boolean(editing || summaryDetail));
   const load = useCallback(() => Promise.all([
     api("/payments"), api("/payments/monthly-forecast"),
   ]).then(([payments, monthlyForecast]) => {

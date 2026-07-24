@@ -967,6 +967,34 @@ def dashboard():
     return ok(data)
 
 
+@api.get("/dashboard/income")
+def dashboard_income():
+    month = request.args.get("month", date.today().strftime("%Y-%m"))
+    payment_type = request.args.get("payment_type", "all")
+    if payment_type not in {"all", "monthly", "extra_work"}:
+        return error("El tipo de pago debe ser all, monthly o extra_work", 422)
+    try:
+        month_start = date.fromisoformat(f"{month}-01")
+    except ValueError:
+        return error("El mes debe tener el formato AAAA-MM", 422)
+    month_end = add_calendar_months(month_start, 1)
+    start_at = datetime.combine(month_start, datetime.min.time())
+    end_at = datetime.combine(month_end, datetime.min.time())
+    query = Payment.query.filter(
+        Payment.status == "paid",
+        Payment.paid_at >= start_at,
+        Payment.paid_at < end_at,
+    )
+    if payment_type == "monthly":
+        query = query.filter(Payment.payment_type == "monthly")
+    elif payment_type == "extra_work":
+        query = query.filter(Payment.payment_type == "extra_work")
+    totals = {"ARS": 0, "USD": 0}
+    for payment in query.all():
+        totals[payment.currency] = totals.get(payment.currency, 0) + float(payment.amount)
+    return ok({"month": month, "payment_type": payment_type, "totals": totals})
+
+
 @api.get("/dashboard/acquisition")
 def acquisition_summary():
     clients = Client.query.filter(Client.archived_at.is_(None)).all()

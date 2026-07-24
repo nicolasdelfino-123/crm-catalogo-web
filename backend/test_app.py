@@ -1,5 +1,5 @@
 import pytest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from app import create_app
 from models import db, Client, Payment, User, ClientCredential
 from routes import advance_service_stage, sync_service_stages
@@ -360,6 +360,36 @@ def test_sold_clients_use_sale_date_instead_of_signup_date(client):
     assert july_sales.get_json()["data"] == []
     assert [item["name"] for item in july_signups.get_json()["data"]] == ["Cliente vendido en junio"]
     assert client.get("/api/dashboard/sold-clients?month=junio").status_code == 422
+
+
+def test_dashboard_income_filters_month_type_and_currency(client, app):
+    created = client.post("/api/clients", json={
+        "name": "Cliente ingresos",
+        "business_name": "Ingresos separados",
+        "signup_date": "2026-06-01",
+        "country": "Argentina",
+        "currency": "ARS",
+    }).get_json()["data"]
+    with app.app_context():
+        db.session.add_all([
+            Payment(client_id=created["id"], amount=100000, currency="ARS", payment_type="monthly", status="paid", paid_at=datetime(2026, 6, 5)),
+            Payment(client_id=created["id"], amount=50, currency="USD", payment_type="extra_work", status="paid", paid_at=datetime(2026, 6, 12)),
+            Payment(client_id=created["id"], amount=25000, currency="ARS", payment_type="extra_work", status="paid", paid_at=datetime(2026, 7, 1)),
+            Payment(client_id=created["id"], amount=99999, currency="ARS", payment_type="monthly", status="pending", paid_at=datetime(2026, 6, 20)),
+        ])
+        db.session.commit()
+
+    june_total = client.get("/api/dashboard/income?month=2026-06&payment_type=all").get_json()["data"]["totals"]
+    june_monthly = client.get("/api/dashboard/income?month=2026-06&payment_type=monthly").get_json()["data"]["totals"]
+    june_extras = client.get("/api/dashboard/income?month=2026-06&payment_type=extra_work").get_json()["data"]["totals"]
+    july_total = client.get("/api/dashboard/income?month=2026-07&payment_type=all").get_json()["data"]["totals"]
+
+    assert june_total == {"ARS": 100000.0, "USD": 50.0}
+    assert june_monthly == {"ARS": 100000.0, "USD": 0}
+    assert june_extras == {"ARS": 0, "USD": 50.0}
+    assert july_total == {"ARS": 25000.0, "USD": 0}
+    assert client.get("/api/dashboard/income?month=junio").status_code == 422
+    assert client.get("/api/dashboard/income?payment_type=otro").status_code == 422
 
 
 def test_operational_statuses(client):
