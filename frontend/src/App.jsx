@@ -935,6 +935,7 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
       fields: [
         ["title", "Acción", "actionpreset"],
         ["due_date", "Fecha prevista", "date"],
+        ["implementation_date", "Fecha de implementación", "date"],
         ["priority", "Prioridad", "select"],
         ["description", "Nota", "textarea"],
       ],
@@ -1106,6 +1107,15 @@ function ActionEditor({ action, onCancel, onSaved }) {
             type="date"
             name="due_date"
             value={form.due_date || ""}
+            onChange={change}
+          />
+        </label>
+        <label>
+          Fecha de implementación
+          <input
+            type="date"
+            name="implementation_date"
+            value={form.implementation_date || ""}
             onChange={change}
           />
         </label>
@@ -1665,7 +1675,9 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
                         <div>
                           <strong>{a.title}</strong>
                           <p>
-                            {fmtDate(a.due_date)} · {LABEL[a.priority] || a.priority}
+                            Prevista: {fmtDate(a.due_date)}
+                            {a.implementation_date && ` · Implementada: ${fmtDate(a.implementation_date)}`}
+                            {" · "}{LABEL[a.priority] || a.priority}
                           </p>
                           {a.description && <p>{a.description}</p>}
                           {a.status === "cancelled" && <span className="badge cancelled">Anulada</span>}
@@ -2701,6 +2713,7 @@ function AgendaNewAction({ undated, onClose, onSaved }) {
     title: "",
     description: "",
     due_date: new Date().toISOString().slice(0, 10),
+    implementation_date: "",
     priority: "medium",
   });
   const [saving, setSaving] = useState(false);
@@ -2732,6 +2745,7 @@ function AgendaNewAction({ undated, onClose, onSaved }) {
           title: undated ? form.title : actionPreset === "__custom" ? form.title : actionPreset,
           description: form.description,
           due_date: undated ? null : form.due_date,
+          implementation_date: form.implementation_date || null,
           priority: form.priority,
           status: "pending",
         }),
@@ -2761,6 +2775,7 @@ function AgendaNewAction({ undated, onClose, onSaved }) {
                 </label>
                 <label className="span-2">Título<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="¿Qué tenés pendiente?" required /></label>
                 <label className="span-2">Descripción<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Agregá los detalles necesarios..." required /></label>
+                <label>Fecha de implementación<input type="date" value={form.implementation_date} onChange={(event) => setForm({ ...form, implementation_date: event.target.value })} /></label>
               </>
             ) : (
               <>
@@ -2789,7 +2804,8 @@ function AgendaNewAction({ undated, onClose, onSaved }) {
                 {actionPreset === "__custom" && (
                   <label className="span-2">Nombre de la acción<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
                 )}
-                <label>Fecha<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>
+                <label>Fecha prevista<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>
+                <label>Fecha de implementación<input type="date" value={form.implementation_date} onChange={(event) => setForm({ ...form, implementation_date: event.target.value })} /></label>
                 <label>
                   Prioridad
                   <select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}>
@@ -2814,6 +2830,7 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
     title: action.title,
     context_name: action.client_name,
     due_date: action.due_date || "",
+    implementation_date: action.implementation_date || "",
     priority: action.priority || "medium",
     description: action.description || "",
   });
@@ -2849,7 +2866,8 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
             )}
             <label className="span-2">Acción<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
             {!action.due_date && <label className="span-2">Descripción<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} required /></label>}
-            {action.due_date && <label>Fecha<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>}
+            {action.due_date && <label>Fecha prevista<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>}
+            <label>Fecha de implementación<input type="date" value={form.implementation_date} onChange={(event) => setForm({ ...form, implementation_date: event.target.value })} /></label>
             <label>Prioridad<select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label>
           </div>
           <div className="form-actions">
@@ -2880,8 +2898,9 @@ function AgendaItem({ action: a, onStatus, onEdit, onOpenClient }) {
     >
       <div className={`priority ${a.priority}`} />
       <div>
-        <time>{fmtDate(a.due_date)}</time>
+        <time>Prevista: {fmtDate(a.due_date)}</time>
         <h3>{a.title}</h3>
+        {a.implementation_date && <p>Implementada: {fmtDate(a.implementation_date)}</p>}
         {a.client_id && <p>{a.client_name} · {a.business_name}</p>}
         {(a.description || !a.client_id || a.projected) && (
           <p>{a.description || `${a.client_name} · ${a.business_name}`}{a.projected ? " · Cobro previsto" : ""}</p>

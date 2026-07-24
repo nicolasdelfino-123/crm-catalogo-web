@@ -133,6 +133,7 @@ class ClientAction(db.Model):
     status = db.Column(db.String(30), default="pending", index=True)
     priority = db.Column(db.String(20), default="medium")
     due_date = db.Column(db.Date)
+    implementation_date = db.Column(db.Date)
     completed_at = db.Column(db.DateTime)
     result_notes = db.Column(db.Text)
     template_key = db.Column(db.String(80))
@@ -140,7 +141,11 @@ class ClientAction(db.Model):
     __table_args__ = (UniqueConstraint("client_id", "template_key", name="uq_client_template"),)
 
     def short(self):
-        return {"id": self.id, "title": self.title, "due_date": iso(self.due_date), "status": self.status, "priority": self.priority}
+        return {
+            "id": self.id, "title": self.title, "due_date": iso(self.due_date),
+            "implementation_date": iso(self.implementation_date),
+            "status": self.status, "priority": self.priority,
+        }
 
     def to_dict(self):
         return {**self.short(), "description": self.description, "action_type": self.action_type, "completed_at": iso(self.completed_at), "result_notes": self.result_notes}
@@ -154,6 +159,7 @@ class StandaloneAction(db.Model):
     status = db.Column(db.String(30), nullable=False, default="pending", index=True)
     priority = db.Column(db.String(20), default="medium")
     due_date = db.Column(db.Date, index=True)
+    implementation_date = db.Column(db.Date)
     completed_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -161,7 +167,8 @@ class StandaloneAction(db.Model):
         return {
             "id": f"standalone-{self.id}", "title": self.title, "description": self.description,
             "action_type": "standalone", "status": self.status, "priority": self.priority,
-            "due_date": iso(self.due_date), "completed_at": iso(self.completed_at),
+            "due_date": iso(self.due_date), "implementation_date": iso(self.implementation_date),
+            "completed_at": iso(self.completed_at),
             "result_notes": None, "client_name": self.context_name,
             "business_name": "Acción personalizada", "standalone": True,
         }

@@ -583,6 +583,7 @@ def standalone_actions_create():
         context_name=context_name or "Tarea sin fecha", title=data["title"].strip(),
         description=(data.get("description") or "").strip() or None,
         due_date=parse_date(data.get("due_date")), priority=data.get("priority", "medium"),
+        implementation_date=parse_date(data.get("implementation_date")),
         status="pending",
     )
     db.session.add(action); db.session.commit()
@@ -600,6 +601,7 @@ def standalone_actions_update(action_id):
         action.title = data["title"].strip()
     if "description" in data: action.description = (data["description"] or "").strip() or None
     if "due_date" in data: action.due_date = parse_date(data["due_date"])
+    if "implementation_date" in data: action.implementation_date = parse_date(data["implementation_date"])
     if "priority" in data: action.priority = data["priority"]
     if "status" in data:
         action.status = data["status"]
@@ -612,7 +614,12 @@ def standalone_actions_update(action_id):
 def actions_create(client_id):
     client = Client.query.get_or_404(client_id); data = request.get_json() or {}
     if not data.get("title"): return error("El título es obligatorio", 422)
-    action = ClientAction(client=client, title=data["title"], description=data.get("description"), action_type=data.get("action_type", "custom"), priority=data.get("priority", "medium"), due_date=parse_date(data.get("due_date")))
+    action = ClientAction(
+        client=client, title=data["title"], description=data.get("description"),
+        action_type=data.get("action_type", "custom"), priority=data.get("priority", "medium"),
+        due_date=parse_date(data.get("due_date")),
+        implementation_date=parse_date(data.get("implementation_date")),
+    )
     db.session.add(action); db.session.commit(); return ok(action.to_dict(), "Acción creada", 201)
 
 
@@ -622,6 +629,7 @@ def actions_update(action_id):
     for field in ["title", "description", "action_type", "priority", "status", "result_notes"]:
         if field in data: setattr(action, field, data[field])
     if "due_date" in data: action.due_date = parse_date(data["due_date"])
+    if "implementation_date" in data: action.implementation_date = parse_date(data["implementation_date"])
     if data.get("status") == "completed" and not action.completed_at: action.completed_at = datetime.utcnow()
     if "status" in data and data["status"] != "completed": action.completed_at = None
     db.session.commit(); return ok(action.to_dict(), "Acción actualizada")

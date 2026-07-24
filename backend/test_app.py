@@ -186,6 +186,37 @@ def test_create_and_list_client(client):
     assert payment.get_json()["data"]["due_date"] == "2026-08-01"
 
 
+def test_actions_store_planned_and_implementation_dates_separately(client):
+    created_client = client.post("/api/clients", json={
+        "name": "Cliente acciones", "business_name": "Marca acciones",
+        "signup_date": "2026-07-01", "country": "Argentina", "currency": "ARS",
+    }).get_json()["data"]
+
+    created = client.post(f'/api/clients/{created_client["id"]}/actions', json={
+        "title": "Instalar mejora",
+        "due_date": "2026-07-20",
+        "implementation_date": "2026-07-22",
+    })
+    assert created.status_code == 201
+    action = created.get_json()["data"]
+    assert action["due_date"] == "2026-07-20"
+    assert action["implementation_date"] == "2026-07-22"
+
+    updated = client.patch(f'/api/actions/{action["id"]}', json={
+        "implementation_date": "2026-07-23",
+    })
+    assert updated.status_code == 200
+    assert updated.get_json()["data"]["due_date"] == "2026-07-20"
+    assert updated.get_json()["data"]["implementation_date"] == "2026-07-23"
+
+    standalone = client.post("/api/standalone-actions", json={
+        "context_name": "Tarea interna", "title": "Actualizar proceso",
+        "due_date": "2026-07-25", "implementation_date": "2026-07-26",
+    })
+    assert standalone.status_code == 201
+    assert standalone.get_json()["data"]["implementation_date"] == "2026-07-26"
+
+
 def test_client_accepts_no_signup_status(client):
     created = client.post("/api/clients", json={
         "name": "Cliente sin alta",
