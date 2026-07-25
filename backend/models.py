@@ -86,6 +86,7 @@ class Client(db.Model):
             "id": self.id, "name": self.name, "business_name": self.business_name,
             "country": self.country, "city": self.city, "acquisition_source": self.acquisition_source, "currency": self.currency,
             "payment_amount": float(self.payment_amount or 0), "sale_date": iso(self.sale_date), "signup_date": iso(self.signup_date),
+            "created_at": iso(self.created_at),
             "next_renewal_date": iso(self.next_renewal_date), "status": self.status,
             "service_stage": self.service_stage, "link_in_bio_status": self.link_in_bio_status,
             "story_status": self.story_status or "no",

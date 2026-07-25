@@ -361,12 +361,18 @@ def test_acquisition_summary_includes_client_details(client):
     assert channel["clients"][0]["signup_date"] == "2026-07-01"
 
 
-def test_new_clients_can_be_filtered_by_month(client):
+def test_new_clients_can_be_filtered_by_creation_month(client, app):
+    created_ids = []
     for name, signup_date in [("Cliente junio", "2026-06-15"), ("Cliente julio", "2026-07-10")]:
-        client.post("/api/clients", json={
+        response = client.post("/api/clients", json={
             "name": name, "business_name": name, "signup_date": signup_date,
             "country": "Argentina", "currency": "ARS",
         })
+        created_ids.append(response.get_json()["data"]["id"])
+    with app.app_context():
+        Client.query.get(created_ids[0]).created_at = datetime(2026, 6, 15, 12)
+        Client.query.get(created_ids[1]).created_at = datetime(2026, 7, 10, 12)
+        db.session.commit()
 
     june = client.get("/api/dashboard/new-clients?month=2026-06")
     assert june.status_code == 200
@@ -374,7 +380,7 @@ def test_new_clients_can_be_filtered_by_month(client):
     assert client.get("/api/dashboard/new-clients?month=junio").status_code == 422
 
 
-def test_sold_clients_use_sale_date_instead_of_signup_date(client):
+def test_sold_clients_use_sale_date_and_new_clients_use_creation_date(client, app):
     created = client.post("/api/clients", json={
         "name": "Cliente vendido en junio",
         "business_name": "Venta junio alta julio",
@@ -385,14 +391,19 @@ def test_sold_clients_use_sale_date_instead_of_signup_date(client):
     })
     assert created.status_code == 201
     assert created.get_json()["data"]["sale_date"] == "2026-06-29"
+    with app.app_context():
+        Client.query.get(created.get_json()["data"]["id"]).created_at = datetime(2026, 6, 29, 12)
+        db.session.commit()
 
     june_sales = client.get("/api/dashboard/sold-clients?month=2026-06")
     july_sales = client.get("/api/dashboard/sold-clients?month=2026-07")
+    june_signups = client.get("/api/dashboard/new-clients?month=2026-06")
     july_signups = client.get("/api/dashboard/new-clients?month=2026-07")
 
     assert [item["name"] for item in june_sales.get_json()["data"]] == ["Cliente vendido en junio"]
     assert july_sales.get_json()["data"] == []
-    assert [item["name"] for item in july_signups.get_json()["data"]] == ["Cliente vendido en junio"]
+    assert [item["name"] for item in june_signups.get_json()["data"]] == ["Cliente vendido en junio"]
+    assert july_signups.get_json()["data"] == []
     assert client.get("/api/dashboard/sold-clients?month=junio").status_code == 422
 
 

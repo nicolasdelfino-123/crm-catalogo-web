@@ -684,7 +684,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
                 ) : metricKey === "renewals_week" ? (
                   <><small>Renovación</small><strong>{fmtDate(item.next_renewal_date)}</strong></>
                 ) : metricKey === "new_clients_month" ? (
-                  <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong></>
+                  <><small>Cargado en el CRM</small><strong>{fmtDate(item.created_at)}</strong></>
                 ) : metricKey === "sold_clients_month" ? (
                   <><small>Fecha de venta</small><strong>{fmtDate(item.sale_date)}</strong>{badge(item.status)}</>
                 ) : metricKey === "active_clients" ? (
@@ -862,7 +862,7 @@ function ClientForm({ client, onClose, onSaved }) {
                 />
               </label>
               <label>
-                {form.status === "no_signup" ? "Fecha de alta" : "Fecha de alta *"}
+                {form.status === "no_signup" ? "Inicio del servicio" : "Inicio del servicio y cobro *"}
                 {form.status === "no_signup" ? (
                   <input value="Sin alta" readOnly />
                 ) : (
