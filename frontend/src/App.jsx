@@ -3185,7 +3185,7 @@ function WorkedHours() {
   function move(amount) {
     setCursor((current) => view === "calendar"
       ? new Date(current.getFullYear(), current.getMonth() + amount, 1)
-      : addDays(current, amount * 7));
+      : addDays(startOfWeek(current), amount * 7));
   }
   function chooseDay(day) {
     const key = dateKey(day);
@@ -3198,7 +3198,10 @@ function WorkedHours() {
         <div><h2>Horas trabajadas</h2><p>Sumá cada bloque de trabajo y consultá tus totales diarios, semanales y mensuales.</p></div>
         <div className="hours-view-toggle">
           <button className={view === "calendar" ? "active" : ""} onClick={() => setView("calendar")}><CalendarDays size={16} />Calendario</button>
-          <button className={view === "week" ? "active" : ""} onClick={() => setView("week")}><ChartNoAxesColumnIncreasing size={16} />Semana</button>
+          <button className={view === "week" ? "active" : ""} onClick={() => {
+            setView("week");
+            setCursor(startOfWeek(fromDateKey(selectedDate)));
+          }}><ChartNoAxesColumnIncreasing size={16} />Semana</button>
         </div>
       </div>
       <div className="hours-summary">
@@ -3233,9 +3236,9 @@ function WorkedHours() {
       <div className="hours-period">
         <div className="hours-period-head">
           <IconButton label="Período anterior" onClick={() => move(-1)}><ChevronLeft /></IconButton>
-          <h3>{view === "calendar" ? fmtMonth(selectedMonth) : `${fmtDate(dateKey(weekStart))} — ${fmtDate(dateKey(weekDays[6]))}`}</h3>
+          <h3>{view === "calendar" ? fmtMonth(selectedMonth) : `Lunes ${fmtDate(dateKey(weekStart))} — Domingo ${fmtDate(dateKey(weekDays[6]))}`}</h3>
           <IconButton label="Período siguiente" onClick={() => move(1)}><ChevronRight /></IconButton>
-          <button className="secondary small" onClick={() => setCursor(fromDateKey(today))}>Hoy</button>
+          <button className="secondary small" onClick={() => setCursor(view === "week" ? startOfWeek(fromDateKey(today)) : fromDateKey(today))}>Hoy</button>
         </div>
         {view === "calendar" ? (
           <>
