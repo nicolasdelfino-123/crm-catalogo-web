@@ -39,12 +39,14 @@ import {
   KeyRound,
   Copy,
   Timer,
+  Target,
 } from "lucide-react";
 import "./expenses.css";
 import "./payment-summary.css";
 import "./vps.css";
 import "./instagram-links.css";
 import "./worked-hours.css";
+import "./prospecting.css";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ||
   (import.meta.env.DEV
@@ -266,6 +268,7 @@ function Sidebar({ page, setPage, open, setOpen }) {
     ["vps", "VPS", Server],
     ["messages", "Mensajes", Mail],
     ["worked-hours", "Horas trabajadas", Timer],
+    ["prospecting", "Prospección", Target],
   ];
   return (
     <aside className={`sidebar ${open ? "open" : ""}`}>
@@ -337,6 +340,7 @@ function Shell({ page, setPage, onLogout, children }) {
     vps: "VPS",
     messages: "Mensajes enviados",
     "worked-hours": "Horas trabajadas",
+    prospecting: "Prospección",
   };
   return (
     <div className="app-shell">
@@ -3285,6 +3289,242 @@ function WorkedHours() {
   );
 }
 
+const PROSPECTING_CHANNELS = [
+  ["facebook_marketplace", "Marketplace"],
+  ["business_instagram", "Instagram negocio"],
+  ["instagram_nicodelfino", "Instagram nicodelfino__"],
+  ["instagram_nicod123", "Instagram nicod_123"],
+  ["business_whatsapp", "WhatsApp negocio"],
+  ["personal_whatsapp", "WhatsApp personal"],
+];
+const WEEKDAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+const prospectingKey = (weekday, channel) => `${weekday}:${channel}`;
+const balanceText = (actual, planned) => {
+  const difference = actual - planned;
+  if (difference > 0) return { label: `+${difference} sobre el plan`, tone: "ahead" };
+  if (difference < 0) return { label: `${Math.abs(difference)} pendientes`, tone: "behind" };
+  return { label: planned ? "Objetivo cumplido" : "Sin diferencia", tone: "done" };
+};
+
+function Prospecting() {
+  const today = dateKey();
+  const [goals, setGoals] = useState({});
+  const [logs, setLogs] = useState([]);
+  const [weekCursor, setWeekCursor] = useState(startOfWeek(fromDateKey(today)));
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
+  const [form, setForm] = useState({ activity_date: today, channel: "facebook_marketplace", quantity: "", notes: "" });
+  const [quickEntry, setQuickEntry] = useState(null);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [savingLog, setSavingLog] = useState(false);
+  useEscapeClose(() => setQuickEntry(null), Boolean(quickEntry));
+  const load = useCallback(() => api("/prospecting").then((data) => {
+    setLogs(data.logs);
+    setGoals(data.goals.reduce((result, item) => ({ ...result, [prospectingKey(item.weekday, item.channel)]: item.target }), {}));
+  }), [setLogs, setGoals]);
+  useEffect(() => { load(); }, [load]);
+
+  const actualByDayChannel = useMemo(() => logs.reduce((result, item) => {
+    const key = `${item.activity_date}:${item.channel}`;
+    return { ...result, [key]: (result[key] || 0) + item.quantity };
+  }, {}), [logs]);
+  const plannedForDate = useCallback((key) => {
+    const weekday = (fromDateKey(key).getDay() + 6) % 7;
+    return PROSPECTING_CHANNELS.reduce((total, [channel]) => total + (Number(goals[prospectingKey(weekday, channel)]) || 0), 0);
+  }, [goals]);
+  const actualForDate = useCallback((key) => PROSPECTING_CHANNELS.reduce(
+    (total, [channel]) => total + (actualByDayChannel[`${key}:${channel}`] || 0), 0,
+  ), [actualByDayChannel]);
+  const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekCursor, index));
+  const weekPlanned = weekDays.reduce((total, day) => total + plannedForDate(dateKey(day)), 0);
+  const weekActual = weekDays.reduce((total, day) => total + actualForDate(dateKey(day)), 0);
+  const [monthYear, monthNumber] = selectedMonth.split("-").map(Number);
+  const daysInMonth = new Date(monthYear, monthNumber, 0).getDate();
+  const monthDays = Array.from({ length: daysInMonth }, (_, index) => new Date(monthYear, monthNumber - 1, index + 1));
+  const monthPlanned = monthDays.reduce((total, day) => total + plannedForDate(dateKey(day)), 0);
+  const monthActual = monthDays.reduce((total, day) => total + actualForDate(dateKey(day)), 0);
+  const dayPlanned = plannedForDate(selectedDate);
+  const dayActual = actualForDate(selectedDate);
+  const selectedLogs = logs.filter((item) => item.activity_date === selectedDate);
+
+  async function savePlan() {
+    setSavingPlan(true);
+    try {
+      const payload = [];
+      PROSPECTING_CHANNELS.forEach(([channel]) => WEEKDAY_NAMES.forEach((_, weekday) => {
+        payload.push({ weekday, channel, target: Number(goals[prospectingKey(weekday, channel)]) || 0 });
+      }));
+      await api("/prospecting/goals", { method: "PUT", body: JSON.stringify({ goals: payload }) });
+      await load();
+    } finally { setSavingPlan(false); }
+  }
+  async function submitLog(event) {
+    event.preventDefault(); setSavingLog(true);
+    try {
+      await api("/prospecting/logs", { method: "POST", body: JSON.stringify(form) });
+      const chosen = fromDateKey(form.activity_date);
+      setSelectedDate(form.activity_date); setWeekCursor(startOfWeek(chosen)); setSelectedMonth(form.activity_date.slice(0, 7));
+      setForm({ ...form, quantity: "", notes: "" });
+      await load();
+    } finally { setSavingLog(false); }
+  }
+  async function removeLog(item) {
+    if (!window.confirm(`¿Eliminar la carga de ${item.quantity} mensajes?`)) return;
+    await api(`/prospecting/logs/${item.id}`, { method: "DELETE" });
+    await load();
+  }
+  async function completeChannel(channel, actual, planned) {
+    const pending = planned - actual;
+    if (pending <= 0) return;
+    await api("/prospecting/logs", {
+      method: "POST",
+      body: JSON.stringify({
+        activity_date: selectedDate, channel, quantity: pending,
+        notes: "Objetivo marcado como completado",
+      }),
+    });
+    await load();
+  }
+  async function submitQuickEntry(event) {
+    event.preventDefault();
+    setSavingLog(true);
+    try {
+      await api("/prospecting/logs", {
+        method: "POST",
+        body: JSON.stringify({
+          activity_date: selectedDate,
+          channel: quickEntry.channel,
+          quantity: quickEntry.quantity,
+          notes: quickEntry.notes,
+        }),
+      });
+      setQuickEntry(null);
+      await load();
+    } finally { setSavingLog(false); }
+  }
+  function selectDay(day) {
+    const key = dateKey(day);
+    setSelectedDate(key); setSelectedMonth(key.slice(0, 7));
+    setForm((current) => ({ ...current, activity_date: key }));
+  }
+  const dayBalance = balanceText(dayActual, dayPlanned);
+  const weekBalance = balanceText(weekActual, weekPlanned);
+  const monthBalance = balanceText(monthActual, monthPlanned);
+
+  return (
+    <section className="page prospecting-page">
+      <div className="page-intro"><div><h2>Prospección</h2><p>Planificá tus mensajes semanales y comparalos con lo que realmente enviaste.</p></div></div>
+      <div className="prospecting-balances">
+        {[
+          ["Día seleccionado", dayActual, dayPlanned, dayBalance],
+          ["Semana visible", weekActual, weekPlanned, weekBalance],
+          [fmtMonth(selectedMonth), monthActual, monthPlanned, monthBalance],
+        ].map(([title, actual, planned, balance]) => <article key={title}>
+          <small>{title}</small><strong>{actual} <span>/ {planned} planificados</span></strong>
+          <em className={balance.tone}>{balance.label}</em>
+        </article>)}
+      </div>
+
+      <details className="prospecting-plan">
+        <summary><div><span className="eyebrow">Objetivos</span><strong>Armar semana promedio</strong><small>Definí cuántos mensajes querés enviar por canal cada día.</small></div><SlidersHorizontal /></summary>
+        <div className="prospecting-plan-scroll">
+          <div className="prospecting-plan-grid">
+            <strong>Canal</strong>{WEEKDAY_NAMES.map((day) => <strong key={day}>{day.slice(0, 3)}</strong>)}
+            {PROSPECTING_CHANNELS.map(([channel, label]) => [
+              <span key={`${channel}-label`}>{label}</span>,
+              ...WEEKDAY_NAMES.map((_, weekday) => <input key={prospectingKey(weekday, channel)} type="number" min="0" value={goals[prospectingKey(weekday, channel)] ?? ""} onChange={(event) => setGoals({ ...goals, [prospectingKey(weekday, channel)]: event.target.value })} aria-label={`${label}, ${WEEKDAY_NAMES[weekday]}`} placeholder="0" />),
+            ])}
+          </div>
+        </div>
+        <div className="prospecting-plan-actions"><span>Objetivo semanal: <strong>{PROSPECTING_CHANNELS.reduce((total, [channel]) => total + WEEKDAY_NAMES.reduce((sum, _, weekday) => sum + (Number(goals[prospectingKey(weekday, channel)]) || 0), 0), 0)} mensajes</strong></span><button className="primary" onClick={savePlan} disabled={savingPlan}><Save size={16} />{savingPlan ? "Guardando..." : "Guardar planificación"}</button></div>
+      </details>
+
+      <form className="prospecting-form" onSubmit={submitLog}>
+        <div><span className="eyebrow">Avance real</span><h3>Registrar mensajes enviados</h3><p>Podés hacer varias cargas; se acumulan en el día.</p></div>
+        <label>Fecha<input type="date" value={form.activity_date} onChange={(event) => setForm({ ...form, activity_date: event.target.value })} required /></label>
+        <label>Canal<select value={form.channel} onChange={(event) => setForm({ ...form, channel: event.target.value })}>{PROSPECTING_CHANNELS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label>Cantidad<input type="number" min="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} required /></label>
+        <label>Nota<input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Opcional" /></label>
+        <button className="primary" disabled={savingLog}><Plus size={16} />{savingLog ? "Guardando..." : "Registrar"}</button>
+      </form>
+
+      <div className="prospecting-week">
+        <div className="prospecting-week-head">
+          <IconButton label="Semana anterior" onClick={() => setWeekCursor(addDays(weekCursor, -7))}><ChevronLeft /></IconButton>
+          <h3>Lunes {fmtDate(dateKey(weekCursor))} — Domingo {fmtDate(dateKey(weekDays[6]))}</h3>
+          <IconButton label="Semana siguiente" onClick={() => setWeekCursor(addDays(weekCursor, 7))}><ChevronRight /></IconButton>
+          <button className="secondary small" onClick={() => setWeekCursor(startOfWeek(fromDateKey(today)))}>Esta semana</button>
+        </div>
+        <div className="prospecting-week-grid">
+          {weekDays.map((day) => {
+            const key = dateKey(day);
+            const actual = actualForDate(key);
+            const planned = plannedForDate(key);
+            const balance = balanceText(actual, planned);
+            return <button key={key} className={`${key === selectedDate ? "selected" : ""} ${key === today ? "today" : ""}`} onClick={() => selectDay(day)}>
+              <span>{WEEKDAY_NAMES[(day.getDay() + 6) % 7]}</span><time>{day.getDate()}</time>
+              <strong>{actual} / {planned}</strong><em className={balance.tone}>{balance.label}</em>
+            </button>;
+          })}
+        </div>
+        <div className="prospecting-week-total"><span>Total semanal</span><strong>{weekActual} / {weekPlanned}</strong><em className={weekBalance.tone}>{weekBalance.label}</em></div>
+      </div>
+
+      <div className="prospecting-month-selector">
+        <label>Balance mensual<input type="month" value={selectedMonth} onChange={(event) => event.target.value && setSelectedMonth(event.target.value)} /></label>
+        <div><span>Realizados</span><strong>{monthActual}</strong></div><div><span>Planificados</span><strong>{monthPlanned}</strong></div>
+        <em className={monthBalance.tone}>{monthBalance.label}</em>
+      </div>
+
+      <div className="prospecting-detail">
+        <div><span className="eyebrow">Detalle diario</span><h3>{fmtDate(selectedDate)}</h3></div>
+        <div className="prospecting-channel-list">
+          {PROSPECTING_CHANNELS.map(([channel, label]) => {
+            const actual = actualByDayChannel[`${selectedDate}:${channel}`] || 0;
+            const weekday = (fromDateKey(selectedDate).getDay() + 6) % 7;
+            const planned = Number(goals[prospectingKey(weekday, channel)]) || 0;
+            const balance = balanceText(actual, planned);
+            return <article
+              key={channel}
+              className="prospecting-channel-card"
+              role="button"
+              tabIndex={0}
+              onClick={() => setQuickEntry({ channel, label, quantity: "", notes: "" })}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setQuickEntry({ channel, label, quantity: "", notes: "" });
+                }
+              }}
+            >
+              <span>{label}</span><strong>{actual} / {planned}</strong><em className={balance.tone}>{balance.label}</em>
+              {planned > actual && <button className="secondary small" onClick={(event) => { event.stopPropagation(); completeChannel(channel, actual, planned); }}><Check size={14} />Marcar completado</button>}
+            </article>;
+          })}
+        </div>
+        {selectedLogs.length > 0 && <div className="prospecting-log-list">{selectedLogs.map((item) => <div key={item.id}><span><strong>+{item.quantity} · {acquisitionLabel(item.channel)}</strong><small>{item.notes || "Sin nota"}</small></span><IconButton label="Eliminar carga" onClick={() => removeLog(item)}><Trash2 /></IconButton></div>)}</div>}
+      </div>
+      {quickEntry && (
+        <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && setQuickEntry(null)}>
+          <div className="form-modal prospecting-quick-modal">
+            <div className="modal-head">
+              <div><span className="eyebrow">Carga rápida · {fmtDate(selectedDate)}</span><h2>{quickEntry.label}</h2></div>
+              <IconButton label="Cerrar" onClick={() => setQuickEntry(null)}><X /></IconButton>
+            </div>
+            <form onSubmit={submitQuickEntry}>
+              <div className="form-grid">
+                <label>Cantidad enviada<input type="number" min="1" value={quickEntry.quantity} onChange={(event) => setQuickEntry({ ...quickEntry, quantity: event.target.value })} placeholder="Ej.: 20" required autoFocus /></label>
+                <label>Nota opcional<input value={quickEntry.notes} onChange={(event) => setQuickEntry({ ...quickEntry, notes: event.target.value })} placeholder="Ej.: tanda de la mañana" /></label>
+              </div>
+              <div className="form-actions"><button type="button" className="secondary" onClick={() => setQuickEntry(null)}>Cancelar</button><button className="primary" disabled={savingLog}><Plus size={16} />{savingLog ? "Guardando..." : "Sumar mensajes"}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function Vps() {
   const [data, setData] = useState({ items: [], counts: { vape: 0, shatha: 0 } });
   const [clients, setClients] = useState([]);
@@ -3873,6 +4113,9 @@ export default function App() {
       )}
       {(visitedPages.has("worked-hours") || page === "worked-hours") && (
         <div hidden={page !== "worked-hours"}><WorkedHours /></div>
+      )}
+      {(visitedPages.has("prospecting") || page === "prospecting") && (
+        <div hidden={page !== "prospecting"}><Prospecting /></div>
       )}
     </Shell>
   );

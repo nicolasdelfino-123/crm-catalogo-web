@@ -75,6 +75,32 @@ def test_work_logs_reject_invalid_hours(client):
     }).status_code == 422
 
 
+def test_prospecting_stores_weekly_goals_and_accumulates_actual_messages(client):
+    saved = client.put("/api/prospecting/goals", json={"goals": [
+        {"weekday": 0, "channel": "facebook_marketplace", "target": 20},
+        {"weekday": 0, "channel": "business_instagram", "target": 10},
+    ]})
+    assert saved.status_code == 200
+    first = client.post("/api/prospecting/logs", json={
+        "activity_date": "2026-07-20", "channel": "facebook_marketplace", "quantity": 12,
+    })
+    second = client.post("/api/prospecting/logs", json={
+        "activity_date": "2026-07-20", "channel": "facebook_marketplace", "quantity": 9,
+    })
+    assert first.status_code == 201
+    assert second.status_code == 201
+    data = client.get("/api/prospecting").get_json()["data"]
+    assert sum(goal["target"] for goal in data["goals"]) == 30
+    assert sum(log["quantity"] for log in data["logs"]) == 21
+    assert client.delete(f'/api/prospecting/logs/{first.get_json()["data"]["id"]}').status_code == 200
+
+
+def test_prospecting_rejects_unknown_channels(client):
+    assert client.post("/api/prospecting/logs", json={
+        "activity_date": "2026-07-20", "channel": "unknown", "quantity": 10,
+    }).status_code == 422
+
+
 def test_expenses_balance_is_independent_from_client_payments(client):
     today = date.today()
     month = today.strftime("%Y-%m")

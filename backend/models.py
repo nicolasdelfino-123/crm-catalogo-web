@@ -292,6 +292,34 @@ class WorkLog(db.Model):
         }
 
 
+class ProspectingGoal(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    weekday = db.Column(db.Integer, nullable=False, index=True)
+    channel = db.Column(db.String(60), nullable=False, index=True)
+    target = db.Column(db.Integer, nullable=False, default=0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    __table_args__ = (UniqueConstraint("weekday", "channel", name="uq_prospecting_goal_day_channel"),)
+
+    def to_dict(self):
+        return {"id": self.id, "weekday": self.weekday, "channel": self.channel, "target": self.target}
+
+
+class ProspectingLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    activity_date = db.Column(db.Date, nullable=False, default=date.today, index=True)
+    channel = db.Column(db.String(60), nullable=False, index=True)
+    quantity = db.Column(db.Integer, nullable=False, default=0)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "activity_date": iso(self.activity_date),
+            "channel": self.channel, "quantity": self.quantity,
+            "notes": self.notes, "created_at": iso(self.created_at),
+        }
+
+
 class ActionTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(80), unique=True, nullable=False)

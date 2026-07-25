@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response, current_app
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Integer, case, cast, func, or_
-from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, VpsAssignment, ClientMetric, ClientNote, ClientCredential, MessageLog, WorkLog, ActionTemplate
+from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, VpsAssignment, ClientMetric, ClientNote, ClientCredential, MessageLog, WorkLog, ProspectingGoal, ProspectingLog, ActionTemplate
 
 api = Blueprint("api", __name__)
 
@@ -532,6 +532,71 @@ def work_logs_create():
 @api.delete("/work-logs/<int:work_log_id>")
 def work_logs_delete(work_log_id):
     item = WorkLog.query.get_or_404(work_log_id)
+    db.session.delete(item); db.session.commit()
+    return ok(None, "Registro eliminado")
+
+
+PROSPECTING_CHANNELS = {
+    "facebook_marketplace", "business_instagram", "instagram_nicodelfino",
+    "instagram_nicod123", "business_whatsapp", "personal_whatsapp",
+}
+
+
+@api.get("/prospecting")
+def prospecting_list():
+    goals = ProspectingGoal.query.order_by(ProspectingGoal.weekday, ProspectingGoal.channel).all()
+    logs = ProspectingLog.query.order_by(ProspectingLog.activity_date.desc(), ProspectingLog.id.desc()).limit(3000).all()
+    return ok({"goals": [item.to_dict() for item in goals], "logs": [item.to_dict() for item in logs]})
+
+
+@api.put("/prospecting/goals")
+def prospecting_goals_save():
+    data = request.get_json(silent=True) or {}
+    goals = data.get("goals")
+    if not isinstance(goals, list):
+        return error("La planificación semanal es inválida", 422)
+    for value in goals:
+        try:
+            weekday = int(value.get("weekday"))
+            target = int(value.get("target") or 0)
+            channel = str(value.get("channel") or "").strip()
+        except (ValueError, TypeError, AttributeError):
+            return error("Revisá las cantidades planificadas", 422)
+        if weekday not in range(7) or channel not in PROSPECTING_CHANNELS or target < 0:
+            return error("La planificación contiene valores inválidos", 422)
+        goal = ProspectingGoal.query.filter_by(weekday=weekday, channel=channel).first()
+        if goal is None:
+            goal = ProspectingGoal(weekday=weekday, channel=channel)
+            db.session.add(goal)
+        goal.target = target
+    db.session.commit()
+    return ok([item.to_dict() for item in ProspectingGoal.query.all()], "Planificación guardada")
+
+
+@api.post("/prospecting/logs")
+def prospecting_logs_create():
+    data = request.get_json(silent=True) or {}
+    channel = str(data.get("channel") or "").strip()
+    try:
+        activity_date = parse_date(data.get("activity_date")) or date.today()
+        quantity = int(data.get("quantity") or 0)
+    except (ValueError, TypeError):
+        return error("Revisá la fecha y la cantidad", 422)
+    if channel not in PROSPECTING_CHANNELS:
+        return error("Elegí un canal válido", 422)
+    if quantity <= 0:
+        return error("La cantidad debe ser mayor que cero", 422)
+    item = ProspectingLog(
+        activity_date=activity_date, channel=channel, quantity=quantity,
+        notes=str(data.get("notes") or "").strip() or None,
+    )
+    db.session.add(item); db.session.commit()
+    return ok(item.to_dict(), "Avance registrado", 201)
+
+
+@api.delete("/prospecting/logs/<int:log_id>")
+def prospecting_logs_delete(log_id):
+    item = ProspectingLog.query.get_or_404(log_id)
     db.session.delete(item); db.session.commit()
     return ok(None, "Registro eliminado")
 
