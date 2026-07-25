@@ -348,6 +348,8 @@ function Dashboard({ goClients }) {
   const [incomeMonth, setIncomeMonth] = useState(new Date().toISOString().slice(0, 7));
   const [incomeType, setIncomeType] = useState("all");
   const [incomeTotals, setIncomeTotals] = useState({ ARS: 0, USD: 0 });
+  const [incomeItems, setIncomeItems] = useState([]);
+  const [expandedIncomeCurrency, setExpandedIncomeCurrency] = useState(null);
   const [incomeMonths, setIncomeMonths] = useState([]);
   const [incomeLoading, setIncomeLoading] = useState(true);
   useEffect(() => {
@@ -359,7 +361,9 @@ function Dashboard({ goClients }) {
       .then((result) => {
         if (active) {
           setIncomeTotals(result.totals);
+          setIncomeItems(result.items || []);
           setIncomeMonths(result.available_months || []);
+          setExpandedIncomeCurrency(null);
         }
       })
       .finally(() => {
@@ -467,9 +471,41 @@ function Dashboard({ goClients }) {
           </label>
         </div>
         <div className={`money-list ${incomeLoading ? "loading-totals" : ""}`}>
-          <span><small>Pesos</small><strong>{fmtMoney(incomeTotals.ARS || 0, "ARS")}</strong></span>
-          <span><small>Dólares</small><strong>{fmtMoney(incomeTotals.USD || 0, "USD")}</strong></span>
+          {["ARS", "USD"].map((currency) => (
+            <button
+              type="button"
+              className={expandedIncomeCurrency === currency ? "income-total-card active" : "income-total-card"}
+              key={currency}
+              onClick={() => setExpandedIncomeCurrency((current) => current === currency ? null : currency)}
+              aria-expanded={expandedIncomeCurrency === currency}
+            >
+              <small>{currency === "ARS" ? "Pesos" : "Dólares"}</small>
+              <strong>{fmtMoney(incomeTotals[currency] || 0, currency)}</strong>
+              <span>{expandedIncomeCurrency === currency ? "Ocultar detalle" : "Ver detalle"}</span>
+            </button>
+          ))}
         </div>
+        {expandedIncomeCurrency && (
+          <div className="income-breakdown">
+            <div className="income-breakdown-head">
+              <strong>Detalle en {expandedIncomeCurrency === "ARS" ? "pesos" : "dólares"}</strong>
+              <span>{incomeItems.filter((item) => item.currency === expandedIncomeCurrency).length} movimientos</span>
+            </div>
+            {incomeItems.filter((item) => item.currency === expandedIncomeCurrency).map((item) => (
+              <div className="income-breakdown-row" key={item.id}>
+                <div>
+                  <strong>{item.notes || LABEL[item.payment_type] || "Ingreso"}</strong>
+                  <span>{item.client_name}{item.business_name ? ` · ${item.business_name}` : ""}</span>
+                </div>
+                <time>{fmtDate(item.display_date || item.due_date)}</time>
+                <strong>{fmtMoney(item.amount, item.currency)}</strong>
+              </div>
+            ))}
+            {!incomeItems.some((item) => item.currency === expandedIncomeCurrency) && (
+              <p className="income-breakdown-empty">No hay ingresos para detallar en esta moneda.</p>
+            )}
+          </div>
+        )}
       </div>
       {selectedMetric && (
         <DashboardMetricModal

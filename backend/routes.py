@@ -998,6 +998,13 @@ def dashboard_income():
             "month": None,
             "payment_type": payment_type,
             "totals": totals,
+            "items": [{
+                "id": f"forecast-{client.id}", "client_id": client.id,
+                "client_name": client.name, "business_name": client.business_name,
+                "amount": float(client.payment_amount or 0), "currency": client.currency,
+                "payment_type": "monthly_forecast", "due_date": client.next_renewal_date.isoformat() if client.next_renewal_date else None,
+                "notes": "Mensualidad actual estimada",
+            } for client in active_clients],
             "available_months": available_months,
         })
     month_start = month_end = None
@@ -1014,6 +1021,7 @@ def dashboard_income():
         query = query.filter(Payment.payment_type == "extra_work")
     totals = {"ARS": 0, "USD": 0}
     paid_payments = query.all()
+    matching_payments = []
     available_months = sorted({
         (payment.due_date or (payment.paid_at.date() if payment.paid_at else None)).strftime("%Y-%m")
         for payment in Payment.query.filter(Payment.status == "paid").all()
@@ -1024,10 +1032,16 @@ def dashboard_income():
         if month_start and (not payment_date or not month_start <= payment_date < month_end):
             continue
         totals[payment.currency] = totals.get(payment.currency, 0) + float(payment.amount)
+        matching_payments.append({
+            **payment.to_dict(),
+            "business_name": payment.client.business_name,
+            "display_date": payment_date.isoformat() if payment_date else None,
+        })
     return ok({
         "month": month,
         "payment_type": payment_type,
         "totals": totals,
+        "items": matching_payments,
         "available_months": available_months,
     })
 

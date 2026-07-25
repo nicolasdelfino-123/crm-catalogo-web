@@ -426,7 +426,8 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
 
     june_total = client.get("/api/dashboard/income?month=2026-06&payment_type=all").get_json()["data"]["totals"]
     june_monthly = client.get("/api/dashboard/income?month=2026-06&payment_type=monthly").get_json()["data"]["totals"]
-    june_extras = client.get("/api/dashboard/income?month=2026-06&payment_type=extra_work").get_json()["data"]["totals"]
+    june_extras_data = client.get("/api/dashboard/income?month=2026-06&payment_type=extra_work").get_json()["data"]
+    june_extras = june_extras_data["totals"]
     july_total = client.get("/api/dashboard/income?month=2026-07&payment_type=all").get_json()["data"]["totals"]
     all_months = client.get("/api/dashboard/income?month=all&payment_type=all").get_json()["data"]
     monthly_forecast = client.get("/api/dashboard/income?payment_type=monthly_forecast").get_json()["data"]["totals"]
@@ -434,6 +435,9 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
     assert june_total == {"ARS": 100000.0, "USD": 50.0}
     assert june_monthly == {"ARS": 100000.0, "USD": 0}
     assert june_extras == {"ARS": 0, "USD": 50.0}
+    assert len(june_extras_data["items"]) == 1
+    assert june_extras_data["items"][0]["client_name"] == "Cliente ingresos"
+    assert june_extras_data["items"][0]["amount"] == 50.0
     assert july_total == {"ARS": 25000.0, "USD": 0}
     assert all_months["totals"] == {"ARS": 125000.0, "USD": 50.0}
     assert all_months["available_months"] == ["2026-07", "2026-06"]
