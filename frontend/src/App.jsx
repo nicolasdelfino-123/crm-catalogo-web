@@ -350,6 +350,8 @@ function Dashboard({ goClients }) {
   const [incomeTotals, setIncomeTotals] = useState({ ARS: 0, USD: 0 });
   const [incomeItems, setIncomeItems] = useState([]);
   const [expandedIncomeCurrency, setExpandedIncomeCurrency] = useState(null);
+  const [selectedIncomeClient, setSelectedIncomeClient] = useState(null);
+  const [incomeClientForm, setIncomeClientForm] = useState(null);
   const [incomeMonths, setIncomeMonths] = useState([]);
   const [incomeLoading, setIncomeLoading] = useState(true);
   useEffect(() => {
@@ -492,14 +494,20 @@ function Dashboard({ goClients }) {
               <span>{incomeItems.filter((item) => item.currency === expandedIncomeCurrency).length} movimientos</span>
             </div>
             {incomeItems.filter((item) => item.currency === expandedIncomeCurrency).map((item) => (
-              <div className="income-breakdown-row" key={item.id}>
+              <button
+                type="button"
+                className="income-breakdown-row"
+                key={item.id}
+                onClick={() => setSelectedIncomeClient(item.client_id)}
+                aria-label={`Abrir ficha de ${item.client_name}`}
+              >
                 <div>
                   <strong>{item.notes || LABEL[item.payment_type] || "Ingreso"}</strong>
                   <span>{item.client_name}{item.business_name ? ` · ${item.business_name}` : ""}</span>
                 </div>
                 <time>{fmtDate(item.display_date || item.due_date)}</time>
                 <strong>{fmtMoney(item.amount, item.currency)}</strong>
-              </div>
+              </button>
             ))}
             {!incomeItems.some((item) => item.currency === expandedIncomeCurrency) && (
               <p className="income-breakdown-empty">No hay ingresos para detallar en esta moneda.</p>
@@ -513,6 +521,25 @@ function Dashboard({ goClients }) {
           metricKey={selectedMetric.key}
           items={data.details?.[selectedMetric.key] || []}
           onClose={() => setSelectedMetric(null)}
+        />
+      )}
+      {selectedIncomeClient && (
+        <DetailModal
+          clientId={selectedIncomeClient}
+          onClose={() => setSelectedIncomeClient(null)}
+          onRefresh={() => {}}
+          onEdit={(client) => {
+            setSelectedIncomeClient(null);
+            setIncomeClientForm(client);
+          }}
+          initialTab="payments"
+        />
+      )}
+      {incomeClientForm && (
+        <ClientForm
+          client={incomeClientForm}
+          onClose={() => setIncomeClientForm(null)}
+          onSaved={() => setIncomeClientForm(null)}
         />
       )}
     </section>
