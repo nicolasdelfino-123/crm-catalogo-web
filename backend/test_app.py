@@ -430,7 +430,8 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
     june_extras = june_extras_data["totals"]
     july_total = client.get("/api/dashboard/income?month=2026-07&payment_type=all").get_json()["data"]["totals"]
     all_months = client.get("/api/dashboard/income?month=all&payment_type=all").get_json()["data"]
-    monthly_forecast = client.get("/api/dashboard/income?payment_type=monthly_forecast").get_json()["data"]["totals"]
+    monthly_forecast_data = client.get("/api/dashboard/income?month=2026-08&payment_type=monthly_forecast").get_json()["data"]
+    monthly_forecast = monthly_forecast_data["totals"]
 
     assert june_total == {"ARS": 100000.0, "USD": 50.0}
     assert june_monthly == {"ARS": 100000.0, "USD": 0}
@@ -442,6 +443,8 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
     assert all_months["totals"] == {"ARS": 125000.0, "USD": 50.0}
     assert all_months["available_months"] == ["2026-07", "2026-06"]
     assert monthly_forecast == {"ARS": 80000.0, "USD": 40.0}
+    assert monthly_forecast_data["month"] == "2026-08"
+    assert all(item["due_date"].startswith("2026-08") for item in monthly_forecast_data["items"])
     assert client.get("/api/dashboard/income?month=junio").status_code == 422
     assert client.get("/api/dashboard/income?payment_type=otro").status_code == 422
 

@@ -168,6 +168,10 @@ const fmtMonth = (value) => {
     timeZone: "UTC",
   }).format(parsed);
 };
+const monthKey = (value = new Date()) =>
+  `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`;
+const nextMonthKey = (value = new Date()) =>
+  monthKey(new Date(value.getFullYear(), value.getMonth() + 1, 1));
 const billingDay = (value) => value ? Number(value.slice(8, 10)) : 32;
 const fmtMoney = (value, currency = "ARS") =>
   new Intl.NumberFormat("es-AR", {
@@ -343,9 +347,11 @@ function Shell({ page, setPage, onLogout, children }) {
 }
 
 function Dashboard({ goClients }) {
+  const currentMonth = monthKey();
+  const nextMonth = nextMonthKey();
   const [data, setData] = useState(null);
   const [selectedMetric, setSelectedMetric] = useState(null);
-  const [incomeMonth, setIncomeMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [incomeMonth, setIncomeMonth] = useState(currentMonth);
   const [incomeType, setIncomeType] = useState("all");
   const [incomeTotals, setIncomeTotals] = useState({ ARS: 0, USD: 0 });
   const [incomeItems, setIncomeItems] = useState([]);
@@ -418,7 +424,7 @@ function Dashboard({ goClients }) {
         <div className="dashboard-income-copy">
           <span className="eyebrow">
             {incomeType === "monthly_forecast"
-              ? "Mensualidad actual estimada"
+              ? `A cobrar en ${fmtMonth(incomeMonth)}`
               : incomeMonth === "all"
                 ? "Cobrado en todos los meses"
                 : `Cobrado en ${fmtMonth(incomeMonth)}`}
@@ -426,7 +432,7 @@ function Dashboard({ goClients }) {
           <h3>Ingresos separados por moneda</h3>
           <p>
             {incomeType === "monthly_forecast"
-              ? "Proyección de clientes activos y en riesgo que ya tienen alta."
+              ? "Mensualidades previstas de clientes activos y en riesgo."
               : incomeType === "monthly"
               ? "Solo mensualidades cobradas."
               : incomeType === "extra_work"
@@ -439,19 +445,23 @@ function Dashboard({ goClients }) {
             Mes
             <select
               value={incomeMonth}
-              disabled={incomeType === "monthly_forecast"}
               onChange={(event) => {
                 setIncomeLoading(true);
-                setIncomeMonth(event.target.value);
+                const selectedMonth = event.target.value;
+                setIncomeMonth(selectedMonth);
+                setIncomeType(selectedMonth === nextMonth ? "monthly_forecast" : "all");
               }}
             >
               <option value="all">Todos los meses</option>
-              {!incomeMonths.includes(new Date().toISOString().slice(0, 7)) && (
-                <option value={new Date().toISOString().slice(0, 7)}>
-                  {fmtMonth(new Date().toISOString().slice(0, 7))}
+              <option value={nextMonth}>
+                {fmtMonth(nextMonth)} · a cobrar
+              </option>
+              {!incomeMonths.includes(currentMonth) && currentMonth !== nextMonth && (
+                <option value={currentMonth}>
+                  {fmtMonth(currentMonth)}
                 </option>
               )}
-              {incomeMonths.map((month) => (
+              {incomeMonths.filter((month) => month !== nextMonth).map((month) => (
                 <option value={month} key={month}>{fmtMonth(month)}</option>
               ))}
             </select>
@@ -462,13 +472,15 @@ function Dashboard({ goClients }) {
               value={incomeType}
               onChange={(event) => {
                 setIncomeLoading(true);
-                setIncomeType(event.target.value);
+                const selectedType = event.target.value;
+                setIncomeType(selectedType);
+                if (selectedType === "monthly_forecast") setIncomeMonth(nextMonth);
               }}
             >
               <option value="all">Total: mensualidades + extras</option>
               <option value="monthly">Solo mensualidades</option>
               <option value="extra_work">Solo trabajos extra</option>
-              <option value="monthly_forecast">Mensualidad actual a cobrar</option>
+              <option value="monthly_forecast">Mensualidades del mes siguiente</option>
             </select>
           </label>
         </div>

@@ -982,6 +982,10 @@ def dashboard_income():
     if payment_type not in {"all", "monthly", "extra_work", "monthly_forecast"}:
         return error("El tipo de pago debe ser all, monthly, extra_work o monthly_forecast", 422)
     if payment_type == "monthly_forecast":
+        try:
+            forecast_month = date.fromisoformat(f"{month}-01")
+        except ValueError:
+            return error("El mes debe tener el formato AAAA-MM", 422)
         totals = {"ARS": 0, "USD": 0}
         active_clients = Client.query.filter(
             Client.archived_at.is_(None),
@@ -995,15 +999,21 @@ def dashboard_income():
             if payment.due_date or payment.paid_at
         }, reverse=True)
         return ok({
-            "month": None,
+            "month": month,
             "payment_type": payment_type,
             "totals": totals,
             "items": [{
                 "id": f"forecast-{client.id}", "client_id": client.id,
                 "client_name": client.name, "business_name": client.business_name,
                 "amount": float(client.payment_amount or 0), "currency": client.currency,
-                "payment_type": "monthly_forecast", "due_date": client.next_renewal_date.isoformat() if client.next_renewal_date else None,
-                "notes": "Mensualidad actual estimada",
+                "payment_type": "monthly_forecast",
+                "due_date": forecast_month.replace(
+                    day=min(
+                        client.next_renewal_date.day,
+                        calendar.monthrange(forecast_month.year, forecast_month.month)[1],
+                    )
+                ).isoformat() if client.next_renewal_date else forecast_month.isoformat(),
+                "notes": f"Mensualidad prevista · {forecast_month.strftime('%m/%Y')}",
             } for client in active_clients],
             "available_months": available_months,
         })
