@@ -313,7 +313,14 @@ def clients_list():
     search = request.args.get("search", "").strip()
     if search:
         term = f"%{search}%"
-        query = query.filter(or_(Client.name.ilike(term), Client.business_name.ilike(term), Client.instagram_username.ilike(term), Client.email.ilike(term)))
+        query = query.filter(or_(
+            Client.name.ilike(term),
+            Client.business_name.ilike(term),
+            Client.instagram_username.ilike(term),
+            Client.email.ilike(term),
+            Client.city.ilike(term),
+            Client.country.ilike(term),
+        ))
     requested_status = request.args.get("status")
     if requested_status == "active_no_signup":
         query = query.filter(Client.status.in_(("active", "at_risk", "no_signup")))

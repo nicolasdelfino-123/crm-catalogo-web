@@ -434,10 +434,10 @@ function Dashboard({ goClients }) {
             {incomeType === "monthly_forecast"
               ? "Mensualidades previstas de clientes activos y en riesgo."
               : incomeType === "monthly"
-              ? "Solo mensualidades cobradas."
-              : incomeType === "extra_work"
-                ? "Solo trabajos extra cobrados."
-                : "Mensualidades y trabajos extra cobrados."}
+                ? "Solo mensualidades cobradas."
+                : incomeType === "extra_work"
+                  ? "Solo trabajos extra cobrados."
+                  : "Mensualidades y trabajos extra cobrados."}
           </p>
         </div>
         <div className="dashboard-income-controls">
@@ -539,7 +539,7 @@ function Dashboard({ goClients }) {
         <DetailModal
           clientId={selectedIncomeClient}
           onClose={() => setSelectedIncomeClient(null)}
-          onRefresh={() => {}}
+          onRefresh={() => { }}
           onEdit={(client) => {
             setSelectedIncomeClient(null);
             setIncomeClientForm(client);
@@ -584,17 +584,17 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
   const sourceItems = monthlyClientMetric ? monthlyItems : items;
   const filteredSourceItems = metricKey === "active_clients"
     ? sourceItems.filter((item) => {
-        if (activeStatusFilter === "active") {
-          return ["active", "at_risk"].includes(item.status);
-        }
-        if (activeStatusFilter === "no_signup") {
-          return item.status === "no_signup";
-        }
-        if (activeStatusFilter === "at_risk") {
-          return item.status === "at_risk";
-        }
-        return ["active", "at_risk", "no_signup"].includes(item.status);
-      })
+      if (activeStatusFilter === "active") {
+        return ["active", "at_risk"].includes(item.status);
+      }
+      if (activeStatusFilter === "no_signup") {
+        return item.status === "no_signup";
+      }
+      if (activeStatusFilter === "at_risk") {
+        return item.status === "at_risk";
+      }
+      return ["active", "at_risk", "no_signup"].includes(item.status);
+    })
     : sourceItems;
   const displayedItems = useMemo(() => {
     const dateField = metricKey === "pending_actions"
@@ -2304,7 +2304,7 @@ function Clients() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar cliente, negocio o Instagram"
+            placeholder="Buscar cliente, negocio, Instagram o ubicación"
           />
         </label>
         <label className="filter">
