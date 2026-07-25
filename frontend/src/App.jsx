@@ -2585,6 +2585,8 @@ function Th({ label, name, sort, toggle }) {
 }
 
 function Agenda() {
+  const now = new Date();
+  const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const [view, setView] = useState("today");
   const [actionStatus, setActionStatus] = useState("pending");
   const [items, setItems] = useState([]);
@@ -2716,7 +2718,8 @@ function Agenda() {
               <button
                 type="button"
                 key={day.iso}
-                className={`${day.currentMonth ? "" : "outside"} ${selectedCalendarDate === day.iso ? "selected" : ""}`}
+                className={`${day.currentMonth ? "" : "outside"} ${day.iso === todayIso ? "today" : ""} ${selectedCalendarDate === day.iso ? "selected" : ""}`}
+                aria-current={day.iso === todayIso ? "date" : undefined}
                 onClick={() => setSelectedCalendarDate(day.iso)}
               >
                 <time>{day.day}</time>
