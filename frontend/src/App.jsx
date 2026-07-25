@@ -684,7 +684,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
                 ) : metricKey === "renewals_week" ? (
                   <><small>Renovación</small><strong>{fmtDate(item.next_renewal_date)}</strong></>
                 ) : metricKey === "new_clients_month" ? (
-                  <><small>Cargado en el CRM</small><strong>{fmtDate(item.created_at)}</strong></>
+                  <><small>Fecha de alta comercial</small><strong>{fmtDate(item.commercial_signup_date)}</strong></>
                 ) : metricKey === "sold_clients_month" ? (
                   <><small>Fecha de venta</small><strong>{fmtDate(item.sale_date)}</strong>{badge(item.status)}</>
                 ) : metricKey === "active_clients" ? (
@@ -708,6 +708,7 @@ function ClientForm({ client, onClose, onSaved }) {
     name: "",
     business_name: "",
     sale_date: new Date().toISOString().slice(0, 10),
+    commercial_signup_date: new Date().toISOString().slice(0, 10),
     signup_date: new Date().toISOString().slice(0, 10),
     next_renewal_date: "",
     country: "Argentina",
@@ -859,6 +860,16 @@ function ClientForm({ client, onClose, onSaved }) {
                   name="sale_date"
                   value={form.sale_date || ""}
                   onChange={change}
+                />
+              </label>
+              <label>
+                Fecha de alta comercial *
+                <input
+                  type="date"
+                  name="commercial_signup_date"
+                  value={form.commercial_signup_date || ""}
+                  onChange={change}
+                  required
                 />
               </label>
               <label>

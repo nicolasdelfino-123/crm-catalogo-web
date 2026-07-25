@@ -213,9 +213,11 @@ def apply_client(client, data):
     for field in text_fields:
         if field in data:
             setattr(client, field, data[field] or None)
-    for field in ["sale_date", "signup_date", "next_renewal_date"]:
+    for field in ["sale_date", "commercial_signup_date", "signup_date", "next_renewal_date"]:
         if field in data:
             setattr(client, field, parse_date(data[field]))
+    if not client.commercial_signup_date:
+        client.commercial_signup_date = client.sale_date or date.today()
     if "signup_date" in data and client.signup_date and not data.get("next_renewal_date"):
         client.next_renewal_date = add_calendar_months(client.signup_date, 1)
     for field in ["payment_amount"]:
@@ -938,7 +940,8 @@ def dashboard():
     next_month_start = add_calendar_months(month_start, 1)
     new_clients_month = [
         c for c in clients
-        if c.created_at and month_start <= c.created_at.date() < next_month_start
+        if c.commercial_signup_date
+        and month_start <= c.commercial_signup_date < next_month_start
     ]
     sold_clients_month = [c for c in clients if c.sale_date and month_start <= c.sale_date < next_month_start]
 
@@ -947,7 +950,7 @@ def dashboard():
             "id": client.id, "name": client.name, "business_name": client.business_name,
             "status": client.status, "service_stage": client.service_stage,
             "sale_date": iso(client.sale_date),
-            "created_at": iso(client.created_at),
+            "commercial_signup_date": iso(client.commercial_signup_date),
             "signup_date": client.signup_date.isoformat() if client.signup_date else None,
             "next_renewal_date": client.next_renewal_date.isoformat() if client.next_renewal_date else None,
         }
@@ -1107,13 +1110,11 @@ def new_clients_by_month():
     except ValueError:
         return error("El mes debe tener el formato AAAA-MM", 422)
     month_end = add_calendar_months(month_start, 1)
-    created_from = datetime.combine(month_start, datetime.min.time())
-    created_until = datetime.combine(month_end, datetime.min.time())
     clients = Client.query.filter(
         Client.archived_at.is_(None),
-        Client.created_at >= created_from,
-        Client.created_at < created_until,
-    ).order_by(Client.created_at.desc(), Client.name.asc()).all()
+        Client.commercial_signup_date >= month_start,
+        Client.commercial_signup_date < month_end,
+    ).order_by(Client.commercial_signup_date.desc(), Client.name.asc()).all()
     return ok([
         {
             "id": client.id,
@@ -1121,7 +1122,7 @@ def new_clients_by_month():
             "business_name": client.business_name,
             "status": client.status,
             "service_stage": client.service_stage,
-            "created_at": iso(client.created_at),
+            "commercial_signup_date": iso(client.commercial_signup_date),
             "signup_date": iso(client.signup_date),
             "next_renewal_date": iso(client.next_renewal_date),
         }

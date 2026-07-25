@@ -361,18 +361,16 @@ def test_acquisition_summary_includes_client_details(client):
     assert channel["clients"][0]["signup_date"] == "2026-07-01"
 
 
-def test_new_clients_can_be_filtered_by_creation_month(client, app):
-    created_ids = []
-    for name, signup_date in [("Cliente junio", "2026-06-15"), ("Cliente julio", "2026-07-10")]:
-        response = client.post("/api/clients", json={
-            "name": name, "business_name": name, "signup_date": signup_date,
+def test_new_clients_can_be_filtered_by_commercial_signup_month(client):
+    for name, commercial_date, signup_date in [
+        ("Cliente junio", "2026-06-15", "2026-09-01"),
+        ("Cliente julio", "2026-07-10", "2026-10-01"),
+    ]:
+        client.post("/api/clients", json={
+            "name": name, "business_name": name,
+            "commercial_signup_date": commercial_date, "signup_date": signup_date,
             "country": "Argentina", "currency": "ARS",
         })
-        created_ids.append(response.get_json()["data"]["id"])
-    with app.app_context():
-        Client.query.get(created_ids[0]).created_at = datetime(2026, 6, 15, 12)
-        Client.query.get(created_ids[1]).created_at = datetime(2026, 7, 10, 12)
-        db.session.commit()
 
     june = client.get("/api/dashboard/new-clients?month=2026-06")
     assert june.status_code == 200
@@ -380,21 +378,18 @@ def test_new_clients_can_be_filtered_by_creation_month(client, app):
     assert client.get("/api/dashboard/new-clients?month=junio").status_code == 422
 
 
-def test_sold_clients_use_sale_date_and_new_clients_use_creation_date(client, app):
+def test_sold_clients_and_commercial_signups_are_independent_from_service_start(client):
     created = client.post("/api/clients", json={
         "name": "Cliente vendido en junio",
         "business_name": "Venta junio alta julio",
         "sale_date": "2026-06-29",
+        "commercial_signup_date": "2026-06-29",
         "signup_date": "2026-07-05",
         "country": "Argentina",
         "currency": "ARS",
     })
     assert created.status_code == 201
     assert created.get_json()["data"]["sale_date"] == "2026-06-29"
-    with app.app_context():
-        Client.query.get(created.get_json()["data"]["id"]).created_at = datetime(2026, 6, 29, 12)
-        db.session.commit()
-
     june_sales = client.get("/api/dashboard/sold-clients?month=2026-06")
     july_sales = client.get("/api/dashboard/sold-clients?month=2026-07")
     june_signups = client.get("/api/dashboard/new-clients?month=2026-06")

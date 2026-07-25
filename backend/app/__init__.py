@@ -112,6 +112,12 @@ def create_app(test_config=None):
         if "sale_date" not in columns:
             db.session.execute(text("ALTER TABLE client ADD COLUMN sale_date DATE"))
             db.session.commit()
+        if "commercial_signup_date" not in columns:
+            db.session.execute(text("ALTER TABLE client ADD COLUMN commercial_signup_date DATE"))
+            db.session.execute(text(
+                "UPDATE client SET commercial_signup_date = COALESCE(sale_date, signup_date)"
+            ))
+            db.session.commit()
         if "acquisition_source" not in columns:
             db.session.execute(text("ALTER TABLE client ADD COLUMN acquisition_source VARCHAR(60)"))
             db.session.commit()
