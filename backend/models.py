@@ -277,6 +277,21 @@ class MessageLog(db.Model):
         }
 
 
+class WorkLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    work_date = db.Column(db.Date, nullable=False, default=date.today, index=True)
+    hours = db.Column(db.Numeric(6, 2), nullable=False)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "work_date": iso(self.work_date),
+            "hours": float(self.hours), "notes": self.notes,
+            "created_at": iso(self.created_at),
+        }
+
+
 class ActionTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(80), unique=True, nullable=False)

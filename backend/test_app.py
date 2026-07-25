@@ -50,6 +50,31 @@ def test_monthly_message_total_uses_selected_month(client):
     assert updated.get_json()["data"]["quantity"] == 450
 
 
+def test_work_logs_accumulate_multiple_entries_on_the_same_day(client):
+    first = client.post("/api/work-logs", json={
+        "work_date": "2026-07-21", "hours": 4, "notes": "Diseño",
+    })
+    second = client.post("/api/work-logs", json={
+        "work_date": "2026-07-21", "hours": 2, "notes": "Desarrollo",
+    })
+    assert first.status_code == 201
+    assert second.status_code == 201
+    listed = client.get("/api/work-logs").get_json()["data"]
+    assert sum(item["hours"] for item in listed if item["work_date"] == "2026-07-21") == 6
+    assert client.delete(f'/api/work-logs/{first.get_json()["data"]["id"]}').status_code == 200
+    remaining = client.get("/api/work-logs").get_json()["data"]
+    assert sum(item["hours"] for item in remaining) == 2
+
+
+def test_work_logs_reject_invalid_hours(client):
+    assert client.post("/api/work-logs", json={
+        "work_date": "2026-07-21", "hours": 0,
+    }).status_code == 422
+    assert client.post("/api/work-logs", json={
+        "work_date": "2026-07-21", "hours": 25,
+    }).status_code == 422
+
+
 def test_expenses_balance_is_independent_from_client_payments(client):
     today = date.today()
     month = today.strftime("%Y-%m")

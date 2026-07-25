@@ -38,11 +38,13 @@ import {
   LogOut,
   KeyRound,
   Copy,
+  Timer,
 } from "lucide-react";
 import "./expenses.css";
 import "./payment-summary.css";
 import "./vps.css";
 import "./instagram-links.css";
+import "./worked-hours.css";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ||
   (import.meta.env.DEV
@@ -263,6 +265,7 @@ function Sidebar({ page, setPage, open, setOpen }) {
     ["expenses", "Gastos", ReceiptText],
     ["vps", "VPS", Server],
     ["messages", "Mensajes", Mail],
+    ["worked-hours", "Horas trabajadas", Timer],
   ];
   return (
     <aside className={`sidebar ${open ? "open" : ""}`}>
@@ -333,6 +336,7 @@ function Shell({ page, setPage, onLogout, children }) {
     expenses: "Gastos",
     vps: "VPS",
     messages: "Mensajes enviados",
+    "worked-hours": "Horas trabajadas",
   };
   return (
     <div className="app-shell">
@@ -3122,6 +3126,162 @@ function Messages() {
   );
 }
 
+const dateKey = (value = new Date()) =>
+  `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+const fromDateKey = (value) => {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+};
+const addDays = (value, amount) => {
+  const result = new Date(value);
+  result.setDate(result.getDate() + amount);
+  return result;
+};
+const startOfWeek = (value) => addDays(value, -((value.getDay() + 6) % 7));
+const fmtHours = (value) => `${Number(value || 0).toLocaleString("es-AR", { maximumFractionDigits: 2 })} h`;
+
+function WorkedHours() {
+  const today = dateKey();
+  const [items, setItems] = useState([]);
+  const [view, setView] = useState("calendar");
+  const [cursor, setCursor] = useState(fromDateKey(today));
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [form, setForm] = useState({ work_date: today, hours: "", notes: "" });
+  const [saving, setSaving] = useState(false);
+  const load = useCallback(() => api("/work-logs").then(setItems), [setItems]);
+  useEffect(() => { load(); }, [load]);
+
+  const totalsByDay = useMemo(() => items.reduce((totals, item) => ({
+    ...totals,
+    [item.work_date]: (totals[item.work_date] || 0) + item.hours,
+  }), {}), [items]);
+  const selectedMonth = monthKey(cursor);
+  const monthTotal = useMemo(() => Object.entries(totalsByDay)
+    .filter(([day]) => day.startsWith(selectedMonth))
+    .reduce((total, [, hours]) => total + hours, 0), [totalsByDay, selectedMonth]);
+  const weekStart = startOfWeek(cursor);
+  const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
+  const weekTotal = weekDays.reduce((total, day) => total + (totalsByDay[dateKey(day)] || 0), 0);
+  const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+  const calendarStart = startOfWeek(monthStart);
+  const calendarDays = Array.from({ length: 42 }, (_, index) => addDays(calendarStart, index));
+  const selectedEntries = items.filter((item) => item.work_date === selectedDate);
+
+  async function submit(event) {
+    event.preventDefault(); setSaving(true);
+    try {
+      await api("/work-logs", { method: "POST", body: JSON.stringify(form) });
+      const savedDate = fromDateKey(form.work_date);
+      setCursor(savedDate); setSelectedDate(form.work_date);
+      setForm({ ...form, hours: "", notes: "" });
+      await load();
+    } finally { setSaving(false); }
+  }
+  async function remove(item) {
+    if (!window.confirm(`¿Eliminar esta carga de ${fmtHours(item.hours)}?`)) return;
+    await api(`/work-logs/${item.id}`, { method: "DELETE" });
+    await load();
+  }
+  function move(amount) {
+    setCursor((current) => view === "calendar"
+      ? new Date(current.getFullYear(), current.getMonth() + amount, 1)
+      : addDays(current, amount * 7));
+  }
+  function chooseDay(day) {
+    const key = dateKey(day);
+    setCursor(day); setSelectedDate(key); setForm((current) => ({ ...current, work_date: key }));
+  }
+
+  return (
+    <section className="page worked-hours-page">
+      <div className="page-intro">
+        <div><h2>Horas trabajadas</h2><p>Sumá cada bloque de trabajo y consultá tus totales diarios, semanales y mensuales.</p></div>
+        <div className="hours-view-toggle">
+          <button className={view === "calendar" ? "active" : ""} onClick={() => setView("calendar")}><CalendarDays size={16} />Calendario</button>
+          <button className={view === "week" ? "active" : ""} onClick={() => setView("week")}><ChartNoAxesColumnIncreasing size={16} />Semana</button>
+        </div>
+      </div>
+      <div className="hours-summary">
+        <article><span><Clock3 /></span><div><small>Hoy</small><strong>{fmtHours(totalsByDay[today])}</strong></div></article>
+        <article><span><CalendarDays /></span><div><small>Semana visible</small><strong>{fmtHours(weekTotal)}</strong></div></article>
+        <article className="hours-month-filter">
+          <span><ChartNoAxesColumnIncreasing /></span>
+          <label>
+            <small>Total del mes · Elegir mes</small>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => {
+                if (!event.target.value) return;
+                const nextDate = fromDateKey(`${event.target.value}-01`);
+                setCursor(nextDate);
+                setSelectedDate(dateKey(nextDate));
+                setForm((current) => ({ ...current, work_date: dateKey(nextDate) }));
+              }}
+            />
+            <strong>{fmtHours(monthTotal)}</strong>
+          </label>
+        </article>
+      </div>
+      <form className="hours-form" onSubmit={submit}>
+        <div><span className="eyebrow">Nueva carga</span><h3>Agregar horas</h3><p>Si volvés a cargar el mismo día, las horas se suman.</p></div>
+        <label>Fecha<input type="date" value={form.work_date} onChange={(event) => setForm({ ...form, work_date: event.target.value })} required /></label>
+        <label>Horas<input type="number" min="0.25" max="24" step="0.25" value={form.hours} onChange={(event) => setForm({ ...form, hours: event.target.value })} placeholder="Ej.: 4" required /></label>
+        <label>Nota opcional<input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="¿En qué trabajaste?" /></label>
+        <button className="primary" disabled={saving}><Plus size={17} />{saving ? "Guardando..." : "Sumar horas"}</button>
+      </form>
+      <div className="hours-period">
+        <div className="hours-period-head">
+          <IconButton label="Período anterior" onClick={() => move(-1)}><ChevronLeft /></IconButton>
+          <h3>{view === "calendar" ? fmtMonth(selectedMonth) : `${fmtDate(dateKey(weekStart))} — ${fmtDate(dateKey(weekDays[6]))}`}</h3>
+          <IconButton label="Período siguiente" onClick={() => move(1)}><ChevronRight /></IconButton>
+          <button className="secondary small" onClick={() => setCursor(fromDateKey(today))}>Hoy</button>
+        </div>
+        {view === "calendar" ? (
+          <>
+            <div className="hours-weekdays">{["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div>
+            <div className="hours-calendar">
+              {calendarDays.map((day) => {
+                const key = dateKey(day);
+                return <button key={key} className={`${day.getMonth() !== cursor.getMonth() ? "outside" : ""} ${key === today ? "today" : ""} ${key === selectedDate ? "selected" : ""}`} onClick={() => chooseDay(day)}>
+                  <time>{day.getDate()}</time>
+                  {totalsByDay[key] > 0 && <strong>{fmtHours(totalsByDay[key])}</strong>}
+                </button>;
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="hours-week-view">
+            {weekDays.map((day) => {
+              const key = dateKey(day);
+              const hours = totalsByDay[key] || 0;
+              const percentage = Math.min(100, (hours / Math.max(8, ...weekDays.map((item) => totalsByDay[dateKey(item)] || 0))) * 100);
+              return <button key={key} className={`${key === today ? "today" : ""} ${key === selectedDate ? "selected" : ""}`} onClick={() => chooseDay(day)}>
+                <div><span>{new Intl.DateTimeFormat("es-AR", { weekday: "long" }).format(day)}</span><time>{day.getDate()}</time></div>
+                <div className="hours-bar"><i style={{ width: `${percentage}%` }} /></div>
+                <strong>{fmtHours(hours)}</strong>
+              </button>;
+            })}
+          </div>
+        )}
+        <div className="hours-period-total">
+          <div>
+            <small>{view === "calendar" ? `Total de ${fmtMonth(selectedMonth)}` : "Total de la semana"}</small>
+            <span>{view === "calendar" ? "Suma de todos los días del mes" : `${fmtDate(dateKey(weekStart))} al ${fmtDate(dateKey(weekDays[6]))}`}</span>
+          </div>
+          <strong>{fmtHours(view === "calendar" ? monthTotal : weekTotal)}</strong>
+        </div>
+      </div>
+      <div className="hours-detail">
+        <div><span className="eyebrow">Detalle del día</span><h3>{fmtDate(selectedDate)} · {fmtHours(totalsByDay[selectedDate])}</h3></div>
+        {selectedEntries.length ? <div className="hours-entries">{selectedEntries.map((item) => (
+          <article key={item.id}><div><strong>+ {fmtHours(item.hours)}</strong><span>{item.notes || "Sin nota"}</span></div><IconButton label="Eliminar carga" onClick={() => remove(item)}><Trash2 /></IconButton></article>
+        ))}</div> : <p className="hours-empty">Todavía no cargaste horas para este día.</p>}
+      </div>
+    </section>
+  );
+}
+
 function Vps() {
   const [data, setData] = useState({ items: [], counts: { vape: 0, shatha: 0 } });
   const [clients, setClients] = useState([]);
@@ -3707,6 +3867,9 @@ export default function App() {
       )}
       {(visitedPages.has("messages") || page === "messages") && (
         <div hidden={page !== "messages"}><Messages /></div>
+      )}
+      {(visitedPages.has("worked-hours") || page === "worked-hours") && (
+        <div hidden={page !== "worked-hours"}><WorkedHours /></div>
       )}
     </Shell>
   );

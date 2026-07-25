@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response, current_app
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Integer, case, cast, func, or_
-from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, VpsAssignment, ClientMetric, ClientNote, ClientCredential, MessageLog, ActionTemplate
+from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, VpsAssignment, ClientMetric, ClientNote, ClientCredential, MessageLog, WorkLog, ActionTemplate
 
 api = Blueprint("api", __name__)
 
@@ -503,6 +503,37 @@ def messages_update(message_id):
     item.quantity = quantity; item.notes = str(data.get("notes") or "").strip() or None
     db.session.commit()
     return ok(item.to_dict(), "Registro actualizado")
+
+
+@api.get("/work-logs")
+def work_logs_list():
+    items = WorkLog.query.order_by(WorkLog.work_date.desc(), WorkLog.id.desc()).limit(2000).all()
+    return ok([item.to_dict() for item in items])
+
+
+@api.post("/work-logs")
+def work_logs_create():
+    data = request.get_json(silent=True) or {}
+    try:
+        work_date = parse_date(data.get("work_date")) or date.today()
+        hours = float(data.get("hours") or 0)
+    except (ValueError, TypeError):
+        return error("Revisá la fecha y la cantidad de horas", 422)
+    if hours <= 0 or hours > 24:
+        return error("Las horas deben ser mayores que 0 y no superar 24", 422)
+    item = WorkLog(
+        work_date=work_date, hours=hours,
+        notes=str(data.get("notes") or "").strip() or None,
+    )
+    db.session.add(item); db.session.commit()
+    return ok(item.to_dict(), "Horas registradas", 201)
+
+
+@api.delete("/work-logs/<int:work_log_id>")
+def work_logs_delete(work_log_id):
+    item = WorkLog.query.get_or_404(work_log_id)
+    db.session.delete(item); db.session.commit()
+    return ok(None, "Registro eliminado")
 
 
 @api.post("/clients/<int:client_id>/generate-actions")
