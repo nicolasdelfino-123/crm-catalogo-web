@@ -2887,6 +2887,9 @@ function Agenda() {
   const [agendaDateOrder, setAgendaDateOrder] = useState("asc");
   const [selectedAgendaClient, setSelectedAgendaClient] = useState(null);
   const [agendaClientForm, setAgendaClientForm] = useState(null);
+  const [completingAction, setCompletingAction] = useState(null);
+  const [lastCompletedAction, setLastCompletedAction] = useState(null);
+  const [agendaToast, setAgendaToast] = useState("");
   const load = useCallback(
     () => api(`/actions?view=${view}&status=${actionStatus}${view === "calendar" ? `&month=${calendarMonth}` : ""}`).then(setItems),
     [view, actionStatus, calendarMonth],
@@ -2894,12 +2897,39 @@ function Agenda() {
   useEffect(() => {
     load();
   }, [load]);
-  async function setAgendaStatus(action, status) {
+  useEffect(() => {
+    if (!lastCompletedAction) return undefined;
+    const undoCompletion = async (event) => {
+      const editable = ["INPUT", "TEXTAREA", "SELECT"].includes(event.target?.tagName)
+        || event.target?.isContentEditable;
+      if (!event.ctrlKey || event.key.toLowerCase() !== "z" || editable) return;
+      event.preventDefault();
+      const action = lastCompletedAction;
+      const actionId = action.standalone ? String(action.id).replace("standalone-", "") : action.id;
+      await api(`/${action.standalone ? "standalone-actions" : "actions"}/${actionId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "pending" }),
+      });
+      setLastCompletedAction(null);
+      setAgendaToast("Se deshizo la acción completada");
+      load();
+    };
+    window.addEventListener("keydown", undoCompletion);
+    return () => window.removeEventListener("keydown", undoCompletion);
+  }, [lastCompletedAction, load]);
+  async function setAgendaStatus(action, status, completedDate = null) {
     const actionId = action.standalone ? String(action.id).replace("standalone-", "") : action.id;
     await api(`/${action.standalone ? "standalone-actions" : "actions"}/${actionId}`, {
       method: "PATCH",
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({
+        status,
+        ...(status === "completed" && completedDate ? { completed_date: completedDate } : {}),
+      }),
     });
+    if (status === "completed") {
+      setLastCompletedAction(action);
+      setAgendaToast("Acción completada. Podés deshacer con Ctrl+Z");
+    }
     load();
   }
   const filteredAgendaItems = useMemo(() => items.filter((item) => {
@@ -3044,7 +3074,7 @@ function Agenda() {
               <h3>Acciones del {fmtDate(selectedCalendarDate)}</h3>
               <div className="agenda-list">
                 {selectedDayItems.map((a) => (
-                  <AgendaItem key={a.id} action={a} onStatus={setAgendaStatus} onEdit={setEditingAgendaAction} onOpenClient={setSelectedAgendaClient} />
+                  <AgendaItem key={a.id} action={a} onStatus={setAgendaStatus} onComplete={setCompletingAction} onEdit={setEditingAgendaAction} onOpenClient={setSelectedAgendaClient} />
                 ))}
                 {!selectedDayItems.length && <p>Sin acciones para este día.</p>}
               </div>
@@ -3054,7 +3084,7 @@ function Agenda() {
       ) : (
         <div className="agenda-list">
           {sortedAgendaItems.map((a) => (
-            <AgendaItem key={a.id} action={a} onStatus={setAgendaStatus} onEdit={setEditingAgendaAction} onOpenClient={setSelectedAgendaClient} />
+            <AgendaItem key={a.id} action={a} onStatus={setAgendaStatus} onComplete={setCompletingAction} onEdit={setEditingAgendaAction} onOpenClient={setSelectedAgendaClient} />
           ))}
         </div>
       )}
@@ -3101,7 +3131,64 @@ function Agenda() {
           }}
         />
       )}
+      {completingAction && (
+        <CompleteActionModal
+          action={completingAction}
+          onClose={() => setCompletingAction(null)}
+          onConfirm={async (completedDate) => {
+            await setAgendaStatus(completingAction, "completed", completedDate);
+            setCompletingAction(null);
+          }}
+        />
+      )}
+      {agendaToast && <Toast message={agendaToast} onClose={() => setAgendaToast("")} />}
     </section>
+  );
+}
+
+function CompleteActionModal({ action, onClose, onConfirm }) {
+  const [completedDate, setCompletedDate] = useState(dateKey());
+  const [saving, setSaving] = useState(false);
+  useEscapeClose(onClose, !saving);
+  async function submit(event) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await onConfirm(completedDate);
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && !saving && onClose()}>
+      <div className="form-modal complete-action-modal" role="dialog" aria-modal="true" aria-label="Confirmar acción completada">
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">Confirmación</span>
+            <h2>¿Completar esta acción?</h2>
+          </div>
+          <IconButton label="Cerrar" onClick={onClose} disabled={saving}><X /></IconButton>
+        </div>
+        <form onSubmit={submit}>
+          <p className="complete-action-name">{action.title}</p>
+          <label>
+            Fecha en la que se completó
+            <input
+              type="date"
+              value={completedDate}
+              onChange={(event) => setCompletedDate(event.target.value)}
+              required
+              autoFocus
+            />
+          </label>
+          <p className="complete-action-hint">Después de confirmar, podés deshacer con Ctrl+Z.</p>
+          <div className="form-actions">
+            <button type="button" className="secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+            <button className="primary" disabled={saving}><Check size={17} />{saving ? "Guardando…" : "Completar acción"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -3281,7 +3368,7 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
   );
 }
 
-function AgendaItem({ action: a, onStatus, onEdit, onOpenClient }) {
+function AgendaItem({ action: a, onStatus, onComplete, onEdit, onOpenClient }) {
   const openClient = () => a.client_id && onOpenClient(a.client_id);
   return (
     <article
@@ -3312,7 +3399,7 @@ function AgendaItem({ action: a, onStatus, onEdit, onOpenClient }) {
       {a.status !== "completed" && !a.projected && (
         <button
           className="secondary small"
-          onClick={(event) => { event.stopPropagation(); onStatus(a, "completed"); }}
+          onClick={(event) => { event.stopPropagation(); onComplete(a); }}
         >
           <Check size={16} />
           Completar

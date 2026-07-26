@@ -768,7 +768,12 @@ def standalone_actions_update(action_id):
     if "priority" in data: action.priority = data["priority"]
     if "status" in data:
         action.status = data["status"]
-        action.completed_at = datetime.utcnow() if action.status == "completed" else None
+        completed_date = parse_date(data.get("completed_date"))
+        action.completed_at = (
+            datetime.combine(completed_date, datetime.min.time())
+            if action.status == "completed" and completed_date
+            else datetime.utcnow() if action.status == "completed" else None
+        )
     db.session.commit()
     return ok(action.to_dict(), "Acción actualizada")
 
@@ -793,7 +798,12 @@ def actions_update(action_id):
         if field in data: setattr(action, field, data[field])
     if "due_date" in data: action.due_date = parse_date(data["due_date"])
     if "implementation_date" in data: action.implementation_date = parse_date(data["implementation_date"])
-    if data.get("status") == "completed" and not action.completed_at: action.completed_at = datetime.utcnow()
+    if data.get("status") == "completed":
+        completed_date = parse_date(data.get("completed_date"))
+        if completed_date:
+            action.completed_at = datetime.combine(completed_date, datetime.min.time())
+        elif not action.completed_at:
+            action.completed_at = datetime.utcnow()
     if "status" in data and data["status"] != "completed": action.completed_at = None
     db.session.commit(); return ok(action.to_dict(), "Acción actualizada")
 
