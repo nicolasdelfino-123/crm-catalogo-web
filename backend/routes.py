@@ -1572,8 +1572,7 @@ def export_active_client_days():
     )
 
 
-@api.get("/exports/business-master.xlsx")
-def export_business_master():
+def build_business_master_export():
     today = date.today()
     clients = Client.query.filter(Client.archived_at.is_(None)).order_by(Client.name.asc()).all()
     client_ids = [client.id for client in clients]
@@ -1745,3 +1744,15 @@ def export_business_master():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=maestro-negocio-crm.xlsx"},
     )
+
+
+@api.get("/exports/business-master.xlsx")
+def export_business_master():
+    try:
+        return build_business_master_export()
+    except Exception as exc:
+        current_app.logger.exception("No se pudo generar el Excel maestro")
+        return error(
+            f"No se pudo generar el Excel maestro: {type(exc).__name__}: {exc}",
+            500,
+        )
