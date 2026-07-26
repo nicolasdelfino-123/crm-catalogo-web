@@ -92,6 +92,18 @@ def test_prospecting_stores_weekly_goals_and_accumulates_actual_messages(client)
     data = client.get("/api/prospecting").get_json()["data"]
     assert sum(goal["target"] for goal in data["goals"]) == 30
     assert sum(log["quantity"] for log in data["logs"]) == 21
+    updated = client.patch(f'/api/prospecting/logs/{second.get_json()["data"]["id"]}', json={
+        "activity_date": "2026-07-21",
+        "channel": "business_instagram",
+        "quantity": 15,
+        "notes": "Carga corregida",
+    })
+    assert updated.status_code == 200
+    updated_data = updated.get_json()["data"]
+    assert updated_data["activity_date"] == "2026-07-21"
+    assert updated_data["channel"] == "business_instagram"
+    assert updated_data["quantity"] == 15
+    assert updated_data["notes"] == "Carga corregida"
     assert client.delete(f'/api/prospecting/logs/{first.get_json()["data"]["id"]}').status_code == 200
 
 
@@ -99,6 +111,14 @@ def test_prospecting_rejects_unknown_channels(client):
     assert client.post("/api/prospecting/logs", json={
         "activity_date": "2026-07-20", "channel": "unknown", "quantity": 10,
     }).status_code == 422
+
+
+def test_prospecting_rejects_invalid_log_edits(client):
+    created = client.post("/api/prospecting/logs", json={
+        "activity_date": "2026-07-20", "channel": "facebook_marketplace", "quantity": 10,
+    }).get_json()["data"]
+    assert client.patch(f'/api/prospecting/logs/{created["id"]}', json={"quantity": 0}).status_code == 422
+    assert client.patch(f'/api/prospecting/logs/{created["id"]}', json={"channel": "unknown"}).status_code == 422
 
 
 def test_expenses_balance_is_independent_from_client_payments(client):

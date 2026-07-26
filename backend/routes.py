@@ -594,6 +594,31 @@ def prospecting_logs_create():
     return ok(item.to_dict(), "Avance registrado", 201)
 
 
+@api.patch("/prospecting/logs/<int:log_id>")
+def prospecting_logs_update(log_id):
+    item = ProspectingLog.query.get_or_404(log_id)
+    data = request.get_json(silent=True) or {}
+    channel = str(data.get("channel", item.channel) or "").strip()
+    try:
+        activity_date = parse_date(data.get("activity_date")) if "activity_date" in data else item.activity_date
+        quantity = int(data.get("quantity", item.quantity) or 0)
+    except (ValueError, TypeError):
+        return error("Revisá la fecha y la cantidad", 422)
+    if not activity_date:
+        return error("Elegí una fecha válida", 422)
+    if channel not in PROSPECTING_CHANNELS:
+        return error("Elegí un canal válido", 422)
+    if quantity <= 0:
+        return error("La cantidad debe ser mayor que cero", 422)
+    item.activity_date = activity_date
+    item.channel = channel
+    item.quantity = quantity
+    if "notes" in data:
+        item.notes = str(data.get("notes") or "").strip() or None
+    db.session.commit()
+    return ok(item.to_dict(), "Carga actualizada")
+
+
 @api.delete("/prospecting/logs/<int:log_id>")
 def prospecting_logs_delete(log_id):
     item = ProspectingLog.query.get_or_404(log_id)

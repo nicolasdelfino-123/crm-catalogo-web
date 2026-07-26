@@ -3313,11 +3313,18 @@ function Prospecting() {
   const [weekCursor, setWeekCursor] = useState(startOfWeek(fromDateKey(today)));
   const [selectedDate, setSelectedDate] = useState(today);
   const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
+  const [detailFilter, setDetailFilter] = useState("day");
   const [form, setForm] = useState({ activity_date: today, channel: "facebook_marketplace", quantity: "", notes: "" });
   const [quickEntry, setQuickEntry] = useState(null);
+  const [editingLog, setEditingLog] = useState(null);
+  const [editingGoal, setEditingGoal] = useState(null);
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingLog, setSavingLog] = useState(false);
-  useEscapeClose(() => setQuickEntry(null), Boolean(quickEntry));
+  useEscapeClose(() => {
+    setQuickEntry(null);
+    setEditingLog(null);
+    setEditingGoal(null);
+  }, Boolean(quickEntry || editingLog || editingGoal));
   const load = useCallback(() => api("/prospecting").then((data) => {
     setLogs(data.logs);
     setGoals(data.goals.reduce((result, item) => ({ ...result, [prospectingKey(item.weekday, item.channel)]: item.target }), {}));
@@ -3345,7 +3352,22 @@ function Prospecting() {
   const monthActual = monthDays.reduce((total, day) => total + actualForDate(dateKey(day)), 0);
   const dayPlanned = plannedForDate(selectedDate);
   const dayActual = actualForDate(selectedDate);
-  const selectedLogs = logs.filter((item) => item.activity_date === selectedDate);
+  const detailDays = detailFilter === "week"
+    ? Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(fromDateKey(today)), index))
+    : detailFilter.startsWith("month-")
+      ? (() => {
+          const [year, month] = detailFilter.slice(6).split("-").map(Number);
+          return Array.from({ length: new Date(year, month, 0).getDate() }, (_, index) => new Date(year, month - 1, index + 1));
+        })()
+      : [fromDateKey(selectedDate)];
+  const detailDateKeys = new Set(detailDays.map((day) => dateKey(day)));
+  const detailLogs = logs.filter((item) => detailDateKeys.has(item.activity_date));
+  const detailLabel = detailFilter === "week"
+    ? `Esta semana · ${fmtDate(dateKey(detailDays[0]))} — ${fmtDate(dateKey(detailDays[6]))}`
+    : detailFilter.startsWith("month-")
+      ? fmtMonth(detailFilter.slice(6))
+      : fmtDate(selectedDate);
+  const filterYear = Number(selectedDate.slice(0, 4));
 
   async function savePlan() {
     setSavingPlan(true);
@@ -3355,6 +3377,24 @@ function Prospecting() {
         payload.push({ weekday, channel, target: Number(goals[prospectingKey(weekday, channel)]) || 0 });
       }));
       await api("/prospecting/goals", { method: "PUT", body: JSON.stringify({ goals: payload }) });
+      await load();
+    } finally { setSavingPlan(false); }
+  }
+  async function submitGoalEdit(event) {
+    event.preventDefault();
+    setSavingPlan(true);
+    try {
+      const nextGoals = {
+        ...goals,
+        [prospectingKey(editingGoal.weekday, editingGoal.channel)]: Number(editingGoal.target) || 0,
+      };
+      const payload = [];
+      PROSPECTING_CHANNELS.forEach(([channel]) => WEEKDAY_NAMES.forEach((_, weekday) => {
+        payload.push({ weekday, channel, target: Number(nextGoals[prospectingKey(weekday, channel)]) || 0 });
+      }));
+      await api("/prospecting/goals", { method: "PUT", body: JSON.stringify({ goals: payload }) });
+      setGoals(nextGoals);
+      setEditingGoal(null);
       await load();
     } finally { setSavingPlan(false); }
   }
@@ -3402,10 +3442,43 @@ function Prospecting() {
       await load();
     } finally { setSavingLog(false); }
   }
+  async function submitLogEdit(event) {
+    event.preventDefault();
+    setSavingLog(true);
+    try {
+      await api(`/prospecting/logs/${editingLog.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          activity_date: editingLog.activity_date,
+          channel: editingLog.channel,
+          quantity: editingLog.quantity,
+          notes: editingLog.notes,
+        }),
+      });
+      const chosen = fromDateKey(editingLog.activity_date);
+      setSelectedDate(editingLog.activity_date);
+      setWeekCursor(startOfWeek(chosen));
+      setSelectedMonth(editingLog.activity_date.slice(0, 7));
+      setForm((current) => ({ ...current, activity_date: editingLog.activity_date }));
+      setEditingLog(null);
+      await load();
+    } finally { setSavingLog(false); }
+  }
   function selectDay(day) {
     const key = dateKey(day);
     setSelectedDate(key); setSelectedMonth(key.slice(0, 7));
+    setDetailFilter("day");
     setForm((current) => ({ ...current, activity_date: key }));
+  }
+  function changeDetailFilter(value) {
+    setDetailFilter(value);
+    if (value === "day") return;
+    if (value === "week") {
+      setWeekCursor(startOfWeek(fromDateKey(today)));
+      return;
+    }
+    const month = value.slice(6);
+    setSelectedMonth(month);
   }
   const dayBalance = balanceText(dayActual, dayPlanned);
   const weekBalance = balanceText(weekActual, weekPlanned);
@@ -3477,12 +3550,25 @@ function Prospecting() {
       </div>
 
       <div className="prospecting-detail">
-        <div><span className="eyebrow">Detalle diario</span><h3>{fmtDate(selectedDate)}</h3></div>
+        <div className="prospecting-detail-head">
+          <div><span className="eyebrow">Detalle de prospección</span><h3>{detailLabel}</h3></div>
+          <label>Período<select value={detailFilter} onChange={(event) => changeDetailFilter(event.target.value)}>
+            <option value="day">Este día</option>
+            <option value="week">Esta semana</option>
+            {Array.from({ length: 12 }, (_, index) => {
+              const month = `${filterYear}-${String(index + 1).padStart(2, "0")}`;
+              return <option key={month} value={`month-${month}`}>{fmtMonth(month)}</option>;
+            })}
+          </select></label>
+        </div>
         <div className="prospecting-channel-list">
           {PROSPECTING_CHANNELS.map(([channel, label]) => {
-            const actual = actualByDayChannel[`${selectedDate}:${channel}`] || 0;
+            const actual = detailDays.reduce((total, day) => total + (actualByDayChannel[`${dateKey(day)}:${channel}`] || 0), 0);
             const weekday = (fromDateKey(selectedDate).getDay() + 6) % 7;
-            const planned = Number(goals[prospectingKey(weekday, channel)]) || 0;
+            const planned = detailDays.reduce((total, day) => {
+              const dayWeekday = (day.getDay() + 6) % 7;
+              return total + (Number(goals[prospectingKey(dayWeekday, channel)]) || 0);
+            }, 0);
             const balance = balanceText(actual, planned);
             return <article
               key={channel}
@@ -3497,12 +3583,16 @@ function Prospecting() {
                 }
               }}
             >
-              <span>{label}</span><strong>{actual} / {planned}</strong><em className={balance.tone}>{balance.label}</em>
-              {planned > actual && <button className="secondary small" onClick={(event) => { event.stopPropagation(); completeChannel(channel, actual, planned); }}><Check size={14} />Marcar completado</button>}
+              <div className="prospecting-channel-head"><span>{label}</span>{detailFilter === "day" && <IconButton label={`Editar objetivo de ${label}`} onClick={(event) => {
+                event.stopPropagation();
+                setEditingGoal({ channel, label, weekday, target: planned });
+              }}><Edit3 /></IconButton>}</div>
+              <strong>{actual} / {planned}</strong><em className={balance.tone}>{balance.label}</em>
+              {detailFilter === "day" && planned > actual && <button className="secondary small" onClick={(event) => { event.stopPropagation(); completeChannel(channel, actual, planned); }}><Check size={14} />Marcar completado</button>}
             </article>;
           })}
         </div>
-        {selectedLogs.length > 0 && <div className="prospecting-log-list">{selectedLogs.map((item) => <div key={item.id}><span><strong>+{item.quantity} · {acquisitionLabel(item.channel)}</strong><small>{item.notes || "Sin nota"}</small></span><IconButton label="Eliminar carga" onClick={() => removeLog(item)}><Trash2 /></IconButton></div>)}</div>}
+        {detailLogs.length > 0 && <div className="prospecting-log-list">{detailLogs.map((item) => <div key={item.id}><span><strong>+{item.quantity} · {acquisitionLabel(item.channel)}</strong><small>{detailFilter === "day" ? (item.notes || "Sin nota") : `${fmtDate(item.activity_date)} · ${item.notes || "Sin nota"}`}</small></span><div className="prospecting-log-actions"><IconButton label="Editar carga" onClick={() => setEditingLog({ ...item })}><Edit3 /></IconButton><IconButton label="Eliminar carga" onClick={() => removeLog(item)}><Trash2 /></IconButton></div></div>)}</div>}
       </div>
       {quickEntry && (
         <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && setQuickEntry(null)}>
@@ -3517,6 +3607,42 @@ function Prospecting() {
                 <label>Nota opcional<input value={quickEntry.notes} onChange={(event) => setQuickEntry({ ...quickEntry, notes: event.target.value })} placeholder="Ej.: tanda de la mañana" /></label>
               </div>
               <div className="form-actions"><button type="button" className="secondary" onClick={() => setQuickEntry(null)}>Cancelar</button><button className="primary" disabled={savingLog}><Plus size={16} />{savingLog ? "Guardando..." : "Sumar mensajes"}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+      {editingLog && (
+        <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && setEditingLog(null)}>
+          <div className="form-modal prospecting-quick-modal">
+            <div className="modal-head">
+              <div><span className="eyebrow">Detalle diario</span><h2>Editar carga</h2></div>
+              <IconButton label="Cerrar" onClick={() => setEditingLog(null)}><X /></IconButton>
+            </div>
+            <form onSubmit={submitLogEdit}>
+              <div className="form-grid">
+                <label>Fecha<input type="date" value={editingLog.activity_date} onChange={(event) => setEditingLog({ ...editingLog, activity_date: event.target.value })} required /></label>
+                <label>Canal<select value={editingLog.channel} onChange={(event) => setEditingLog({ ...editingLog, channel: event.target.value })}>{PROSPECTING_CHANNELS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                <label>Cantidad enviada<input type="number" min="1" value={editingLog.quantity} onChange={(event) => setEditingLog({ ...editingLog, quantity: event.target.value })} required autoFocus /></label>
+                <label>Nota opcional<input value={editingLog.notes || ""} onChange={(event) => setEditingLog({ ...editingLog, notes: event.target.value })} placeholder="Ej.: tanda de la mañana" /></label>
+              </div>
+              <div className="form-actions"><button type="button" className="secondary" onClick={() => setEditingLog(null)}>Cancelar</button><button className="primary" disabled={savingLog}><Save size={16} />{savingLog ? "Guardando..." : "Guardar cambios"}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+      {editingGoal && (
+        <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && setEditingGoal(null)}>
+          <div className="form-modal prospecting-quick-modal">
+            <div className="modal-head">
+              <div><span className="eyebrow">{WEEKDAY_NAMES[editingGoal.weekday]} · {fmtDate(selectedDate)}</span><h2>Editar objetivo de {editingGoal.label}</h2></div>
+              <IconButton label="Cerrar" onClick={() => setEditingGoal(null)}><X /></IconButton>
+            </div>
+            <form onSubmit={submitGoalEdit}>
+              <div className="form-grid">
+                <label>Mensajes planificados<input type="number" min="0" value={editingGoal.target} onChange={(event) => setEditingGoal({ ...editingGoal, target: event.target.value })} required autoFocus /></label>
+              </div>
+              <p className="prospecting-goal-note">Este objetivo se aplica a todos los {WEEKDAY_NAMES[editingGoal.weekday].toLowerCase()}.</p>
+              <div className="form-actions"><button type="button" className="secondary" onClick={() => setEditingGoal(null)}>Cancelar</button><button className="primary" disabled={savingPlan}><Save size={16} />{savingPlan ? "Guardando..." : "Guardar objetivo"}</button></div>
             </form>
           </div>
         </div>
