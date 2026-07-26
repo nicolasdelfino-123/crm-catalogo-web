@@ -394,6 +394,7 @@ function Dashboard({ goClients }) {
   const [incomeTotals, setIncomeTotals] = useState({ ARS: 0, USD: 0 });
   const [incomeItems, setIncomeItems] = useState([]);
   const [expandedIncomeCurrency, setExpandedIncomeCurrency] = useState(null);
+  const [incomeClientSearch, setIncomeClientSearch] = useState("");
   const [selectedIncomeClient, setSelectedIncomeClient] = useState(null);
   const [incomeClientForm, setIncomeClientForm] = useState(null);
   const [incomeMonths, setIncomeMonths] = useState([]);
@@ -413,6 +414,7 @@ function Dashboard({ goClients }) {
           setIncomeItems(result.items || []);
           setIncomeMonths(result.available_months || []);
           setExpandedIncomeCurrency(null);
+          setIncomeClientSearch("");
         }
       })
       .finally(() => {
@@ -421,6 +423,12 @@ function Dashboard({ goClients }) {
     return () => { active = false; };
   }, [incomeMonth, incomeType]);
   if (!data) return <Loading />;
+  const incomeCurrencyItems = expandedIncomeCurrency
+    ? incomeItems.filter((item) => item.currency === expandedIncomeCurrency)
+    : [];
+  const filteredIncomeItems = incomeCurrencyItems.filter((item) =>
+    item.client_name.toLocaleLowerCase("es").includes(incomeClientSearch.trim().toLocaleLowerCase("es"))
+  );
   const cards = [
     ["active_clients", "Clientes activos", data.active_clients, Users, "green"],
     ["active_client_days", "Días activos de clientes", `${data.active_client_days_average} días prom.`, Timer, "violet"],
@@ -545,7 +553,10 @@ function Dashboard({ goClients }) {
               type="button"
               className={expandedIncomeCurrency === currency ? "income-total-card active" : "income-total-card"}
               key={currency}
-              onClick={() => setExpandedIncomeCurrency((current) => current === currency ? null : currency)}
+              onClick={() => {
+                setExpandedIncomeCurrency((current) => current === currency ? null : currency);
+                setIncomeClientSearch("");
+              }}
               aria-expanded={expandedIncomeCurrency === currency}
             >
               <small>{currency === "ARS" ? "Pesos" : "Dólares"}</small>
@@ -558,9 +569,24 @@ function Dashboard({ goClients }) {
           <div className="income-breakdown">
             <div className="income-breakdown-head">
               <strong>Detalle en {expandedIncomeCurrency === "ARS" ? "pesos" : "dólares"}</strong>
-              <span>{incomeItems.filter((item) => item.currency === expandedIncomeCurrency).length} movimientos</span>
+              <span>
+                {incomeClientSearch
+                  ? `${filteredIncomeItems.length} de ${incomeCurrencyItems.length}`
+                  : incomeCurrencyItems.length} movimientos
+              </span>
             </div>
-            {incomeItems.filter((item) => item.currency === expandedIncomeCurrency).map((item) => (
+            <label className="income-breakdown-search">
+              <Search size={16} />
+              <input
+                type="search"
+                aria-label="Buscar cliente"
+                value={incomeClientSearch}
+                onChange={(event) => setIncomeClientSearch(event.target.value)}
+                placeholder="Buscar por nombre de cliente…"
+                autoFocus
+              />
+            </label>
+            {filteredIncomeItems.map((item) => (
               <button
                 type="button"
                 className="income-breakdown-row"
@@ -576,8 +602,12 @@ function Dashboard({ goClients }) {
                 <strong>{fmtMoney(item.amount, item.currency)}</strong>
               </button>
             ))}
-            {!incomeItems.some((item) => item.currency === expandedIncomeCurrency) && (
-              <p className="income-breakdown-empty">No hay ingresos para detallar en esta moneda.</p>
+            {!filteredIncomeItems.length && (
+              <p className="income-breakdown-empty">
+                {incomeCurrencyItems.length
+                  ? "No se encontraron clientes con ese nombre."
+                  : "No hay ingresos para detallar en esta moneda."}
+              </p>
             )}
           </div>
         )}
