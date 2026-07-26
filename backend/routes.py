@@ -1095,6 +1095,10 @@ def dashboard():
     active_clients = [c for c in clients if c.status in ("active", "at_risk", "no_signup")]
     at_risk_clients = [c for c in clients if c.status == "at_risk"]
     pending_actions = [a for a in actions if a.status in ("pending", "in_progress")]
+    pending_payments = [
+        p for p in payments
+        if p.client.archived_at is None and p.status in ("pending", "partial", "overdue")
+    ]
     overdue_payments = [p for p in payments if p.payment_type == "monthly" and p.status in ("pending", "partial", "overdue") and p.due_date and p.due_date < today]
     overdue_actions = [a for a in pending_actions if a.due_date and a.due_date < today]
     renewals_week = [c for c in clients if c.next_renewal_date and today <= c.next_renewal_date <= today + timedelta(days=7)]
@@ -1127,6 +1131,7 @@ def dashboard():
     data = {
         "active_clients": len(active_clients), "at_risk_clients": len(at_risk_clients),
         "pending_actions": len(pending_actions) + len(overdue_payments), "overdue_actions": len(overdue_actions) + len(overdue_payments),
+        "pending_payments": len(pending_payments),
         "renewals_week": len(renewals_week), "new_clients_month": len(new_clients_month),
         "sold_clients_month": len(sold_clients_month),
         "collected": money,
@@ -1135,6 +1140,15 @@ def dashboard():
             "at_risk_clients": [client_item(c) for c in at_risk_clients],
             "pending_actions": [action_item(a) for a in pending_actions] + [payment_collection_item(p) for p in overdue_payments],
             "overdue_actions": [action_item(a) for a in overdue_actions] + [payment_collection_item(p) for p in overdue_payments],
+            "pending_payments": [
+                {
+                    **payment_collection_item(payment),
+                    "status": payment.status,
+                    "amount": float(payment.amount),
+                    "currency": payment.currency,
+                }
+                for payment in pending_payments
+            ],
             "renewals_week": [client_item(c) for c in renewals_week],
             "new_clients_month": [client_item(c) for c in new_clients_month],
             "sold_clients_month": [client_item(c) for c in sold_clients_month],
