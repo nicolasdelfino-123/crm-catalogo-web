@@ -1118,6 +1118,10 @@ def dashboard():
     active_clients = [c for c in clients if c.status in ("active", "at_risk", "no_signup")]
     at_risk_clients = [c for c in clients if c.status == "at_risk"]
     pending_actions = [a for a in actions if a.status in ("pending", "in_progress")]
+    urgent_actions = [
+        a for a in pending_actions
+        if a.priority == "urgent"
+    ]
     pending_payments = [
         p for p in payments
         if p.client.archived_at is None and p.status in ("pending", "partial", "overdue")
@@ -1160,6 +1164,7 @@ def dashboard():
         "active_clients": len(active_clients), "at_risk_clients": len(at_risk_clients),
         "pending_actions": len(pending_actions) + len(overdue_payments), "overdue_actions": len(overdue_actions) + len(overdue_payments),
         "pending_payments": len(pending_payments),
+        "urgent_actions": len(urgent_actions),
         "renewals_week": len(renewals_week), "new_clients_month": len(new_clients_month),
         "sold_clients_month": len(sold_clients_month),
         "collected": money,
@@ -1177,6 +1182,7 @@ def dashboard():
                 }
                 for payment in pending_payments
             ],
+            "urgent_actions": [action_item(action) for action in urgent_actions],
             "renewals_week": [client_item(c) for c in renewals_week],
             "new_clients_month": [client_item(c) for c in new_clients_month],
             "sold_clients_month": [client_item(c) for c in sold_clients_month],

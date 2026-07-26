@@ -372,6 +372,8 @@ function Dashboard({ goClients }) {
   const loadDashboard = useCallback(() => api("/dashboard/summary").then(setData), []);
   useEffect(() => {
     loadDashboard();
+    window.addEventListener("crm-dashboard-refresh", loadDashboard);
+    return () => window.removeEventListener("crm-dashboard-refresh", loadDashboard);
   }, [loadDashboard]);
   useEffect(() => {
     let active = true;
@@ -395,6 +397,7 @@ function Dashboard({ goClients }) {
     ["at_risk_clients", "Necesitan atención", data.at_risk_clients, AlertTriangle, "amber"],
     ["pending_actions", "Acciones pendientes", data.pending_actions, Clock3, "blue"],
     ["overdue_actions", "Acciones vencidas", data.overdue_actions, AlertTriangle, "red"],
+    ["urgent_actions", "Acciones urgentes", data.urgent_actions, AlertTriangle, "red"],
     ["pending_payments", "Pagos pendientes", data.pending_payments, WalletCards, "amber"],
     ["renewals_week", "Renuevan esta semana", data.renewals_week, CalendarDays, "violet"],
     ["new_clients_month", "Altas del mes", data.new_clients_month, TrendingUp, "green"],
@@ -571,7 +574,8 @@ function Dashboard({ goClients }) {
 }
 
 function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
-  const actionMetric = metricKey === "pending_actions" || metricKey === "overdue_actions";
+  const actionMetric = ["pending_actions", "overdue_actions", "urgent_actions"].includes(metricKey);
+  const collectionFilterMetric = metricKey === "pending_actions" || metricKey === "overdue_actions";
   const paymentMetric = metricKey === "pending_payments";
   const monthlyClientMetric = metricKey === "new_clients_month" || metricKey === "sold_clients_month";
   const [metricView, setMetricView] = useState("list");
@@ -614,6 +618,7 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
   const supportsCalendar = [
     "pending_actions",
     "overdue_actions",
+    "urgent_actions",
     "pending_payments",
     "active_clients",
     "renewals_week",
@@ -634,7 +639,7 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
       return ["active", "at_risk", "no_signup"].includes(item.status);
     })
     : sourceItems;
-  const filteredSourceItems = actionMetric
+  const filteredSourceItems = collectionFilterMetric
     ? statusFilteredItems.filter((item) => {
       const isCollection = item.action_type === "collection_payment" || Boolean(item.payment_id);
       if (pendingTypeFilter === "collections") return isCollection;
@@ -836,7 +841,7 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
               </button>
             </div>
           )}
-          {actionMetric && (
+          {collectionFilterMetric && (
             <div className="dashboard-pending-type-filter">
               <label className="dashboard-status-filter">
                 Mostrar
@@ -1459,6 +1464,7 @@ function ActionEditor({ action, onCancel, onSaved }) {
         method: "PATCH",
         body: JSON.stringify(form),
       });
+      window.dispatchEvent(new Event("crm-dashboard-refresh"));
       onSaved();
     } finally {
       setSaving(false);
@@ -1494,18 +1500,19 @@ function ActionEditor({ action, onCancel, onSaved }) {
             onChange={change}
           />
         </label>
-        <label>
-          Prioridad
-          <select
-            name="priority"
-            value={form.priority || "medium"}
-            onChange={change}
-          >
-            <option value="low">Baja</option>
-            <option value="medium">Media</option>
-            <option value="high">Alta</option>
-            <option value="urgent">Urgente</option>
-          </select>
+        <label className="urgent-action-check">
+          <input
+            type="checkbox"
+            checked={form.priority === "urgent"}
+            onChange={(event) => setForm((value) => ({
+              ...value,
+              priority: event.target.checked ? "urgent" : "medium",
+            }))}
+          />
+          <span>
+            <strong>Urgente</strong>
+            <small>Mostrar también en Acciones urgentes del Resumen</small>
+          </span>
         </label>
         <label>
           Estado
@@ -3141,6 +3148,7 @@ function Agenda() {
           onSaved={() => {
             setEditingAgendaAction(null);
             load();
+            window.dispatchEvent(new Event("crm-dashboard-refresh"));
           }}
         />
       )}
@@ -3390,7 +3398,17 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
             {!action.due_date && <label className="span-2">Descripción<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} required /></label>}
             {action.due_date && <label>Fecha prevista<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>}
             <label>Fecha de implementación<input type="date" value={form.implementation_date} onChange={(event) => setForm({ ...form, implementation_date: event.target.value })} /></label>
-            <label>Prioridad<select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label>
+            <label className="urgent-action-check">
+              <input
+                type="checkbox"
+                checked={form.priority === "urgent"}
+                onChange={(event) => setForm({ ...form, priority: event.target.checked ? "urgent" : "medium" })}
+              />
+              <span>
+                <strong>Urgente</strong>
+                <small>Mostrar también en Acciones urgentes del Resumen</small>
+              </span>
+            </label>
           </div>
           <div className="form-actions">
             <button type="button" className="secondary" onClick={onClose}>Cancelar</button>
