@@ -3,6 +3,8 @@ import io
 import calendar
 import base64
 import hashlib
+import zipfile
+from xml.sax.saxutils import escape
 from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response, current_app
 from cryptography.fernet import Fernet, InvalidToken
@@ -1458,3 +1460,245 @@ def export_clients():
     writer.writerow(["Cliente", "Negocio", "Estado", "Alta", "Renovación", "País", "Adquisición", "Moneda", "Mensualidad", "Seguidores", "Publicaciones"])
     for c in Client.query.filter(Client.archived_at.is_(None)).order_by(Client.name).all(): writer.writerow([c.name, c.business_name, c.status, c.signup_date, c.next_renewal_date, c.country, c.acquisition_source, c.currency, c.payment_amount, c.followers_count, c.publications_count])
     return Response(output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=clientes.csv"})
+
+
+def simple_xlsx_workbook(sheets):
+    def column_name(index):
+        result = ""
+        while index:
+            index, remainder = divmod(index - 1, 26)
+            result = chr(65 + remainder) + result
+        return result
+
+    def cell_xml(reference, value):
+        if isinstance(value, (int, float)):
+            return f'<c r="{reference}"><v>{value}</v></c>'
+        return f'<c r="{reference}" t="inlineStr"><is><t>{escape(str(value or ""))}</t></is></c>'
+
+    worksheet_xml = []
+    for _, headers, rows in sheets:
+        sheet_rows = []
+        for row_index, values in enumerate([headers, *rows], start=1):
+            cells = "".join(
+                cell_xml(f"{column_name(column_index)}{row_index}", value)
+                for column_index, value in enumerate(values, start=1)
+            )
+            sheet_rows.append(f'<row r="{row_index}">{cells}</row>')
+        worksheet_xml.append(
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            f'<sheetData>{"".join(sheet_rows)}</sheetData></worksheet>'
+        )
+    content_overrides = "".join(
+        f'<Override PartName="/xl/worksheets/sheet{index}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        for index in range(1, len(sheets) + 1)
+    )
+    workbook_sheets = "".join(
+        f'<sheet name="{escape(name[:31])}" sheetId="{index}" r:id="rId{index}"/>'
+        for index, (name, _, _) in enumerate(sheets, start=1)
+    )
+    workbook_relationships = "".join(
+        f'<Relationship Id="rId{index}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{index}.xml"/>'
+        for index in range(1, len(sheets) + 1)
+    )
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as workbook:
+        workbook.writestr("[Content_Types].xml", (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            f'{content_overrides}</Types>'
+        ))
+        workbook.writestr("_rels/.rels", (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            '</Relationships>'
+        ))
+        workbook.writestr("xl/workbook.xml", (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            f'<sheets>{workbook_sheets}</sheets></workbook>'
+        ))
+        workbook.writestr("xl/_rels/workbook.xml.rels", (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f'{workbook_relationships}</Relationships>'
+        ))
+        for index, sheet in enumerate(worksheet_xml, start=1):
+            workbook.writestr(f"xl/worksheets/sheet{index}.xml", sheet)
+    return output.getvalue()
+
+
+def simple_xlsx(headers, rows):
+    return simple_xlsx_workbook([("Dias activos", headers, rows)])
+
+
+@api.get("/exports/active-client-days.xlsx")
+def export_active_client_days():
+    today = date.today()
+    clients = Client.query.filter(
+        Client.archived_at.is_(None),
+        Client.status.in_(("active", "at_risk")),
+        Client.signup_date.isnot(None),
+    ).order_by(Client.signup_date.asc(), Client.name.asc()).all()
+    rows = []
+    for client in clients:
+        elapsed_months = max(
+            0,
+            (today.year - client.signup_date.year) * 12 + today.month - client.signup_date.month,
+        )
+        if today < add_calendar_months(client.signup_date, elapsed_months):
+            elapsed_months = max(0, elapsed_months - 1)
+        rows.append([
+            client.name,
+            client.business_name,
+            {"active": "Activo", "at_risk": "En riesgo"}.get(client.status, client.status),
+            client.signup_date.isoformat(),
+            max(0, (today - client.signup_date).days),
+            elapsed_months + 1,
+        ])
+    content = simple_xlsx(
+        ["Cliente", "Negocio", "Estado", "Fecha de alta", "Días activos", "Mes de servicio"],
+        rows,
+    )
+    return Response(
+        content,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=dias-activos-clientes.xlsx"},
+    )
+
+
+@api.get("/exports/business-master.xlsx")
+def export_business_master():
+    today = date.today()
+    clients = Client.query.filter(Client.archived_at.is_(None)).order_by(Client.name.asc()).all()
+    client_ids = [client.id for client in clients]
+    payments = Payment.query.filter(Payment.client_id.in_(client_ids)).order_by(Payment.due_date.desc()).all() if client_ids else []
+    actions = ClientAction.query.filter(ClientAction.client_id.in_(client_ids)).order_by(ClientAction.due_date.desc()).all() if client_ids else []
+    standalone_actions = StandaloneAction.query.order_by(StandaloneAction.due_date.desc()).all()
+    expenses = Expense.query.order_by(Expense.expense_date.desc()).all()
+    prospecting_logs = ProspectingLog.query.order_by(ProspectingLog.activity_date.desc()).all()
+    prospecting_outcomes = ProspectingOutcome.query.order_by(ProspectingOutcome.activity_date.desc()).all()
+    prospecting_goals = ProspectingGoal.query.order_by(ProspectingGoal.weekday.asc()).all()
+    messages = MessageLog.query.order_by(MessageLog.sent_date.desc()).all()
+    work_logs = WorkLog.query.order_by(WorkLog.work_date.desc()).all()
+
+    active_statuses = {"active", "at_risk"}
+    churn_clients = [client for client in clients if client.status == "cancelled"]
+    churn_base = [client for client in clients if client.status in active_statuses | {"paused", "cancelled"}]
+    paid_payments = [payment for payment in payments if payment.status == "paid"]
+    pending_payments = [payment for payment in payments if payment.status in ("pending", "partial", "overdue")]
+    overview = [
+        ["Fecha de exportación", today.isoformat()],
+        ["Clientes totales", len(clients)],
+        ["Clientes activos", sum(client.status == "active" for client in clients)],
+        ["Clientes en riesgo", sum(client.status == "at_risk" for client in clients)],
+        ["Clientes sin alta", sum(client.status == "no_signup" for client in clients)],
+        ["Clientes pausados", sum(client.status == "paused" for client in clients)],
+        ["Churn / cancelados", len(churn_clients)],
+        ["Tasa de churn (%)", round(len(churn_clients) * 100 / len(churn_base), 2) if churn_base else 0],
+        ["Definición tasa churn", "Cancelados / (activos + en riesgo + pausados + cancelados)"],
+        ["Mensualidad activa ARS", sum(float(client.payment_amount or 0) for client in clients if client.status in active_statuses and client.currency == "ARS")],
+        ["Mensualidad activa USD", sum(float(client.payment_amount or 0) for client in clients if client.status in active_statuses and client.currency == "USD")],
+        ["Cobrado histórico ARS", sum(float(payment.amount) for payment in paid_payments if payment.currency == "ARS")],
+        ["Cobrado histórico USD", sum(float(payment.amount) for payment in paid_payments if payment.currency == "USD")],
+        ["Pendiente de cobro ARS", sum(float(payment.amount) for payment in pending_payments if payment.currency == "ARS")],
+        ["Pendiente de cobro USD", sum(float(payment.amount) for payment in pending_payments if payment.currency == "USD")],
+        ["Gastos históricos ARS", sum(float(expense.amount) for expense in expenses)],
+        ["Mensajes enviados", sum(message.quantity for message in messages)],
+        ["Contactos de prospección", sum(log.quantity for log in prospecting_logs)],
+        ["Demos registradas", sum(outcome.demos for outcome in prospecting_outcomes)],
+        ["Ventas de prospección", sum(outcome.sales for outcome in prospecting_outcomes)],
+        ["Horas trabajadas", sum(float(log.hours) for log in work_logs)],
+    ]
+
+    client_rows = []
+    for client in clients:
+        days_active = max(0, (today - client.signup_date).days) if client.signup_date else 0
+        elapsed_months = 0
+        if client.signup_date:
+            elapsed_months = max(0, (today.year - client.signup_date.year) * 12 + today.month - client.signup_date.month)
+            if today < add_calendar_months(client.signup_date, elapsed_months):
+                elapsed_months = max(0, elapsed_months - 1)
+        client_rows.append([
+            client.id, client.name, client.business_name, client.status,
+            "Sí" if client.status == "cancelled" else "No",
+            iso(client.sale_date), iso(client.commercial_signup_date), iso(client.signup_date),
+            days_active, elapsed_months + 1 if client.signup_date else "",
+            iso(client.next_renewal_date), float(client.payment_amount or 0), client.currency,
+            client.acquisition_source, client.country, client.city, client.email, client.phone,
+            client.instagram_username, client.website_url, client.followers_count,
+            client.publications_count, client.web_sales_count, client.notes_summary,
+            iso(client.updated_at),
+        ])
+
+    payment_rows = [[
+        payment.id, payment.client.name, payment.client.business_name, payment.payment_type,
+        float(payment.amount), payment.currency, payment.status, iso(payment.due_date),
+        iso(payment.paid_at), payment.payment_method, payment.period_year,
+        payment.period_month, payment.notes,
+    ] for payment in payments]
+    action_rows = [[
+        action.id, action.client.name, action.client.business_name, action.title,
+        action.action_type, action.status, action.priority, iso(action.due_date),
+        iso(action.implementation_date), iso(action.completed_at), action.description,
+        action.result_notes,
+    ] for action in actions]
+    action_rows.extend([
+        action.id, action.context_name, "Acción independiente", action.title,
+        "standalone", action.status, action.priority, iso(action.due_date),
+        iso(action.implementation_date), iso(action.completed_at), action.description, "",
+    ] for action in standalone_actions)
+    prospecting_rows = [
+        ["Actividad", iso(log.activity_date), "", log.channel, log.quantity, "", "", "", log.notes]
+        for log in prospecting_logs
+    ] + [
+        ["Resultado", iso(outcome.activity_date), "", outcome.channel, "", "", outcome.demos, outcome.sales, ""]
+        for outcome in prospecting_outcomes
+    ] + [
+        ["Objetivo semanal", "", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"][goal.weekday], goal.channel, "", goal.target, "", "", ""]
+        for goal in prospecting_goals
+    ]
+
+    content = simple_xlsx_workbook([
+        ("Resumen", ["Indicador", "Valor"], overview),
+        ("Clientes y churn", [
+            "ID", "Cliente", "Negocio", "Estado", "Es churn", "Fecha de venta",
+            "Alta comercial", "Fecha de alta", "Días activos", "Mes de servicio",
+            "Próxima renovación", "Mensualidad", "Moneda", "Adquisición", "País",
+            "Ciudad", "Email", "Teléfono", "Instagram", "Web", "Seguidores",
+            "Publicaciones", "Ventas web", "Notas", "Última actualización",
+        ], client_rows),
+        ("Pagos", [
+            "ID", "Cliente", "Negocio", "Tipo", "Importe", "Moneda", "Estado",
+            "Vencimiento", "Fecha de pago", "Método", "Año período", "Mes período", "Notas",
+        ], payment_rows),
+        ("Acciones", [
+            "ID", "Cliente o contexto", "Negocio", "Acción", "Tipo", "Estado",
+            "Prioridad", "Fecha prevista", "Implementación", "Completada", "Descripción", "Resultado",
+        ], action_rows),
+        ("Prospección", [
+            "Tipo", "Fecha", "Día", "Canal", "Cantidad", "Objetivo",
+            "Demos", "Ventas", "Notas",
+        ], prospecting_rows),
+        ("Mensajes", ["Fecha", "Canal", "Cantidad", "Tipo", "Notas"], [
+            [iso(item.sent_date), item.channel, item.quantity, item.entry_type, item.notes]
+            for item in messages
+        ]),
+        ("Gastos", ["Fecha", "Categoría", "Descripción", "Importe ARS", "Notas"], [
+            [iso(item.expense_date), item.category, item.description, float(item.amount), item.notes]
+            for item in expenses
+        ]),
+        ("Horas trabajadas", ["Fecha", "Horas", "Notas"], [
+            [iso(item.work_date), float(item.hours), item.notes] for item in work_logs
+        ]),
+    ])
+    return Response(
+        content,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=maestro-negocio-crm.xlsx"},
+    )

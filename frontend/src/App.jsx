@@ -411,10 +411,16 @@ function Dashboard({ goClients }) {
           <h2>Lo importante, a primera vista</h2>
           <p>Estado comercial y tareas que requieren movimiento.</p>
         </div>
-        <button className="primary" onClick={() => goClients()}>
-          <Users size={18} />
-          Ver clientes
-        </button>
+        <div className="intro-actions">
+          <a className="secondary" href={`${API}/exports/business-master.xlsx`} download>
+            <Download size={17} />
+            Exportar Excel maestro
+          </a>
+          <button className="primary" onClick={() => goClients()}>
+            <Users size={18} />
+            Ver clientes
+          </button>
+        </div>
       </div>
       <div className="metrics-grid">
         {cards.map(([key, label, value, Icon, color]) => (
@@ -831,6 +837,18 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
           <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
         </div>
         <div className="dashboard-metric-list">
+          {metricKey === "active_client_days" && (
+            <div className="dashboard-export-row">
+              <a
+                className="secondary small"
+                href={`${API}/exports/active-client-days.xlsx`}
+                download
+              >
+                <Download size={15} />
+                Exportar Excel
+              </a>
+            </div>
+          )}
           {supportsCalendar && (
             <div className="dashboard-view-switch" aria-label={`Cambiar vista de ${title.toLowerCase()}`}>
               <button
