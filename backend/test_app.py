@@ -453,7 +453,7 @@ def test_acquisition_summary_includes_client_details(client):
     assert channel["clients"][0]["signup_date"] == "2026-07-01"
 
 
-def test_new_clients_can_be_filtered_by_commercial_signup_month(client):
+def test_new_clients_can_be_filtered_by_signup_month(client):
     for name, commercial_date, signup_date in [
         ("Cliente junio", "2026-06-15", "2026-09-01"),
         ("Cliente julio", "2026-07-10", "2026-10-01"),
@@ -466,11 +466,13 @@ def test_new_clients_can_be_filtered_by_commercial_signup_month(client):
 
     june = client.get("/api/dashboard/new-clients?month=2026-06")
     assert june.status_code == 200
-    assert [item["name"] for item in june.get_json()["data"]] == ["Cliente junio"]
+    assert june.get_json()["data"] == []
+    september = client.get("/api/dashboard/new-clients?month=2026-09")
+    assert [item["name"] for item in september.get_json()["data"]] == ["Cliente junio"]
     assert client.get("/api/dashboard/new-clients?month=junio").status_code == 422
 
 
-def test_sold_clients_and_commercial_signups_are_independent_from_service_start(client):
+def test_sold_clients_and_signups_use_their_own_dates(client):
     created = client.post("/api/clients", json={
         "name": "Cliente vendido en junio",
         "business_name": "Venta junio alta julio",
@@ -489,8 +491,8 @@ def test_sold_clients_and_commercial_signups_are_independent_from_service_start(
 
     assert [item["name"] for item in june_sales.get_json()["data"]] == ["Cliente vendido en junio"]
     assert july_sales.get_json()["data"] == []
-    assert [item["name"] for item in june_signups.get_json()["data"]] == ["Cliente vendido en junio"]
-    assert july_signups.get_json()["data"] == []
+    assert june_signups.get_json()["data"] == []
+    assert [item["name"] for item in july_signups.get_json()["data"]] == ["Cliente vendido en junio"]
     assert client.get("/api/dashboard/sold-clients?month=junio").status_code == 422
 
 

@@ -1101,8 +1101,8 @@ def dashboard():
     next_month_start = add_calendar_months(month_start, 1)
     new_clients_month = [
         c for c in clients
-        if c.commercial_signup_date
-        and month_start <= c.commercial_signup_date < next_month_start
+        if c.signup_date
+        and month_start <= c.signup_date < next_month_start
     ]
     sold_clients_month = [c for c in clients if c.sale_date and month_start <= c.sale_date < next_month_start]
 
@@ -1273,9 +1273,9 @@ def new_clients_by_month():
     month_end = add_calendar_months(month_start, 1)
     clients = Client.query.filter(
         Client.archived_at.is_(None),
-        Client.commercial_signup_date >= month_start,
-        Client.commercial_signup_date < month_end,
-    ).order_by(Client.commercial_signup_date.desc(), Client.name.asc()).all()
+        Client.signup_date >= month_start,
+        Client.signup_date < month_end,
+    ).order_by(Client.signup_date.desc(), Client.name.asc()).all()
     return ok([
         {
             "id": client.id,

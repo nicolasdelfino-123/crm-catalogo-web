@@ -701,7 +701,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
           ) : metricKey === "renewals_week" ? (
             <><small>Renovación</small><strong>{fmtDate(item.next_renewal_date)}</strong></>
           ) : metricKey === "new_clients_month" ? (
-            <><small>Fecha de alta comercial</small><strong>{fmtDate(item.commercial_signup_date)}</strong></>
+            <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong></>
           ) : metricKey === "sold_clients_month" ? (
             <><small>Fecha de venta</small><strong>{fmtDate(item.sale_date)}</strong>{badge(item.status)}</>
           ) : metricKey === "active_clients" ? (
