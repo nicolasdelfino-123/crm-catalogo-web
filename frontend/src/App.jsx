@@ -578,12 +578,14 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
   const [dateOrder, setDateOrder] = useState(metricKey === "active_clients" ? "desc" : "asc");
   const [activeStatusFilter, setActiveStatusFilter] = useState("active_no_signup");
   const [pendingTypeFilter, setPendingTypeFilter] = useState("all");
+  const [renewalWeekStart, setRenewalWeekStart] = useState(() => dateKey(startOfWeek(new Date())));
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [calendarMonth, setCalendarMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const [selectedActionClient, setSelectedActionClient] = useState(null);
   const [actionClientForm, setActionClientForm] = useState(null);
   const [monthlyItems, setMonthlyItems] = useState(items);
+  const [renewalItems, setRenewalItems] = useState(null);
   const [loadingMonth, setLoadingMonth] = useState(false);
   useEscapeClose(onClose);
   async function changeMonth(event) {
@@ -604,7 +606,11 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
       setLoadingMonth(false);
     }
   }
-  const sourceItems = monthlyClientMetric ? monthlyItems : items;
+  const sourceItems = monthlyClientMetric
+    ? monthlyItems
+    : metricKey === "renewals_week"
+      ? renewalItems || items
+      : items;
   const supportsCalendar = [
     "pending_actions",
     "overdue_actions",
@@ -729,6 +735,24 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
       }
     }
   }
+  async function moveRenewalWeek(offset) {
+    const nextStart = dateKey(addDays(fromDateKey(renewalWeekStart), offset * 7));
+    setRenewalWeekStart(nextStart);
+    setCalendarMonth(nextStart.slice(0, 7));
+    setSelectedCalendarDate(null);
+    setLoadingMonth(true);
+    try {
+      setRenewalItems(await api(`/dashboard/renewals?start=${nextStart}`));
+    } finally {
+      setLoadingMonth(false);
+    }
+  }
+  async function refreshMetric() {
+    await onRefresh();
+    if (metricKey === "renewals_week") {
+      setRenewalItems(await api(`/dashboard/renewals?start=${renewalWeekStart}`));
+    }
+  }
   function renderMetricItem(item) {
     const clickableClientMetric = Boolean(actionMetric || paymentMetric || item.id);
     const targetClientId = actionMetric || paymentMetric ? item.client_id : item.id;
@@ -830,6 +854,22 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
               </label>
             </div>
           )}
+          {metricKey === "renewals_week" && (
+            <div className="dashboard-week-navigation">
+              <button className="icon-btn" onClick={() => moveRenewalWeek(-1)} aria-label="Semana anterior">
+                <ChevronLeft />
+              </button>
+              <div>
+                <small>Semana seleccionada</small>
+                <strong>
+                  {fmtDate(renewalWeekStart)} — {fmtDate(dateKey(addDays(fromDateKey(renewalWeekStart), 6)))}
+                </strong>
+              </div>
+              <button className="icon-btn" onClick={() => moveRenewalWeek(1)} aria-label="Semana siguiente">
+                <ChevronRight />
+              </button>
+            </div>
+          )}
           {monthlyClientMetric && (
             <div className="dashboard-month-filter">
               <label>
@@ -925,7 +965,7 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
         <DetailModal
           clientId={selectedActionClient}
           onClose={() => setSelectedActionClient(null)}
-          onRefresh={onRefresh}
+          onRefresh={refreshMetric}
           onEdit={(client) => {
             setSelectedActionClient(null);
             setActionClientForm(client);

@@ -1101,7 +1101,12 @@ def dashboard():
     ]
     overdue_payments = [p for p in payments if p.payment_type == "monthly" and p.status in ("pending", "partial", "overdue") and p.due_date and p.due_date < today]
     overdue_actions = [a for a in pending_actions if a.due_date and a.due_date < today]
-    renewals_week = [c for c in clients if c.next_renewal_date and today <= c.next_renewal_date <= today + timedelta(days=7)]
+    renewals_week_start = today - timedelta(days=today.weekday())
+    renewals_week_end = renewals_week_start + timedelta(days=7)
+    renewals_week = [
+        c for c in clients
+        if c.next_renewal_date and renewals_week_start <= c.next_renewal_date < renewals_week_end
+    ]
     next_month_start = add_calendar_months(month_start, 1)
     new_clients_month = [
         c for c in clients
@@ -1155,6 +1160,32 @@ def dashboard():
         },
     }
     return ok(data)
+
+
+@api.get("/dashboard/renewals")
+def renewals_by_week():
+    try:
+        week_start = date.fromisoformat(request.args.get("start", ""))
+    except ValueError:
+        return error("La fecha de inicio debe tener el formato AAAA-MM-DD", 422)
+    week_end = week_start + timedelta(days=7)
+    clients = Client.query.filter(
+        Client.archived_at.is_(None),
+        Client.next_renewal_date >= week_start,
+        Client.next_renewal_date < week_end,
+    ).order_by(Client.next_renewal_date.asc(), Client.name.asc()).all()
+    return ok([
+        {
+            "id": client.id,
+            "name": client.name,
+            "business_name": client.business_name,
+            "status": client.status,
+            "service_stage": client.service_stage,
+            "signup_date": iso(client.signup_date),
+            "next_renewal_date": iso(client.next_renewal_date),
+        }
+        for client in clients
+    ])
 
 
 @api.get("/dashboard/income")
