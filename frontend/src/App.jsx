@@ -84,6 +84,28 @@ async function api(path, options = {}) {
     throw new Error(body.error?.message || "No se pudo completar la operación");
   return body.data;
 }
+async function downloadApiFile(path, filename) {
+  const token = getToken();
+  const response = await fetch(`${API}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (response.status === 401) {
+    clearSession();
+    window.dispatchEvent(new Event("crm-session-expired"));
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error?.message || "No se pudo descargar el archivo");
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 const LABEL = {
   active: "Activo",
   at_risk: "En riesgo",
@@ -412,10 +434,15 @@ function Dashboard({ goClients }) {
           <p>Estado comercial y tareas que requieren movimiento.</p>
         </div>
         <div className="intro-actions">
-          <a className="secondary" href={`${API}/exports/business-master.xlsx`} download>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => downloadApiFile("/exports/business-master.xlsx", "maestro-negocio-crm.xlsx")
+              .catch((error) => window.alert(error.message))}
+          >
             <Download size={17} />
             Exportar Excel maestro
-          </a>
+          </button>
           <button className="primary" onClick={() => goClients()}>
             <Users size={18} />
             Ver clientes
@@ -839,14 +866,15 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
         <div className="dashboard-metric-list">
           {metricKey === "active_client_days" && (
             <div className="dashboard-export-row">
-              <a
+              <button
+                type="button"
                 className="secondary small"
-                href={`${API}/exports/active-client-days.xlsx`}
-                download
+                onClick={() => downloadApiFile("/exports/active-client-days.xlsx", "dias-activos-clientes.xlsx")
+                  .catch((error) => window.alert(error.message))}
               >
                 <Download size={15} />
                 Exportar Excel
-              </a>
+              </button>
             </div>
           )}
           {supportsCalendar && (
