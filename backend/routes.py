@@ -1618,6 +1618,17 @@ def export_business_master():
 
     client_rows = []
     for client in clients:
+        client_payments = [payment for payment in payments if payment.client_id == client.id]
+        client_actions = [action for action in actions if action.client_id == client.id]
+        client_paid = [payment for payment in client_payments if payment.status == "paid"]
+        client_pending = [
+            payment for payment in client_payments
+            if payment.status in ("pending", "partial", "overdue")
+        ]
+        last_paid_at = max(
+            (payment.paid_at for payment in client_paid if payment.paid_at),
+            default=None,
+        )
         days_active = max(0, (today - client.signup_date).days) if client.signup_date else 0
         elapsed_months = 0
         if client.signup_date:
@@ -1628,11 +1639,32 @@ def export_business_master():
             client.id, client.name, client.business_name, client.status,
             "Sí" if client.status == "cancelled" else "No",
             iso(client.sale_date), iso(client.commercial_signup_date), iso(client.signup_date),
-            days_active, elapsed_months + 1 if client.signup_date else "",
-            iso(client.next_renewal_date), float(client.payment_amount or 0), client.currency,
+            days_active, elapsed_months + 1 if client.signup_date else "", client.service_stage,
+            iso(client.next_renewal_date),
+            (client.next_renewal_date - today).days if client.next_renewal_date else "",
+            float(client.payment_amount or 0), client.currency,
+            float(client.payment_amount or 0) if client.status in active_statuses else 0,
+            len(client_paid),
+            sum(float(payment.amount) for payment in client_paid if payment.currency == "ARS"),
+            sum(float(payment.amount) for payment in client_paid if payment.currency == "USD"),
+            iso(last_paid_at),
+            len(client_pending),
+            sum(float(payment.amount) for payment in client_pending if payment.currency == "ARS"),
+            sum(float(payment.amount) for payment in client_pending if payment.currency == "USD"),
+            sum(action.status in ("pending", "in_progress") for action in client_actions),
+            sum(
+                action.status in ("pending", "in_progress") and action.due_date and action.due_date < today
+                for action in client_actions
+            ),
+            sum(
+                action.status in ("pending", "in_progress") and action.priority == "urgent"
+                for action in client_actions
+            ),
             client.acquisition_source, client.country, client.city, client.email, client.phone,
             client.instagram_username, client.website_url, client.followers_count,
-            client.publications_count, client.web_sales_count, client.notes_summary,
+            client.publications_count, client.web_sales_count,
+            client.page_status, client.prices_status, client.images_status,
+            client.google_analytics_status, client.notes_summary,
             iso(client.updated_at),
         ])
 
@@ -1665,14 +1697,20 @@ def export_business_master():
     ]
 
     content = simple_xlsx_workbook([
-        ("Resumen", ["Indicador", "Valor"], overview),
-        ("Clientes y churn", [
+        ("Base maestra clientes", [
             "ID", "Cliente", "Negocio", "Estado", "Es churn", "Fecha de venta",
             "Alta comercial", "Fecha de alta", "Días activos", "Mes de servicio",
-            "Próxima renovación", "Mensualidad", "Moneda", "Adquisición", "País",
-            "Ciudad", "Email", "Teléfono", "Instagram", "Web", "Seguidores",
-            "Publicaciones", "Ventas web", "Notas", "Última actualización",
+            "Etapa CRM", "Próxima renovación", "Días hasta renovar",
+            "Mensualidad contratada", "Moneda", "Ingreso mensual activo",
+            "Pagos realizados", "Cobrado histórico ARS", "Cobrado histórico USD",
+            "Última fecha de pago", "Pagos pendientes", "Pendiente ARS", "Pendiente USD",
+            "Acciones pendientes", "Acciones vencidas", "Acciones urgentes",
+            "Canal de adquisición", "País", "Ciudad", "Email", "Teléfono",
+            "Instagram", "Web", "Seguidores", "Publicaciones", "Ventas web",
+            "Estado de página", "Estado de precios", "Estado de imágenes",
+            "Google Analytics", "Notas", "Última actualización",
         ], client_rows),
+        ("Resumen", ["Indicador", "Valor"], overview),
         ("Pagos", [
             "ID", "Cliente", "Negocio", "Tipo", "Importe", "Moneda", "Estado",
             "Vencimiento", "Fecha de pago", "Método", "Año período", "Mes período", "Notas",

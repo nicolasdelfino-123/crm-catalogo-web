@@ -2649,10 +2649,15 @@ function Clients() {
             <ChartNoAxesColumnIncreasing size={17} />
             Adquisición
           </button>
-          <a className="secondary" href={`${API}/exports/clients.csv`}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => downloadApiFile("/exports/clients.csv", "clientes.csv")
+              .catch((error) => window.alert(error.message))}
+          >
             <Download size={17} />
             Exportar
-          </a>
+          </button>
           <button className="primary" onClick={() => setForm({ mode: "new" })}>
             <Plus size={18} />
             Nuevo cliente
