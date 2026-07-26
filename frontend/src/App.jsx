@@ -2878,6 +2878,7 @@ function Agenda() {
   const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const [view, setView] = useState("today");
   const [actionStatus, setActionStatus] = useState("pending");
+  const [agendaTypeFilter, setAgendaTypeFilter] = useState("all");
   const [items, setItems] = useState([]);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
@@ -2901,12 +2902,18 @@ function Agenda() {
     });
     load();
   }
+  const filteredAgendaItems = useMemo(() => items.filter((item) => {
+    const isCollection = item.action_type === "collection_payment" || Boolean(item.payment_id);
+    if (agendaTypeFilter === "collections") return isCollection;
+    if (agendaTypeFilter === "actions") return !isCollection;
+    return true;
+  }), [items, agendaTypeFilter]);
   const calendarDays = useMemo(() => {
     const [year, month] = calendarMonth.split("-").map(Number);
     const firstDay = new Date(Date.UTC(year, month - 1, 1));
     const mondayOffset = (firstDay.getUTCDay() + 6) % 7;
     const gridStart = new Date(Date.UTC(year, month - 1, 1 - mondayOffset));
-    const counts = items.reduce((result, action) => {
+    const counts = filteredAgendaItems.reduce((result, action) => {
       if (action.due_date) result[action.due_date] = (result[action.due_date] || 0) + 1;
       return result;
     }, {});
@@ -2916,18 +2923,18 @@ function Agenda() {
       const iso = current.toISOString().slice(0, 10);
       return { iso, day: current.getUTCDate(), currentMonth: current.getUTCMonth() === month - 1, count: counts[iso] || 0 };
     });
-  }, [calendarMonth, items]);
+  }, [calendarMonth, filteredAgendaItems]);
   const selectedDayItems = selectedCalendarDate
-    ? items.filter((action) => action.due_date === selectedCalendarDate)
+    ? filteredAgendaItems.filter((action) => action.due_date === selectedCalendarDate)
     : [];
-  const sortedAgendaItems = useMemo(() => [...items].sort((first, second) => {
+  const sortedAgendaItems = useMemo(() => [...filteredAgendaItems].sort((first, second) => {
     if (!first.due_date && !second.due_date) return String(first.id).localeCompare(String(second.id));
     if (!first.due_date) return 1;
     if (!second.due_date) return -1;
     const dateComparison = first.due_date.localeCompare(second.due_date);
     const titleComparison = first.title.localeCompare(second.title, "es", { sensitivity: "base" });
     return (agendaDateOrder === "asc" ? dateComparison : -dateComparison) || titleComparison;
-  }), [items, agendaDateOrder]);
+  }), [filteredAgendaItems, agendaDateOrder]);
   const calendarTitle = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
     .format(new Date(`${calendarMonth}-01T12:00:00Z`));
   function moveCalendarMonth(offset) {
@@ -2979,6 +2986,22 @@ function Agenda() {
             {label}
           </button>
         ))}
+      </div>
+      <div className="agenda-type-filter">
+        <label className="dashboard-status-filter">
+          Mostrar
+          <select
+            value={agendaTypeFilter}
+            onChange={(event) => {
+              setAgendaTypeFilter(event.target.value);
+              setSelectedCalendarDate(null);
+            }}
+          >
+            <option value="all">Todos</option>
+            <option value="collections">Solo cobros</option>
+            <option value="actions">Solo acciones</option>
+          </select>
+        </label>
       </div>
       {view !== "calendar" && view !== "undated" && (
         <div className="agenda-sort-toolbar">
@@ -3035,7 +3058,7 @@ function Agenda() {
           ))}
         </div>
       )}
-      {view !== "calendar" && !items.length && <Empty />}
+      {view !== "calendar" && !filteredAgendaItems.length && <Empty />}
       {showNewAction && (
         <AgendaNewAction
           undated={view === "undated"}
