@@ -1608,11 +1608,11 @@ def build_business_master_export():
         ["Pendiente de cobro ARS", sum(float(payment.amount) for payment in pending_payments if payment.currency == "ARS")],
         ["Pendiente de cobro USD", sum(float(payment.amount) for payment in pending_payments if payment.currency == "USD")],
         ["Gastos históricos ARS", sum(float(expense.amount) for expense in expenses)],
-        ["Mensajes enviados", sum(message.quantity for message in messages)],
-        ["Contactos de prospección", sum(log.quantity for log in prospecting_logs)],
-        ["Demos registradas", sum(outcome.demos for outcome in prospecting_outcomes)],
-        ["Ventas de prospección", sum(outcome.sales for outcome in prospecting_outcomes)],
-        ["Horas trabajadas", sum(float(log.hours) for log in work_logs)],
+        ["Mensajes enviados", sum(message.quantity or 0 for message in messages)],
+        ["Contactos de prospección", sum(log.quantity or 0 for log in prospecting_logs)],
+        ["Demos registradas", sum(outcome.demos or 0 for outcome in prospecting_outcomes)],
+        ["Ventas de prospección", sum(outcome.sales or 0 for outcome in prospecting_outcomes)],
+        ["Horas trabajadas", sum(float(log.hours or 0) for log in work_logs)],
     ]
 
     client_rows = []
@@ -1652,7 +1652,7 @@ def build_business_master_export():
             sum(float(payment.amount) for payment in client_pending if payment.currency == "USD"),
             sum(action.status in ("pending", "in_progress") for action in client_actions),
             sum(
-                action.status in ("pending", "in_progress") and action.due_date and action.due_date < today
+                bool(action.status in ("pending", "in_progress") and action.due_date and action.due_date < today)
                 for action in client_actions
             ),
             sum(
