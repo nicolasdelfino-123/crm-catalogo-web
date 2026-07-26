@@ -3130,6 +3130,11 @@ function Agenda() {
           Calendario
         </button>
       </div>
+      <p className="agenda-total" aria-live="polite">
+        <strong>{filteredAgendaItems.length}</strong>{" "}
+        {filteredAgendaItems.length === 1 ? "acción" : "acciones"}
+        {agendaDisplay === "calendar" ? ` en ${calendarTitle}` : " en total"}
+      </p>
       <div className="segmented action-status-tabs" aria-label="Filtrar acciones por estado">
         {[
           ["pending", "Pendientes"],
