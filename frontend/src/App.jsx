@@ -628,7 +628,7 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
       return ["active", "at_risk", "no_signup"].includes(item.status);
     })
     : sourceItems;
-  const filteredSourceItems = metricKey === "pending_actions"
+  const filteredSourceItems = actionMetric
     ? statusFilteredItems.filter((item) => {
       const isCollection = item.action_type === "collection_payment" || Boolean(item.payment_id);
       if (pendingTypeFilter === "collections") return isCollection;
@@ -812,7 +812,7 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
               </button>
             </div>
           )}
-          {metricKey === "pending_actions" && (
+          {actionMetric && (
             <div className="dashboard-pending-type-filter">
               <label className="dashboard-status-filter">
                 Mostrar
@@ -823,7 +823,7 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
                     setSelectedCalendarDate(null);
                   }}
                 >
-                  <option value="all">Cobros y acciones</option>
+                  <option value="all">{metricKey === "overdue_actions" ? "Todas" : "Cobros y acciones"}</option>
                   <option value="collections">Solo cobros</option>
                   <option value="actions">Solo acciones</option>
                 </select>
