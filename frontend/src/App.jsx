@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Users,
   CalendarDays,
@@ -2975,12 +2975,17 @@ function Agenda() {
   const [completingAction, setCompletingAction] = useState(null);
   const [lastCompletedAction, setLastCompletedAction] = useState(null);
   const [agendaToast, setAgendaToast] = useState("");
+  const agendaRequestId = useRef(0);
   const load = useCallback(
     () => {
+      const requestId = ++agendaRequestId.current;
       const calendarQuery = agendaDisplay === "calendar"
         ? `view=calendar&scope=${view}&month=${calendarMonth}`
         : `view=${view}`;
-      return api(`/actions?${calendarQuery}&status=${actionStatus}`).then(setItems);
+      return api(`/actions?${calendarQuery}&status=${actionStatus}`).then((nextItems) => {
+        if (requestId === agendaRequestId.current) setItems(nextItems);
+        return nextItems;
+      });
     },
     [view, agendaDisplay, actionStatus, calendarMonth],
   );
