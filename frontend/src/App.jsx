@@ -40,6 +40,7 @@ import {
   Copy,
   Timer,
   Target,
+  List,
 } from "lucide-react";
 import "./expenses.css";
 import "./payment-summary.css";
@@ -569,9 +570,12 @@ function Dashboard({ goClients }) {
 function DashboardMetricModal({ title, metricKey, items, onClose }) {
   const actionMetric = metricKey === "pending_actions" || metricKey === "overdue_actions";
   const monthlyClientMetric = metricKey === "new_clients_month" || metricKey === "sold_clients_month";
+  const [metricView, setMetricView] = useState("list");
   const [dateOrder, setDateOrder] = useState(metricKey === "active_clients" ? "desc" : "asc");
   const [activeStatusFilter, setActiveStatusFilter] = useState("active_no_signup");
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [calendarMonth, setCalendarMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const [monthlyItems, setMonthlyItems] = useState(items);
   const [loadingMonth, setLoadingMonth] = useState(false);
   useEscapeClose(onClose);
@@ -621,6 +625,75 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
       return (dateOrder === "asc" ? comparison : -comparison) || first.id - second.id;
     });
   }, [filteredSourceItems, metricKey, dateOrder]);
+  const calendarDays = useMemo(() => {
+    const [year, month] = calendarMonth.split("-").map(Number);
+    const firstDay = new Date(Date.UTC(year, month - 1, 1));
+    const mondayOffset = (firstDay.getUTCDay() + 6) % 7;
+    const gridStart = new Date(Date.UTC(year, month - 1, 1 - mondayOffset));
+    const counts = displayedItems.reduce((result, item) => {
+      if (item.due_date) result[item.due_date] = (result[item.due_date] || 0) + 1;
+      return result;
+    }, {});
+    return Array.from({ length: 42 }, (_, index) => {
+      const current = new Date(gridStart);
+      current.setUTCDate(gridStart.getUTCDate() + index);
+      const iso = current.toISOString().slice(0, 10);
+      return {
+        iso,
+        day: current.getUTCDate(),
+        currentMonth: current.getUTCMonth() === month - 1,
+        count: counts[iso] || 0,
+      };
+    });
+  }, [calendarMonth, displayedItems]);
+  const calendarTitle = new Intl.DateTimeFormat("es-AR", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${calendarMonth}-01T12:00:00Z`));
+  const selectedDayItems = selectedCalendarDate
+    ? displayedItems.filter((item) => item.due_date === selectedCalendarDate)
+    : [];
+  const todayIso = new Date().toLocaleDateString("en-CA");
+  function moveDashboardCalendar(offset) {
+    const [year, month] = calendarMonth.split("-").map(Number);
+    const next = new Date(Date.UTC(year, month - 1 + offset, 1));
+    setCalendarMonth(next.toISOString().slice(0, 7));
+    setSelectedCalendarDate(null);
+  }
+  function renderMetricItem(item) {
+    return (
+      <article key={item.id}>
+        <div>
+          <strong>{actionMetric ? item.title : item.name}</strong>
+          <span>
+            {actionMetric
+              ? `${item.client_name} · ${item.business_name}`
+              : item.business_name}
+          </span>
+        </div>
+        <div className="dashboard-metric-meta">
+          {actionMetric ? (
+            <>
+              <small>Fecha</small>
+              <strong>{fmtDate(item.due_date)}</strong>
+              {badge(item.status)}
+            </>
+          ) : metricKey === "renewals_week" ? (
+            <><small>Renovación</small><strong>{fmtDate(item.next_renewal_date)}</strong></>
+          ) : metricKey === "new_clients_month" ? (
+            <><small>Fecha de alta comercial</small><strong>{fmtDate(item.commercial_signup_date)}</strong></>
+          ) : metricKey === "sold_clients_month" ? (
+            <><small>Fecha de venta</small><strong>{fmtDate(item.sale_date)}</strong>{badge(item.status)}</>
+          ) : metricKey === "active_clients" ? (
+            <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong>{badge(item.status)}{badge(item.service_stage)}</>
+          ) : (
+            <><small>Etapa</small>{badge(item.service_stage)}{badge(item.status)}</>
+          )}
+        </div>
+      </article>
+    );
+  }
   return (
     <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="dashboard-metric-modal" role="dialog" aria-modal="true" aria-label={title}>
@@ -632,6 +705,28 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
           <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
         </div>
         <div className="dashboard-metric-list">
+          {metricKey === "pending_actions" && (
+            <div className="dashboard-view-switch" aria-label="Cambiar vista de acciones pendientes">
+              <button
+                type="button"
+                className={metricView === "list" ? "active" : ""}
+                onClick={() => setMetricView("list")}
+                aria-pressed={metricView === "list"}
+              >
+                <List size={16} />
+                Lista
+              </button>
+              <button
+                type="button"
+                className={metricView === "calendar" ? "active" : ""}
+                onClick={() => setMetricView("calendar")}
+                aria-pressed={metricView === "calendar"}
+              >
+                <CalendarDays size={16} />
+                Calendario
+              </button>
+            </div>
+          )}
           {monthlyClientMetric && (
             <div className="dashboard-month-filter">
               <label>
@@ -644,7 +739,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
               </label>
             </div>
           )}
-          {(metricKey === "pending_actions" || metricKey === "active_clients") && (
+          {metricView === "list" && (metricKey === "pending_actions" || metricKey === "active_clients") && (
             <div className="dashboard-metric-toolbar">
               {metricKey === "active_clients" && (
                 <label className="dashboard-status-filter">
@@ -672,39 +767,44 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
               </button>
             </div>
           )}
-          {!loadingMonth && displayedItems.map((item) => (
-            <article key={item.id}>
-              <div>
-                <strong>{actionMetric ? item.title : item.name}</strong>
-                <span>
-                  {actionMetric
-                    ? `${item.client_name} · ${item.business_name}`
-                    : item.business_name}
-                </span>
+          {!loadingMonth && metricView === "list" && displayedItems.map(renderMetricItem)}
+          {!loadingMonth && metricKey === "pending_actions" && metricView === "calendar" && (
+            <div className="dashboard-actions-calendar">
+              <div className="calendar-head">
+                <button className="icon-btn" onClick={() => moveDashboardCalendar(-1)} aria-label="Mes anterior"><ChevronLeft /></button>
+                <h3>{calendarTitle}</h3>
+                <button className="icon-btn" onClick={() => moveDashboardCalendar(1)} aria-label="Mes siguiente"><ChevronRight /></button>
               </div>
-              <div className="dashboard-metric-meta">
-                {actionMetric ? (
-                  <>
-                    <small>Fecha</small>
-                    <strong>{fmtDate(item.due_date)}</strong>
-                    {badge(item.status)}
-                  </>
-                ) : metricKey === "renewals_week" ? (
-                  <><small>Renovación</small><strong>{fmtDate(item.next_renewal_date)}</strong></>
-                ) : metricKey === "new_clients_month" ? (
-                  <><small>Fecha de alta comercial</small><strong>{fmtDate(item.commercial_signup_date)}</strong></>
-                ) : metricKey === "sold_clients_month" ? (
-                  <><small>Fecha de venta</small><strong>{fmtDate(item.sale_date)}</strong>{badge(item.status)}</>
-                ) : metricKey === "active_clients" ? (
-                  <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong>{badge(item.status)}{badge(item.service_stage)}</>
-                ) : (
-                  <><small>Etapa</small>{badge(item.service_stage)}{badge(item.status)}</>
-                )}
+              <div className="calendar-grid calendar-weekdays">
+                {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}
               </div>
-            </article>
-          ))}
+              <div className="calendar-grid calendar-days">
+                {calendarDays.map((day) => (
+                  <button
+                    type="button"
+                    key={day.iso}
+                    className={`${day.currentMonth ? "" : "outside"} ${day.iso === todayIso ? "today" : ""} ${selectedCalendarDate === day.iso ? "selected" : ""}`}
+                    onClick={() => setSelectedCalendarDate(day.iso)}
+                    aria-label={`${day.iso}: ${day.count} acciones`}
+                  >
+                    <time>{day.day}</time>
+                    {day.count > 0 && <strong>{day.count} {day.count === 1 ? "acción" : "acciones"}</strong>}
+                  </button>
+                ))}
+              </div>
+              {selectedCalendarDate && (
+                <div className="dashboard-calendar-selection">
+                  <h3>Acciones del {fmtDate(selectedCalendarDate)}</h3>
+                  <div className="dashboard-calendar-items">
+                    {selectedDayItems.map(renderMetricItem)}
+                    {!selectedDayItems.length && <p>Sin acciones para este día.</p>}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {loadingMonth && <Loading />}
-          {!loadingMonth && !displayedItems.length && <Empty />}
+          {!loadingMonth && metricView === "list" && !displayedItems.length && <Empty />}
         </div>
       </section>
     </div>
