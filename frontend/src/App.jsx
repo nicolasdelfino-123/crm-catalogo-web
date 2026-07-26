@@ -3425,6 +3425,10 @@ function Prospecting() {
     });
     await load();
   }
+  async function undoCompleteChannel(item) {
+    await api(`/prospecting/logs/${item.id}`, { method: "DELETE" });
+    await load();
+  }
   async function submitQuickEntry(event) {
     event.preventDefault();
     setSavingLog(true);
@@ -3565,6 +3569,9 @@ function Prospecting() {
           {PROSPECTING_CHANNELS.map(([channel, label]) => {
             const actual = detailDays.reduce((total, day) => total + (actualByDayChannel[`${dateKey(day)}:${channel}`] || 0), 0);
             const weekday = (fromDateKey(selectedDate).getDay() + 6) % 7;
+            const completionLog = detailFilter === "day"
+              ? logs.find((item) => item.activity_date === selectedDate && item.channel === channel && item.notes === "Objetivo marcado como completado")
+              : null;
             const planned = detailDays.reduce((total, day) => {
               const dayWeekday = (day.getDay() + 6) % 7;
               return total + (Number(goals[prospectingKey(dayWeekday, channel)]) || 0);
@@ -3588,7 +3595,9 @@ function Prospecting() {
                 setEditingGoal({ channel, label, weekday, target: planned });
               }}><Edit3 /></IconButton>}</div>
               <strong>{actual} / {planned}</strong><em className={balance.tone}>{balance.label}</em>
-              {detailFilter === "day" && planned > actual && <button className="secondary small" onClick={(event) => { event.stopPropagation(); completeChannel(channel, actual, planned); }}><Check size={14} />Marcar completado</button>}
+              {completionLog
+                ? <button className="secondary small prospecting-undo" onClick={(event) => { event.stopPropagation(); undoCompleteChannel(completionLog); }}><RotateCcw size={14} />Deshacer completado</button>
+                : detailFilter === "day" && planned > actual && <button className="secondary small" onClick={(event) => { event.stopPropagation(); completeChannel(channel, actual, planned); }}><Check size={14} />Marcar completado</button>}
             </article>;
           })}
         </div>
