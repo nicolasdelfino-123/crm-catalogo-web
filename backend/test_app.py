@@ -747,7 +747,7 @@ def test_actions_can_be_filtered_as_pending_or_completed(client):
     assert [action["title"] for action in completed] == ["Completada"]
 
 
-def test_monthly_collections_only_exist_as_calendar_projections(client, app):
+def test_monthly_collections_appear_in_all_list_and_calendar(client, app):
     with app.app_context():
         existing = Client(
             name="Cliente existente", business_name="Existente", signup_date=date(2026, 7, 10),
@@ -761,7 +761,12 @@ def test_monthly_collections_only_exist_as_calendar_projections(client, app):
     august = client.get("/api/actions?view=calendar&month=2026-08&status=pending").get_json()["data"]
     charges = [action for action in august if action["title"] == "Cobrar a Cliente existente"]
 
-    assert not any(action["title"] == "Cobrar a Cliente existente" for action in manual_actions)
+    listed_charges = [
+        action for action in manual_actions
+        if action["title"] == "Cobrar a Cliente existente"
+    ]
+    assert len(listed_charges) == 1
+    assert listed_charges[0]["due_date"] == "2026-08-10"
     assert len(charges) == 1
     assert charges[0]["due_date"] == "2026-08-10"
 
@@ -818,7 +823,9 @@ def test_scheduled_monthly_payment_suppresses_charge_but_extra_work_does_not(cli
         "due_date": "2026-06-01", "status": "pending",
     })
     pending = client.get("/api/actions?view=all&status=pending").get_json()["data"]
-    assert not any(action["title"] == "Cobrar a Gustavo" for action in pending)
+    listed_charge = next(action for action in pending if action["title"] == "Cobrar a Gustavo")
+    assert listed_charge["payment_id"]
+    assert listed_charge["due_date"] == "2026-06-01"
 
     monthly_payment = client.get("/api/payments").get_json()["data"][0]
     client.delete(f'/api/payments/{monthly_payment["id"]}')

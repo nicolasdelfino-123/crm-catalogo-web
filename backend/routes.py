@@ -723,6 +723,22 @@ def actions_list():
             StandaloneAction.due_date < add_calendar_months(month_start, 1),
         )
     result.extend(action.to_dict() for action in standalone_query.order_by(StandaloneAction.due_date.asc()).limit(250).all())
+    if (
+        requested_view != "calendar"
+        and requested_scope == "all"
+        and request.args.get("status") == "pending"
+    ):
+        # La lista general también necesita el próximo cobro de cada cliente.
+        # Se proyecta únicamente su siguiente vencimiento para evitar una lista
+        # infinita de mensualidades futuras.
+        for client in existing_clients:
+            renewal_date = client.next_renewal_date
+            if not renewal_date:
+                continue
+            result.extend(projected_collection_items(
+                [client], renewal_date.year, renewal_date.month,
+            ))
+        result.sort(key=lambda item: (item["due_date"] or "9999-12-31", str(item["id"])))
     if request.args.get("status") == "pending" and requested_scope == "overdue":
         overdue_payments = Payment.query.join(Client).filter(
             Client.archived_at.is_(None), Payment.payment_type == "monthly",
