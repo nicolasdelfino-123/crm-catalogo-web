@@ -18,6 +18,32 @@ def client(app):
 def test_health(client): assert client.get("/api/health").status_code == 200
 
 
+def test_cancelled_clients_are_excluded_from_weekly_renewals(client, app):
+    monday = date.today() - timedelta(days=date.today().weekday())
+    renewal_date = monday + timedelta(days=2)
+    with app.app_context():
+        db.session.add_all([
+            Client(
+                name="Cliente activo", business_name="Activo",
+                signup_date=monday, next_renewal_date=renewal_date,
+                country="Argentina", currency="ARS", status="active",
+            ),
+            Client(
+                name="Cliente cancelado", business_name="Cancelado",
+                signup_date=monday, next_renewal_date=renewal_date,
+                country="Argentina", currency="ARS", status="cancelled",
+            ),
+        ])
+        db.session.commit()
+
+    summary = client.get("/api/dashboard/summary").get_json()["data"]
+    assert summary["renewals_week"] == 1
+    assert [item["name"] for item in summary["details"]["renewals_week"]] == ["Cliente activo"]
+
+    weekly = client.get(f"/api/dashboard/renewals?start={monday.isoformat()}").get_json()["data"]
+    assert [item["name"] for item in weekly] == ["Cliente activo"]
+
+
 def test_message_logs_can_be_created_listed_and_deleted(client):
     created = client.post("/api/messages", json={
         "sent_date": "2026-07-21", "channel": "business_whatsapp",

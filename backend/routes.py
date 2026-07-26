@@ -1151,7 +1151,9 @@ def dashboard():
     renewals_week_end = renewals_week_start + timedelta(days=7)
     renewals_week = [
         c for c in clients
-        if c.next_renewal_date and renewals_week_start <= c.next_renewal_date < renewals_week_end
+        if c.status != "cancelled"
+        and c.next_renewal_date
+        and renewals_week_start <= c.next_renewal_date < renewals_week_end
     ]
     next_month_start = add_calendar_months(month_start, 1)
     new_clients_month = [
@@ -1230,6 +1232,7 @@ def renewals_by_week():
     week_end = week_start + timedelta(days=7)
     clients = Client.query.filter(
         Client.archived_at.is_(None),
+        Client.status != "cancelled",
         Client.next_renewal_date >= week_start,
         Client.next_renewal_date < week_end,
     ).order_by(Client.next_renewal_date.asc(), Client.name.asc()).all()
