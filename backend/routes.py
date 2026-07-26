@@ -1137,6 +1137,7 @@ def dashboard():
     for p in payments:
         if p.status == "paid" and p.paid_at and p.paid_at.date() >= month_start: money[p.currency] = money.get(p.currency, 0) + float(p.amount)
     active_clients = [c for c in clients if c.status in ("active", "at_risk", "no_signup")]
+    tenure_clients = [c for c in clients if c.status in ("active", "at_risk") and c.signup_date]
     at_risk_clients = [c for c in clients if c.status == "at_risk"]
     pending_actions = [a for a in actions if a.status in ("pending", "in_progress")]
     urgent_actions = [
@@ -1170,6 +1171,15 @@ def dashboard():
     sold_clients_month = [c for c in clients if c.sale_date and month_start <= c.sale_date < next_month_start]
 
     def client_item(client):
+        days_active = max(0, (today - client.signup_date).days) if client.signup_date else 0
+        elapsed_months = 0
+        if client.signup_date:
+            elapsed_months = max(
+                0,
+                (today.year - client.signup_date.year) * 12 + today.month - client.signup_date.month,
+            )
+            if today < add_calendar_months(client.signup_date, elapsed_months):
+                elapsed_months = max(0, elapsed_months - 1)
         return {
             "id": client.id, "name": client.name, "business_name": client.business_name,
             "status": client.status, "service_stage": client.service_stage,
@@ -1177,6 +1187,8 @@ def dashboard():
             "commercial_signup_date": iso(client.commercial_signup_date),
             "signup_date": client.signup_date.isoformat() if client.signup_date else None,
             "next_renewal_date": client.next_renewal_date.isoformat() if client.next_renewal_date else None,
+            "days_active": days_active,
+            "active_month": elapsed_months + 1 if client.signup_date else None,
         }
 
     def action_item(action):
@@ -1200,11 +1212,16 @@ def dashboard():
         "pending_actions": len(pending_actions) + len(overdue_payments), "overdue_actions": len(overdue_actions) + len(overdue_payments),
         "pending_payments": len(pending_payments),
         "urgent_actions": len(urgent_actions) + len(urgent_standalone_actions),
+        "active_client_days_average": (
+            round(sum((today - client.signup_date).days for client in tenure_clients) / len(tenure_clients))
+            if tenure_clients else 0
+        ),
         "renewals_week": len(renewals_week), "new_clients_month": len(new_clients_month),
         "sold_clients_month": len(sold_clients_month),
         "collected": money,
         "details": {
             "active_clients": [client_item(c) for c in active_clients],
+            "active_client_days": [client_item(c) for c in tenure_clients],
             "at_risk_clients": [client_item(c) for c in at_risk_clients],
             "pending_actions": [action_item(a) for a in pending_actions] + [payment_collection_item(p) for p in overdue_payments],
             "overdue_actions": [action_item(a) for a in overdue_actions] + [payment_collection_item(p) for p in overdue_payments],

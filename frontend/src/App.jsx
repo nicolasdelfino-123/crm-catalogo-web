@@ -394,6 +394,7 @@ function Dashboard({ goClients }) {
   if (!data) return <Loading />;
   const cards = [
     ["active_clients", "Clientes activos", data.active_clients, Users, "green"],
+    ["active_client_days", "Días activos de clientes", `${data.active_client_days_average} días prom.`, Timer, "violet"],
     ["at_risk_clients", "Necesitan atención", data.at_risk_clients, AlertTriangle, "amber"],
     ["pending_actions", "Acciones pendientes", data.pending_actions, Clock3, "blue"],
     ["overdue_actions", "Acciones vencidas", data.overdue_actions, AlertTriangle, "red"],
@@ -651,8 +652,10 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
   const displayedItems = useMemo(() => {
     const dateField = actionMetric || paymentMetric
       ? "due_date"
-      : metricKey === "active_clients"
-        ? "signup_date"
+        : metricKey === "active_clients"
+          ? "signup_date"
+          : metricKey === "active_client_days"
+            ? "signup_date"
         : metricKey === "renewals_week"
           ? "next_renewal_date"
         : metricKey === "new_clients_month"
@@ -803,6 +806,12 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
             <><small>Fecha de venta</small><strong>{fmtDate(item.sale_date)}</strong>{badge(item.status)}</>
           ) : metricKey === "active_clients" ? (
             <><small>{metricView === "calendar" ? "Próximo cobro" : "Fecha de alta"}</small><strong>{fmtDate(metricView === "calendar" ? item.next_renewal_date : item.signup_date)}</strong>{badge(item.status)}{badge(item.service_stage)}</>
+          ) : metricKey === "active_client_days" ? (
+            <>
+              <small>Desde {fmtDate(item.signup_date)}</small>
+              <strong>{item.days_active} {item.days_active === 1 ? "día activo" : "días activos"}</strong>
+              <span className="badge">{item.active_month}.º mes</span>
+            </>
           ) : (
             <><small>Etapa</small>{badge(item.service_stage)}{badge(item.status)}</>
           )}
