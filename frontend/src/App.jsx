@@ -1328,6 +1328,7 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
         ["amount", "Importe", "number"],
         ["due_date", "Vencimiento", "date"],
         ["status", "Estado", "payselect"],
+        ["paid_at", "Fecha de pago", "date"],
         ["notes", "Nota", "textarea"],
       ],
     },
@@ -1337,6 +1338,7 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
         ["amount", "Importe", "number"],
         ["due_date", "Fecha", "date"],
         ["status", "Estado", "payselect"],
+        ["paid_at", "Fecha de pago", "date"],
         ["notes", "Nota", "textarea"],
       ],
     },
@@ -1356,9 +1358,9 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
   const conf = schemas[type];
   const [form, setForm] = useState(
     type === "payment"
-      ? { status: "pending", due_date: defaultDueDate || "", payment_type: "monthly" }
+      ? { status: "pending", due_date: defaultDueDate || "", paid_at: dateKey(), payment_type: "monthly" }
       : type === "extra_work"
-        ? { status: "pending", due_date: new Date().toISOString().slice(0, 10), payment_type: "extra_work" }
+        ? { status: "pending", due_date: dateKey(), paid_at: dateKey(), payment_type: "extra_work" }
         : {},
   );
   const [actionPreset, setActionPreset] = useState("");
@@ -1576,7 +1578,10 @@ function ActionEditor({ action, onCancel, onSaved }) {
 }
 
 function PaymentEditor({ payment, onCancel, onSaved }) {
-  const [form, setForm] = useState(payment);
+  const [form, setForm] = useState({
+    ...payment,
+    paid_at: payment.paid_at ? payment.paid_at.slice(0, 10) : dateKey(),
+  });
   const [saving, setSaving] = useState(false);
   const change = (event) =>
     setForm((value) => ({ ...value, [event.target.name]: event.target.value }));
@@ -1601,6 +1606,7 @@ function PaymentEditor({ payment, onCancel, onSaved }) {
         <label>Concepto<select name="payment_type" value={form.payment_type || "monthly"} onChange={change}><option value="monthly">Mensualidad</option><option value="deposit">Seña</option><option value="domain">Dominio</option><option value="extra_work">Trabajo extra</option><option value="discount">Descuento</option><option value="other">Otro</option></select></label>
         <label>Estado<select name="status" value={form.status || "pending"} onChange={change}><option value="pending">Pendiente</option><option value="paid">Pagado</option><option value="partial">Parcial</option><option value="overdue">Vencido</option><option value="waived">Bonificado</option></select></label>
         <label>Vencimiento<input type="date" name="due_date" value={form.due_date || ""} onChange={change} /></label>
+        <label>Fecha de pago<input type="date" name="paid_at" value={form.paid_at || ""} onChange={change} required={form.status === "paid"} /></label>
         <label>Método de pago<input name="payment_method" value={form.payment_method || ""} onChange={change} placeholder="Transferencia, efectivo..." /></label>
         <label className="span-2">Notas<textarea name="notes" value={form.notes || ""} onChange={change} /></label>
       </div>
@@ -2173,6 +2179,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
                         {LABEL[p.payment_type] || "Mensual"} · vence{" "}
                         {fmtDate(p.due_date)}
                       </p>
+                      {p.paid_at && <p>Pagado: {fmtDate(p.paid_at)}</p>}
                       {p.notes && <p>{p.notes}</p>}
                     </div>
                     {badge(p.status)}

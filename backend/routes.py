@@ -837,7 +837,12 @@ def payments_create(client_id):
         if amount < 0: raise ValueError("El importe no puede ser negativo")
         due_date = parse_date(data.get("due_date")) or client.next_renewal_date or add_calendar_months(client.signup_date, 1)
         payment = Payment(client=client, amount=amount, currency=data.get("currency", client.currency), payment_type=data.get("payment_type", "monthly"), period_year=data.get("period_year"), period_month=data.get("period_month"), due_date=due_date, status=data.get("status", "pending"), payment_method=data.get("payment_method"), notes=data.get("notes"))
-        if payment.status == "paid": payment.paid_at = datetime.utcnow()
+        if payment.status == "paid":
+            paid_date = parse_date(data.get("paid_at"))
+            payment.paid_at = (
+                datetime.combine(paid_date, datetime.min.time())
+                if paid_date else datetime.utcnow()
+            )
         db.session.add(payment)
         if payment.status == "paid": advance_renewal_after_payment(payment)
         else: ensure_collection_action(client)
@@ -856,7 +861,17 @@ def payments_update(payment_id):
     for field in ["currency", "payment_type", "status", "payment_method", "notes", "period_year", "period_month"]:
         if field in data: setattr(payment, field, data[field])
     if "due_date" in data: payment.due_date = parse_date(data["due_date"])
-    payment.paid_at = datetime.utcnow() if payment.status == "paid" else None
+    if payment.status == "paid":
+        if "paid_at" in data:
+            paid_date = parse_date(data.get("paid_at"))
+            payment.paid_at = (
+                datetime.combine(paid_date, datetime.min.time())
+                if paid_date else datetime.utcnow()
+            )
+        elif not payment.paid_at:
+            payment.paid_at = datetime.utcnow()
+    else:
+        payment.paid_at = None
     if payment.status == "paid" and not was_paid:
         advance_renewal_after_payment(payment)
     else:
