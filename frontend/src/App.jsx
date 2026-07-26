@@ -641,7 +641,8 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
     : sourceItems;
   const filteredSourceItems = collectionFilterMetric
     ? statusFilteredItems.filter((item) => {
-      const isCollection = item.action_type === "collection_payment" || Boolean(item.payment_id);
+      const isCollection = ["collection_payment", "collection_projection"].includes(item.action_type)
+        || Boolean(item.payment_id);
       if (pendingTypeFilter === "collections") return isCollection;
       if (pendingTypeFilter === "actions") return !isCollection;
       return true;
@@ -2955,7 +2956,8 @@ function Agenda() {
     load();
   }
   const filteredAgendaItems = useMemo(() => items.filter((item) => {
-    const isCollection = item.action_type === "collection_payment" || Boolean(item.payment_id);
+    const isCollection = ["collection_payment", "collection_projection"].includes(item.action_type)
+      || Boolean(item.payment_id);
     if (agendaTypeFilter === "collections") return isCollection;
     if (agendaTypeFilter === "actions") return !isCollection;
     return true;
