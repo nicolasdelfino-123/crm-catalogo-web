@@ -627,13 +627,15 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
       return (dateOrder === "asc" ? comparison : -comparison) || first.id - second.id;
     });
   }, [filteredSourceItems, metricKey, dateOrder]);
+  const calendarDateField = metricKey === "active_clients" ? "next_renewal_date" : "due_date";
   const calendarDays = useMemo(() => {
     const [year, month] = calendarMonth.split("-").map(Number);
     const firstDay = new Date(Date.UTC(year, month - 1, 1));
     const mondayOffset = (firstDay.getUTCDay() + 6) % 7;
     const gridStart = new Date(Date.UTC(year, month - 1, 1 - mondayOffset));
     const counts = displayedItems.reduce((result, item) => {
-      if (item.due_date) result[item.due_date] = (result[item.due_date] || 0) + 1;
+      const itemDate = item[calendarDateField];
+      if (itemDate) result[itemDate] = (result[itemDate] || 0) + 1;
       return result;
     }, {});
     return Array.from({ length: 42 }, (_, index) => {
@@ -647,14 +649,14 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
         count: counts[iso] || 0,
       };
     });
-  }, [calendarMonth, displayedItems]);
+  }, [calendarMonth, displayedItems, calendarDateField]);
   const calendarTitle = new Intl.DateTimeFormat("es-AR", {
     month: "long",
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(`${calendarMonth}-01T12:00:00Z`));
   const selectedDayItems = selectedCalendarDate
-    ? displayedItems.filter((item) => item.due_date === selectedCalendarDate)
+    ? displayedItems.filter((item) => item[calendarDateField] === selectedCalendarDate)
     : [];
   const todayIso = new Date().toLocaleDateString("en-CA");
   function moveDashboardCalendar(offset) {
@@ -664,20 +666,22 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
     setSelectedCalendarDate(null);
   }
   function renderMetricItem(item) {
+    const clickableClientMetric = actionMetric || metricKey === "active_clients";
+    const targetClientId = actionMetric ? item.client_id : item.id;
     return (
       <article
         key={item.id}
-        className={actionMetric ? "dashboard-action-card" : undefined}
-        role={actionMetric ? "button" : undefined}
-        tabIndex={actionMetric ? 0 : undefined}
-        onClick={actionMetric ? () => setSelectedActionClient(item.client_id) : undefined}
-        onKeyDown={actionMetric ? (event) => {
+        className={clickableClientMetric ? "dashboard-action-card" : undefined}
+        role={clickableClientMetric ? "button" : undefined}
+        tabIndex={clickableClientMetric ? 0 : undefined}
+        onClick={clickableClientMetric ? () => setSelectedActionClient(targetClientId) : undefined}
+        onKeyDown={clickableClientMetric ? (event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            setSelectedActionClient(item.client_id);
+            setSelectedActionClient(targetClientId);
           }
         } : undefined}
-        aria-label={actionMetric ? `Abrir ficha de ${item.client_name}` : undefined}
+        aria-label={clickableClientMetric ? `Abrir ficha de ${actionMetric ? item.client_name : item.name}` : undefined}
       >
         <div>
           <strong>{actionMetric ? item.title : item.name}</strong>
@@ -701,7 +705,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
           ) : metricKey === "sold_clients_month" ? (
             <><small>Fecha de venta</small><strong>{fmtDate(item.sale_date)}</strong>{badge(item.status)}</>
           ) : metricKey === "active_clients" ? (
-            <><small>Fecha de alta</small><strong>{fmtDate(item.signup_date)}</strong>{badge(item.status)}{badge(item.service_stage)}</>
+            <><small>{metricView === "calendar" ? "Próximo cobro" : "Fecha de alta"}</small><strong>{fmtDate(metricView === "calendar" ? item.next_renewal_date : item.signup_date)}</strong>{badge(item.status)}{badge(item.service_stage)}</>
           ) : (
             <><small>Etapa</small>{badge(item.service_stage)}{badge(item.status)}</>
           )}
@@ -721,8 +725,8 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
           <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
         </div>
         <div className="dashboard-metric-list">
-          {metricKey === "pending_actions" && (
-            <div className="dashboard-view-switch" aria-label="Cambiar vista de acciones pendientes">
+          {(metricKey === "pending_actions" || metricKey === "active_clients") && (
+            <div className="dashboard-view-switch" aria-label={`Cambiar vista de ${title.toLowerCase()}`}>
               <button
                 type="button"
                 className={metricView === "list" ? "active" : ""}
@@ -784,7 +788,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
             </div>
           )}
           {!loadingMonth && metricView === "list" && displayedItems.map(renderMetricItem)}
-          {!loadingMonth && metricKey === "pending_actions" && metricView === "calendar" && (
+          {!loadingMonth && (metricKey === "pending_actions" || metricKey === "active_clients") && metricView === "calendar" && (
             <div className="dashboard-actions-calendar">
               <div className="calendar-head">
                 <button className="icon-btn" onClick={() => moveDashboardCalendar(-1)} aria-label="Mes anterior"><ChevronLeft /></button>
@@ -801,19 +805,25 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
                     key={day.iso}
                     className={`${day.currentMonth ? "" : "outside"} ${day.iso === todayIso ? "today" : ""} ${selectedCalendarDate === day.iso ? "selected" : ""}`}
                     onClick={() => setSelectedCalendarDate(day.iso)}
-                    aria-label={`${day.iso}: ${day.count} acciones`}
+                    aria-label={`${day.iso}: ${day.count} ${metricKey === "active_clients" ? "cobros" : "acciones"}`}
                   >
                     <time>{day.day}</time>
-                    {day.count > 0 && <strong>{day.count} {day.count === 1 ? "acción" : "acciones"}</strong>}
+                    {day.count > 0 && (
+                      <strong>
+                        {day.count} {metricKey === "active_clients"
+                          ? day.count === 1 ? "cobro" : "cobros"
+                          : day.count === 1 ? "acción" : "acciones"}
+                      </strong>
+                    )}
                   </button>
                 ))}
               </div>
               {selectedCalendarDate && (
                 <div className="dashboard-calendar-selection">
-                  <h3>Acciones del {fmtDate(selectedCalendarDate)}</h3>
+                  <h3>{metricKey === "active_clients" ? "Cobros" : "Acciones"} del {fmtDate(selectedCalendarDate)}</h3>
                   <div className="dashboard-calendar-items">
                     {selectedDayItems.map(renderMetricItem)}
-                    {!selectedDayItems.length && <p>Sin acciones para este día.</p>}
+                    {!selectedDayItems.length && <p>Sin {metricKey === "active_clients" ? "cobros" : "acciones"} para este día.</p>}
                   </div>
                 </div>
               )}
@@ -833,7 +843,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
             setSelectedActionClient(null);
             setActionClientForm(client);
           }}
-          initialTab="actions"
+          initialTab={metricKey === "active_clients" ? "payments" : "actions"}
         />
       )}
       {actionClientForm && (
