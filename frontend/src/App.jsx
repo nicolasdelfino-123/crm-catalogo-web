@@ -3544,7 +3544,12 @@ function Prospecting() {
             </button>;
           })}
         </div>
-        <div className="prospecting-week-total"><span>Total semanal</span><strong>{weekActual} / {weekPlanned}</strong><em className={weekBalance.tone}>{weekBalance.label}</em></div>
+        <div className="prospecting-week-total">
+          <div><span>Balance del día</span><small>{fmtDate(selectedDate)}</small></div>
+          <div className="prospecting-total-values"><small>Cumplido / esperado</small><strong>{dayActual} / {dayPlanned}</strong></div>
+          <em className={dayBalance.tone}>{dayBalance.label}</em>
+          <div className="prospecting-week-summary"><span>Total semanal</span><strong>{weekActual} / {weekPlanned}</strong><em className={weekBalance.tone}>{weekBalance.label}</em></div>
+        </div>
       </div>
 
       <div className="prospecting-month-selector">
