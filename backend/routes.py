@@ -1303,11 +1303,11 @@ def dashboard_income():
         except ValueError:
             return error("El mes debe tener el formato AAAA-MM", 422)
         totals = {"ARS": 0, "USD": 0}
-        active_clients = Client.query.filter(
+        billable_clients = Client.query.filter(
             Client.archived_at.is_(None),
-            Client.status.in_(("active", "at_risk")),
+            Client.status.in_(("active", "at_risk", "no_signup")),
         ).all()
-        for client in active_clients:
+        for client in billable_clients:
             totals[client.currency] = totals.get(client.currency, 0) + float(client.payment_amount or 0)
         available_months = sorted({
             (payment.due_date or (payment.paid_at.date() if payment.paid_at else None)).strftime("%Y-%m")
@@ -1323,14 +1323,11 @@ def dashboard_income():
                 "client_name": client.name, "business_name": client.business_name,
                 "amount": float(client.payment_amount or 0), "currency": client.currency,
                 "payment_type": "monthly_forecast",
-                "due_date": forecast_month.replace(
-                    day=min(
-                        client.next_renewal_date.day,
-                        calendar.monthrange(forecast_month.year, forecast_month.month)[1],
-                    )
-                ).isoformat() if client.next_renewal_date else forecast_month.isoformat(),
+                "due_date": billing_date_in_month(
+                    client, forecast_month.year, forecast_month.month,
+                ).isoformat() if client.signup_date else forecast_month.isoformat(),
                 "notes": f"Mensualidad prevista · {forecast_month.strftime('%m/%Y')}",
-            } for client in active_clients],
+            } for client in billable_clients],
             "available_months": available_months,
         })
     month_start = month_end = None

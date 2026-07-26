@@ -538,7 +538,7 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
     })
     client.post("/api/clients", json={
         "name": "Cliente todavía sin alta", "business_name": "Sin alta",
-        "signup_date": "2026-06-01", "country": "Argentina", "currency": "ARS",
+        "signup_date": "2026-06-17", "country": "Argentina", "currency": "ARS",
         "payment_amount": 90000, "status": "no_signup",
     })
     with app.app_context():
@@ -568,9 +568,14 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
     assert july_total == {"ARS": 25000.0, "USD": 0}
     assert all_months["totals"] == {"ARS": 125000.0, "USD": 50.0}
     assert all_months["available_months"] == ["2026-07", "2026-06"]
-    assert monthly_forecast == {"ARS": 80000.0, "USD": 40.0}
+    assert monthly_forecast == {"ARS": 170000.0, "USD": 40.0}
     assert monthly_forecast_data["month"] == "2026-08"
     assert all(item["due_date"].startswith("2026-08") for item in monthly_forecast_data["items"])
+    no_signup_forecast = next(
+        item for item in monthly_forecast_data["items"]
+        if item["client_name"] == "Cliente todavía sin alta"
+    )
+    assert no_signup_forecast["due_date"] == "2026-08-17"
     assert client.get("/api/dashboard/income?month=junio").status_code == 422
     assert client.get("/api/dashboard/income?payment_type=otro").status_code == 422
 

@@ -487,7 +487,7 @@ function Dashboard({ goClients }) {
           <h3>Ingresos separados por moneda</h3>
           <p>
             {incomeType === "monthly_forecast"
-              ? "Mensualidades previstas de clientes activos y en riesgo."
+              ? "Mensualidades previstas de clientes activos, en riesgo y sin alta."
               : incomeType === "monthly"
                 ? "Solo mensualidades cobradas."
                 : incomeType === "extra_work"
