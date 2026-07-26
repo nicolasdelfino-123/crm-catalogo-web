@@ -2877,6 +2877,7 @@ function Agenda() {
   const now = new Date();
   const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const [view, setView] = useState("today");
+  const [agendaDisplay, setAgendaDisplay] = useState("list");
   const [actionStatus, setActionStatus] = useState("pending");
   const [agendaTypeFilter, setAgendaTypeFilter] = useState("all");
   const [items, setItems] = useState([]);
@@ -2891,8 +2892,13 @@ function Agenda() {
   const [lastCompletedAction, setLastCompletedAction] = useState(null);
   const [agendaToast, setAgendaToast] = useState("");
   const load = useCallback(
-    () => api(`/actions?view=${view}&status=${actionStatus}${view === "calendar" ? `&month=${calendarMonth}` : ""}`).then(setItems),
-    [view, actionStatus, calendarMonth],
+    () => {
+      const calendarQuery = agendaDisplay === "calendar"
+        ? `view=calendar&scope=${view}&month=${calendarMonth}`
+        : `view=${view}`;
+      return api(`/actions?${calendarQuery}&status=${actionStatus}`).then(setItems);
+    },
+    [view, agendaDisplay, actionStatus, calendarMonth],
   );
   useEffect(() => {
     load();
@@ -2991,17 +2997,45 @@ function Agenda() {
           ["week", "Próximos 7 días"],
           ["overdue", "Vencidas"],
           ["all", "Todas"],
-          ["calendar", "Calendario"],
           ["undated", "Sin fecha"],
         ].map(([id, label]) => (
           <button
             className={view === id ? "active" : ""}
-            onClick={() => setView(id)}
+            onClick={() => {
+              setView(id);
+              setSelectedCalendarDate(null);
+              if (id === "undated") setAgendaDisplay("list");
+            }}
             key={id}
           >
             {label}
           </button>
         ))}
+      </div>
+      <div className="agenda-display-switch" aria-label="Cambiar vista de la agenda">
+        <button
+          type="button"
+          className={agendaDisplay === "list" ? "active" : ""}
+          onClick={() => setAgendaDisplay("list")}
+          aria-pressed={agendaDisplay === "list"}
+        >
+          <List size={16} />
+          Lista
+        </button>
+        <button
+          type="button"
+          className={agendaDisplay === "calendar" ? "active" : ""}
+          onClick={() => {
+            setAgendaDisplay("calendar");
+            setSelectedCalendarDate(null);
+          }}
+          aria-pressed={agendaDisplay === "calendar"}
+          disabled={view === "undated"}
+          title={view === "undated" ? "Las acciones sin fecha no pueden ubicarse en un calendario" : undefined}
+        >
+          <CalendarDays size={16} />
+          Calendario
+        </button>
       </div>
       <div className="segmented action-status-tabs" aria-label="Filtrar acciones por estado">
         {[
@@ -3033,7 +3067,7 @@ function Agenda() {
           </select>
         </label>
       </div>
-      {view !== "calendar" && view !== "undated" && (
+      {agendaDisplay === "list" && view !== "undated" && (
         <div className="agenda-sort-toolbar">
           <button
             type="button"
@@ -3045,7 +3079,7 @@ function Agenda() {
           </button>
         </div>
       )}
-      {view === "calendar" ? (
+      {agendaDisplay === "calendar" ? (
         <div className="action-calendar">
           <div className="calendar-head">
             <button className="icon-btn" onClick={() => moveCalendarMonth(-1)} aria-label="Mes anterior"><ChevronLeft /></button>
@@ -3088,7 +3122,7 @@ function Agenda() {
           ))}
         </div>
       )}
-      {view !== "calendar" && !filteredAgendaItems.length && <Empty />}
+      {agendaDisplay === "list" && !filteredAgendaItems.length && <Empty />}
       {showNewAction && (
         <AgendaNewAction
           undated={view === "undated"}

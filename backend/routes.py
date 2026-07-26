@@ -666,6 +666,8 @@ def actions_generate(client_id):
 
 @api.get("/actions")
 def actions_list():
+    requested_view = request.args.get("view")
+    requested_scope = request.args.get("scope", requested_view)
     existing_clients = Client.query.filter(Client.archived_at.is_(None)).all()
     collection_actions_changed = bool(sync_overdue_monthly_payments(existing_clients))
     for client in existing_clients:
@@ -674,11 +676,11 @@ def actions_list():
     if collection_actions_changed:
         db.session.commit()
     query = ClientAction.query.join(Client).filter(Client.archived_at.is_(None))
-    if request.args.get("view") == "calendar":
+    if requested_view == "calendar":
         # En el calendario los cobros se proyectan para cada mes; se excluye
         # la única acción persistida para no mostrar el mismo cobro dos veces.
         query = query.filter(ClientAction.action_type != "collection")
-    if request.args.get("view") == "undated":
+    if requested_scope == "undated":
         query = query.filter(ClientAction.due_date.is_(None))
     else:
         query = query.filter(ClientAction.due_date.isnot(None))
@@ -686,10 +688,10 @@ def actions_list():
         query = query.filter(ClientAction.status.in_(["pending", "in_progress"]))
     elif request.args.get("status"):
         query = query.filter(ClientAction.status == request.args["status"])
-    if request.args.get("view") == "overdue": query = query.filter(ClientAction.due_date < date.today())
-    if request.args.get("view") == "today": query = query.filter(ClientAction.due_date == date.today())
-    if request.args.get("view") == "week": query = query.filter(ClientAction.due_date.between(date.today(), date.today() + timedelta(days=7)))
-    if request.args.get("view") == "calendar" and request.args.get("month"):
+    if requested_scope == "overdue": query = query.filter(ClientAction.due_date < date.today())
+    if requested_scope == "today": query = query.filter(ClientAction.due_date == date.today())
+    if requested_scope == "week": query = query.filter(ClientAction.due_date.between(date.today(), date.today() + timedelta(days=7)))
+    if requested_view == "calendar" and request.args.get("month"):
         try:
             month_start = date.fromisoformat(f'{request.args["month"]}-01')
             query = query.filter(
@@ -701,7 +703,7 @@ def actions_list():
     items = query.order_by(ClientAction.due_date.asc()).limit(250).all()
     result = [{**a.to_dict(), "client_id": a.client.id, "client_name": a.client.name, "business_name": a.client.business_name} for a in items]
     standalone_query = StandaloneAction.query
-    if request.args.get("view") == "undated":
+    if requested_scope == "undated":
         standalone_query = standalone_query.filter(StandaloneAction.due_date.is_(None))
     else:
         standalone_query = standalone_query.filter(StandaloneAction.due_date.isnot(None))
@@ -709,17 +711,17 @@ def actions_list():
         standalone_query = standalone_query.filter(StandaloneAction.status.in_(["pending", "in_progress"]))
     elif request.args.get("status"):
         standalone_query = standalone_query.filter(StandaloneAction.status == request.args["status"])
-    if request.args.get("view") == "overdue": standalone_query = standalone_query.filter(StandaloneAction.due_date < date.today())
-    if request.args.get("view") == "today": standalone_query = standalone_query.filter(StandaloneAction.due_date == date.today())
-    if request.args.get("view") == "week": standalone_query = standalone_query.filter(StandaloneAction.due_date.between(date.today(), date.today() + timedelta(days=7)))
-    if request.args.get("view") == "calendar" and request.args.get("month"):
+    if requested_scope == "overdue": standalone_query = standalone_query.filter(StandaloneAction.due_date < date.today())
+    if requested_scope == "today": standalone_query = standalone_query.filter(StandaloneAction.due_date == date.today())
+    if requested_scope == "week": standalone_query = standalone_query.filter(StandaloneAction.due_date.between(date.today(), date.today() + timedelta(days=7)))
+    if requested_view == "calendar" and request.args.get("month"):
         month_start = date.fromisoformat(f'{request.args["month"]}-01')
         standalone_query = standalone_query.filter(
             StandaloneAction.due_date >= month_start,
             StandaloneAction.due_date < add_calendar_months(month_start, 1),
         )
     result.extend(action.to_dict() for action in standalone_query.order_by(StandaloneAction.due_date.asc()).limit(250).all())
-    if request.args.get("status") == "pending" and request.args.get("view") == "overdue":
+    if request.args.get("status") == "pending" and requested_scope == "overdue":
         overdue_payments = Payment.query.join(Client).filter(
             Client.archived_at.is_(None), Payment.payment_type == "monthly",
             Payment.status.in_(("pending", "partial", "overdue")),
@@ -727,9 +729,20 @@ def actions_list():
         ).order_by(Payment.due_date.asc()).all()
         result.extend(payment_collection_item(payment) for payment in overdue_payments)
         result.sort(key=lambda item: (item["due_date"] or "9999-12-31", str(item["id"])))
-    if request.args.get("view") == "calendar" and request.args.get("status") == "pending" and request.args.get("month"):
+    if requested_view == "calendar" and request.args.get("status") == "pending" and request.args.get("month"):
         year, month = request.args["month"].split("-")
         result.extend(projected_collection_items(existing_clients, int(year), int(month)))
+        if requested_scope in {"today", "week", "overdue"}:
+            today_iso = date.today().isoformat()
+            week_end_iso = (date.today() + timedelta(days=7)).isoformat()
+            result = [
+                item for item in result
+                if item.get("due_date") and (
+                    requested_scope == "today" and item["due_date"] == today_iso
+                    or requested_scope == "week" and today_iso <= item["due_date"] <= week_end_iso
+                    or requested_scope == "overdue" and item["due_date"] < today_iso
+                )
+            ]
         result.sort(key=lambda item: (item["due_date"] or "9999-12-31", str(item["id"])))
     return ok(result)
 
