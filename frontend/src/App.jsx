@@ -94,8 +94,15 @@ async function downloadApiFile(path, filename) {
     window.dispatchEvent(new Event("crm-session-expired"));
   }
   if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error?.message || "No se pudo descargar el archivo");
+    const rawBody = await response.text();
+    let message;
+    try {
+      const body = JSON.parse(rawBody);
+      message = body.error?.message || body.msg || "";
+    } catch {
+      message = rawBody.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
+    }
+    throw new Error(message || `No se pudo descargar el archivo (HTTP ${response.status})`);
   }
   const url = URL.createObjectURL(await response.blob());
   const link = document.createElement("a");

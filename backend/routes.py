@@ -1685,6 +1685,7 @@ def export_business_master():
         "standalone", action.status, action.priority, iso(action.due_date),
         iso(action.implementation_date), iso(action.completed_at), action.description, "",
     ] for action in standalone_actions)
+    weekday_labels = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
     prospecting_rows = [
         ["Actividad", iso(log.activity_date), "", log.channel, log.quantity, "", "", "", log.notes]
         for log in prospecting_logs
@@ -1692,7 +1693,11 @@ def export_business_master():
         ["Resultado", iso(outcome.activity_date), "", outcome.channel, "", "", outcome.demos, outcome.sales, ""]
         for outcome in prospecting_outcomes
     ] + [
-        ["Objetivo semanal", "", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"][goal.weekday], goal.channel, "", goal.target, "", "", ""]
+        [
+            "Objetivo semanal", "",
+            weekday_labels[goal.weekday] if goal.weekday is not None and 0 <= goal.weekday < 7 else str(goal.weekday or ""),
+            goal.channel, "", goal.target, "", "", "",
+        ]
         for goal in prospecting_goals
     ]
 
