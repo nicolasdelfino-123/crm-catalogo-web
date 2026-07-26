@@ -3044,6 +3044,9 @@ function Agenda() {
           type="button"
           className={agendaDisplay === "calendar" ? "active" : ""}
           onClick={() => {
+            if (view === "today" || view === "week") {
+              setCalendarMonth(dateKey().slice(0, 7));
+            }
             setAgendaDisplay("calendar");
             setSelectedCalendarDate(null);
           }}

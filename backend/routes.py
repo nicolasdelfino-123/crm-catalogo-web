@@ -691,7 +691,7 @@ def actions_list():
     if requested_scope == "overdue": query = query.filter(ClientAction.due_date < date.today())
     if requested_scope == "today": query = query.filter(ClientAction.due_date == date.today())
     if requested_scope == "week": query = query.filter(ClientAction.due_date.between(date.today(), date.today() + timedelta(days=7)))
-    if requested_view == "calendar" and request.args.get("month"):
+    if requested_view == "calendar" and request.args.get("month") and requested_scope not in {"today", "week"}:
         try:
             month_start = date.fromisoformat(f'{request.args["month"]}-01')
             query = query.filter(
@@ -714,7 +714,7 @@ def actions_list():
     if requested_scope == "overdue": standalone_query = standalone_query.filter(StandaloneAction.due_date < date.today())
     if requested_scope == "today": standalone_query = standalone_query.filter(StandaloneAction.due_date == date.today())
     if requested_scope == "week": standalone_query = standalone_query.filter(StandaloneAction.due_date.between(date.today(), date.today() + timedelta(days=7)))
-    if requested_view == "calendar" and request.args.get("month"):
+    if requested_view == "calendar" and request.args.get("month") and requested_scope not in {"today", "week"}:
         month_start = date.fromisoformat(f'{request.args["month"]}-01')
         standalone_query = standalone_query.filter(
             StandaloneAction.due_date >= month_start,
@@ -730,8 +730,14 @@ def actions_list():
         result.extend(payment_collection_item(payment) for payment in overdue_payments)
         result.sort(key=lambda item: (item["due_date"] or "9999-12-31", str(item["id"])))
     if requested_view == "calendar" and request.args.get("status") == "pending" and request.args.get("month"):
-        year, month = request.args["month"].split("-")
-        result.extend(projected_collection_items(existing_clients, int(year), int(month)))
+        projection_months = {request.args["month"]}
+        if requested_scope in {"today", "week"}:
+            projection_months = {date.today().strftime("%Y-%m")}
+            if requested_scope == "week":
+                projection_months.add((date.today() + timedelta(days=7)).strftime("%Y-%m"))
+        for projection_month in projection_months:
+            year, month = projection_month.split("-")
+            result.extend(projected_collection_items(existing_clients, int(year), int(month)))
         if requested_scope in {"today", "week", "overdue"}:
             today_iso = date.today().isoformat()
             week_end_iso = (date.today() + timedelta(days=7)).isoformat()
