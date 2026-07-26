@@ -369,9 +369,10 @@ function Dashboard({ goClients }) {
   const [incomeClientForm, setIncomeClientForm] = useState(null);
   const [incomeMonths, setIncomeMonths] = useState([]);
   const [incomeLoading, setIncomeLoading] = useState(true);
+  const loadDashboard = useCallback(() => api("/dashboard/summary").then(setData), []);
   useEffect(() => {
-    api("/dashboard/summary").then(setData);
-  }, []);
+    loadDashboard();
+  }, [loadDashboard]);
   useEffect(() => {
     let active = true;
     api(`/dashboard/income?month=${incomeMonth}&payment_type=${incomeType}`)
@@ -541,6 +542,7 @@ function Dashboard({ goClients }) {
           title={selectedMetric.label}
           metricKey={selectedMetric.key}
           items={data.details?.[selectedMetric.key] || []}
+          onRefresh={loadDashboard}
           onClose={() => setSelectedMetric(null)}
         />
       )}
@@ -567,7 +569,7 @@ function Dashboard({ goClients }) {
   );
 }
 
-function DashboardMetricModal({ title, metricKey, items, onClose }) {
+function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
   const actionMetric = metricKey === "pending_actions" || metricKey === "overdue_actions";
   const monthlyClientMetric = metricKey === "new_clients_month" || metricKey === "sold_clients_month";
   const [metricView, setMetricView] = useState("list");
@@ -889,7 +891,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
         <DetailModal
           clientId={selectedActionClient}
           onClose={() => setSelectedActionClient(null)}
-          onRefresh={() => { }}
+          onRefresh={onRefresh}
           onEdit={(client) => {
             setSelectedActionClient(null);
             setActionClientForm(client);
