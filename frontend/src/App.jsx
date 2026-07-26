@@ -577,6 +577,7 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
   const [metricView, setMetricView] = useState("list");
   const [dateOrder, setDateOrder] = useState(metricKey === "active_clients" ? "desc" : "asc");
   const [activeStatusFilter, setActiveStatusFilter] = useState("active_no_signup");
+  const [pendingTypeFilter, setPendingTypeFilter] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [calendarMonth, setCalendarMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
@@ -613,7 +614,7 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
     "new_clients_month",
     "sold_clients_month",
   ].includes(metricKey);
-  const filteredSourceItems = metricKey === "active_clients"
+  const statusFilteredItems = metricKey === "active_clients"
     ? sourceItems.filter((item) => {
       if (activeStatusFilter === "active") {
         return ["active", "at_risk"].includes(item.status);
@@ -627,6 +628,14 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
       return ["active", "at_risk", "no_signup"].includes(item.status);
     })
     : sourceItems;
+  const filteredSourceItems = metricKey === "pending_actions"
+    ? statusFilteredItems.filter((item) => {
+      const isCollection = item.action_type === "collection_payment" || Boolean(item.payment_id);
+      if (pendingTypeFilter === "collections") return isCollection;
+      if (pendingTypeFilter === "actions") return !isCollection;
+      return true;
+    })
+    : statusFilteredItems;
   const displayedItems = useMemo(() => {
     const dateField = actionMetric || paymentMetric
       ? "due_date"
@@ -801,6 +810,24 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
                 <CalendarDays size={16} />
                 Calendario
               </button>
+            </div>
+          )}
+          {metricKey === "pending_actions" && (
+            <div className="dashboard-pending-type-filter">
+              <label className="dashboard-status-filter">
+                Mostrar
+                <select
+                  value={pendingTypeFilter}
+                  onChange={(event) => {
+                    setPendingTypeFilter(event.target.value);
+                    setSelectedCalendarDate(null);
+                  }}
+                >
+                  <option value="all">Cobros y acciones</option>
+                  <option value="collections">Solo cobros</option>
+                  <option value="actions">Solo acciones</option>
+                </select>
+              </label>
             </div>
           )}
           {monthlyClientMetric && (
