@@ -3299,6 +3299,7 @@ const PROSPECTING_CHANNELS = [
 ];
 const WEEKDAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 const prospectingKey = (weekday, channel) => `${weekday}:${channel}`;
+const prospectingOutcomeKey = (activityDate, channel) => `${activityDate}:${channel}`;
 const balanceText = (actual, planned) => {
   const difference = actual - planned;
   if (difference > 0) return { label: `+${difference} sobre el plan`, tone: "ahead" };
@@ -3310,6 +3311,7 @@ function Prospecting() {
   const today = dateKey();
   const [goals, setGoals] = useState({});
   const [logs, setLogs] = useState([]);
+  const [outcomes, setOutcomes] = useState([]);
   const [weekCursor, setWeekCursor] = useState(startOfWeek(fromDateKey(today)));
   const [selectedDate, setSelectedDate] = useState(today);
   const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
@@ -3327,14 +3329,19 @@ function Prospecting() {
   }, Boolean(quickEntry || editingLog || editingGoal));
   const load = useCallback(() => api("/prospecting").then((data) => {
     setLogs(data.logs);
+    setOutcomes(data.outcomes || []);
     setGoals(data.goals.reduce((result, item) => ({ ...result, [prospectingKey(item.weekday, item.channel)]: item.target }), {}));
-  }), [setLogs, setGoals]);
+  }), [setLogs, setOutcomes, setGoals]);
   useEffect(() => { load(); }, [load]);
 
   const actualByDayChannel = useMemo(() => logs.reduce((result, item) => {
     const key = `${item.activity_date}:${item.channel}`;
     return { ...result, [key]: (result[key] || 0) + item.quantity };
   }, {}), [logs]);
+  const outcomesByDayChannel = useMemo(() => outcomes.reduce((result, item) => ({
+    ...result,
+    [prospectingOutcomeKey(item.activity_date, item.channel)]: item,
+  }), {}), [outcomes]);
   const plannedForDate = useCallback((key) => {
     const weekday = (fromDateKey(key).getDay() + 6) % 7;
     return PROSPECTING_CHANNELS.reduce((total, [channel]) => total + (Number(goals[prospectingKey(weekday, channel)]) || 0), 0);
@@ -3368,6 +3375,18 @@ function Prospecting() {
       ? fmtMonth(detailFilter.slice(6))
       : fmtDate(selectedDate);
   const filterYear = Number(selectedDate.slice(0, 4));
+  const resultsByChannel = PROSPECTING_CHANNELS.map(([channel, label]) => {
+    const totals = detailDays.reduce((result, day) => {
+      const item = outcomesByDayChannel[prospectingOutcomeKey(dateKey(day), channel)];
+      return {
+        demos: result.demos + (item?.demos || 0),
+        sales: result.sales + (item?.sales || 0),
+      };
+    }, { demos: 0, sales: 0 });
+    return { channel, label, ...totals };
+  });
+  const detailDemos = resultsByChannel.reduce((total, item) => total + item.demos, 0);
+  const detailSales = resultsByChannel.reduce((total, item) => total + item.sales, 0);
 
   async function savePlan() {
     setSavingPlan(true);
@@ -3393,6 +3412,15 @@ function Prospecting() {
         payload.push({ weekday, channel, target: Number(nextGoals[prospectingKey(weekday, channel)]) || 0 });
       }));
       await api("/prospecting/goals", { method: "PUT", body: JSON.stringify({ goals: payload }) });
+      await api("/prospecting/outcomes", {
+        method: "PUT",
+        body: JSON.stringify({
+          activity_date: selectedDate,
+          channel: editingGoal.channel,
+          demos: Number(editingGoal.demos) || 0,
+          sales: Number(editingGoal.sales) || 0,
+        }),
+      });
       setGoals(nextGoals);
       setEditingGoal(null);
       await load();
@@ -3582,6 +3610,8 @@ function Prospecting() {
               return total + (Number(goals[prospectingKey(dayWeekday, channel)]) || 0);
             }, 0);
             const balance = balanceText(actual, planned);
+            const channelResults = resultsByChannel.find((item) => item.channel === channel);
+            const dailyOutcome = outcomesByDayChannel[prospectingOutcomeKey(selectedDate, channel)] || { demos: 0, sales: 0 };
             return <article
               key={channel}
               className="prospecting-channel-card"
@@ -3597,14 +3627,28 @@ function Prospecting() {
             >
               <div className="prospecting-channel-head"><span>{label}</span>{detailFilter === "day" && <IconButton label={`Editar objetivo de ${label}`} onClick={(event) => {
                 event.stopPropagation();
-                setEditingGoal({ channel, label, weekday, target: planned });
+                setEditingGoal({
+                  channel,
+                  label,
+                  weekday,
+                  target: planned || "",
+                  demos: dailyOutcome.id ? dailyOutcome.demos : "",
+                  sales: dailyOutcome.id ? dailyOutcome.sales : "",
+                });
               }}><Edit3 /></IconButton>}</div>
               <strong>{actual} / {planned}</strong><em className={balance.tone}>{balance.label}</em>
+              <div className="prospecting-channel-results"><span>Demos <b>{channelResults.demos}</b></span><span>Ventas <b>{channelResults.sales}</b></span></div>
               {completionLog
                 ? <button className="secondary small prospecting-undo" onClick={(event) => { event.stopPropagation(); undoCompleteChannel(completionLog); }}><RotateCcw size={14} />Deshacer completado</button>
                 : detailFilter === "day" && planned > actual && <button className="secondary small" onClick={(event) => { event.stopPropagation(); completeChannel(channel, actual, planned); }}><Check size={14} />Marcar completado</button>}
             </article>;
           })}
+        </div>
+        <div className="prospecting-results-summary">
+          <div className="prospecting-results-title"><div><span className="eyebrow">Resultados comerciales</span><h3>{detailLabel}</h3></div><div><small>Demos enviadas</small><strong>{detailDemos}</strong></div><div><small>Ventas concretadas</small><strong>{detailSales}</strong></div></div>
+          <div className="prospecting-sales-channels">
+            {resultsByChannel.map((item) => <div key={item.channel}><span>{item.label}</span><strong>{item.sales} {item.sales === 1 ? "venta" : "ventas"}</strong><small>{item.demos} {item.demos === 1 ? "demo" : "demos"}</small></div>)}
+          </div>
         </div>
         {detailLogs.length > 0 && <div className="prospecting-log-list">{detailLogs.map((item) => <div key={item.id}><span><strong>+{item.quantity} · {acquisitionLabel(item.channel)}</strong><small>{detailFilter === "day" ? (item.notes || "Sin nota") : `${fmtDate(item.activity_date)} · ${item.notes || "Sin nota"}`}</small></span><div className="prospecting-log-actions"><IconButton label="Editar carga" onClick={() => setEditingLog({ ...item })}><Edit3 /></IconButton><IconButton label="Eliminar carga" onClick={() => removeLog(item)}><Trash2 /></IconButton></div></div>)}</div>}
       </div>
@@ -3654,8 +3698,10 @@ function Prospecting() {
             <form onSubmit={submitGoalEdit}>
               <div className="form-grid">
                 <label>Mensajes planificados<input type="number" min="0" value={editingGoal.target} onChange={(event) => setEditingGoal({ ...editingGoal, target: event.target.value })} required autoFocus /></label>
+                <label>Demos enviadas<input type="number" min="0" value={editingGoal.demos} onChange={(event) => setEditingGoal({ ...editingGoal, demos: event.target.value })} required /></label>
+                <label>Ventas concretadas<input type="number" min="0" max={editingGoal.demos || undefined} value={editingGoal.sales} onChange={(event) => setEditingGoal({ ...editingGoal, sales: event.target.value })} required /></label>
               </div>
-              <p className="prospecting-goal-note">Este objetivo se aplica a todos los {WEEKDAY_NAMES[editingGoal.weekday].toLowerCase()}.</p>
+              <p className="prospecting-goal-note">Las demos y ventas corresponden al {fmtDate(selectedDate)}. El objetivo se aplica a todos los {WEEKDAY_NAMES[editingGoal.weekday].toLowerCase()}.</p>
               <div className="form-actions"><button type="button" className="secondary" onClick={() => setEditingGoal(null)}>Cancelar</button><button className="primary" disabled={savingPlan}><Save size={16} />{savingPlan ? "Guardando..." : "Guardar objetivo"}</button></div>
             </form>
           </div>

@@ -121,6 +121,27 @@ def test_prospecting_rejects_invalid_log_edits(client):
     assert client.patch(f'/api/prospecting/logs/{created["id"]}', json={"channel": "unknown"}).status_code == 422
 
 
+def test_prospecting_stores_demos_and_sales_by_day_and_channel(client):
+    saved = client.put("/api/prospecting/outcomes", json={
+        "activity_date": "2026-07-20", "channel": "business_instagram",
+        "demos": 4, "sales": 2,
+    })
+    assert saved.status_code == 200
+    assert saved.get_json()["data"]["demos"] == 4
+    updated = client.put("/api/prospecting/outcomes", json={
+        "activity_date": "2026-07-20", "channel": "business_instagram",
+        "demos": 5, "sales": 3,
+    })
+    assert updated.status_code == 200
+    outcomes = client.get("/api/prospecting").get_json()["data"]["outcomes"]
+    assert len(outcomes) == 1
+    assert outcomes[0]["sales"] == 3
+    assert client.put("/api/prospecting/outcomes", json={
+        "activity_date": "2026-07-20", "channel": "business_instagram",
+        "demos": 2, "sales": 3,
+    }).status_code == 422
+
+
 def test_expenses_balance_is_independent_from_client_payments(client):
     today = date.today()
     month = today.strftime("%Y-%m")

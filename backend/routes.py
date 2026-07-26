@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response, current_app
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Integer, case, cast, func, or_
-from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, VpsAssignment, ClientMetric, ClientNote, ClientCredential, MessageLog, WorkLog, ProspectingGoal, ProspectingLog, ActionTemplate
+from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, VpsAssignment, ClientMetric, ClientNote, ClientCredential, MessageLog, WorkLog, ProspectingGoal, ProspectingLog, ProspectingOutcome, ActionTemplate
 
 api = Blueprint("api", __name__)
 
@@ -546,7 +546,12 @@ PROSPECTING_CHANNELS = {
 def prospecting_list():
     goals = ProspectingGoal.query.order_by(ProspectingGoal.weekday, ProspectingGoal.channel).all()
     logs = ProspectingLog.query.order_by(ProspectingLog.activity_date.desc(), ProspectingLog.id.desc()).limit(3000).all()
-    return ok({"goals": [item.to_dict() for item in goals], "logs": [item.to_dict() for item in logs]})
+    outcomes = ProspectingOutcome.query.order_by(ProspectingOutcome.activity_date.desc(), ProspectingOutcome.channel).limit(3000).all()
+    return ok({
+        "goals": [item.to_dict() for item in goals],
+        "logs": [item.to_dict() for item in logs],
+        "outcomes": [item.to_dict() for item in outcomes],
+    })
 
 
 @api.put("/prospecting/goals")
@@ -624,6 +629,34 @@ def prospecting_logs_delete(log_id):
     item = ProspectingLog.query.get_or_404(log_id)
     db.session.delete(item); db.session.commit()
     return ok(None, "Registro eliminado")
+
+
+@api.put("/prospecting/outcomes")
+def prospecting_outcomes_save():
+    data = request.get_json(silent=True) or {}
+    channel = str(data.get("channel") or "").strip()
+    try:
+        activity_date = parse_date(data.get("activity_date"))
+        demos = int(data.get("demos") or 0)
+        sales = int(data.get("sales") or 0)
+    except (ValueError, TypeError):
+        return error("Revisá la fecha, las demos y las ventas", 422)
+    if not activity_date:
+        return error("Elegí una fecha válida", 422)
+    if channel not in PROSPECTING_CHANNELS:
+        return error("Elegí un canal válido", 422)
+    if demos < 0 or sales < 0:
+        return error("Las demos y las ventas no pueden ser negativas", 422)
+    if sales > demos:
+        return error("Las ventas no pueden superar las demos enviadas", 422)
+    item = ProspectingOutcome.query.filter_by(activity_date=activity_date, channel=channel).first()
+    if item is None:
+        item = ProspectingOutcome(activity_date=activity_date, channel=channel)
+        db.session.add(item)
+    item.demos = demos
+    item.sales = sales
+    db.session.commit()
+    return ok(item.to_dict(), "Resultados actualizados")
 
 
 @api.post("/clients/<int:client_id>/generate-actions")

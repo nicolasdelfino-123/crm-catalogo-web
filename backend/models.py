@@ -320,6 +320,22 @@ class ProspectingLog(db.Model):
         }
 
 
+class ProspectingOutcome(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    activity_date = db.Column(db.Date, nullable=False, default=date.today, index=True)
+    channel = db.Column(db.String(60), nullable=False, index=True)
+    demos = db.Column(db.Integer, nullable=False, default=0)
+    sales = db.Column(db.Integer, nullable=False, default=0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    __table_args__ = (UniqueConstraint("activity_date", "channel", name="uq_prospecting_outcome_date_channel"),)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "activity_date": iso(self.activity_date),
+            "channel": self.channel, "demos": self.demos, "sales": self.sales,
+        }
+
+
 class ActionTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(80), unique=True, nullable=False)
