@@ -576,6 +576,8 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [calendarMonth, setCalendarMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
+  const [selectedActionClient, setSelectedActionClient] = useState(null);
+  const [actionClientForm, setActionClientForm] = useState(null);
   const [monthlyItems, setMonthlyItems] = useState(items);
   const [loadingMonth, setLoadingMonth] = useState(false);
   useEscapeClose(onClose);
@@ -663,7 +665,20 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
   }
   function renderMetricItem(item) {
     return (
-      <article key={item.id}>
+      <article
+        key={item.id}
+        className={actionMetric ? "dashboard-action-card" : undefined}
+        role={actionMetric ? "button" : undefined}
+        tabIndex={actionMetric ? 0 : undefined}
+        onClick={actionMetric ? () => setSelectedActionClient(item.client_id) : undefined}
+        onKeyDown={actionMetric ? (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setSelectedActionClient(item.client_id);
+          }
+        } : undefined}
+        aria-label={actionMetric ? `Abrir ficha de ${item.client_name}` : undefined}
+      >
         <div>
           <strong>{actionMetric ? item.title : item.name}</strong>
           <span>
@@ -695,8 +710,9 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
     );
   }
   return (
-    <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="dashboard-metric-modal" role="dialog" aria-modal="true" aria-label={title}>
+    <>
+      <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+        <section className="dashboard-metric-modal" role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
           <div>
             <span className="eyebrow">Detalle del resumen</span>
@@ -806,8 +822,28 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
           {loadingMonth && <Loading />}
           {!loadingMonth && metricView === "list" && !displayedItems.length && <Empty />}
         </div>
-      </section>
-    </div>
+        </section>
+      </div>
+      {selectedActionClient && (
+        <DetailModal
+          clientId={selectedActionClient}
+          onClose={() => setSelectedActionClient(null)}
+          onRefresh={() => { }}
+          onEdit={(client) => {
+            setSelectedActionClient(null);
+            setActionClientForm(client);
+          }}
+          initialTab="actions"
+        />
+      )}
+      {actionClientForm && (
+        <ClientForm
+          client={actionClientForm}
+          onClose={() => setActionClientForm(null)}
+          onSaved={() => setActionClientForm(null)}
+        />
+      )}
+    </>
   );
 }
 
