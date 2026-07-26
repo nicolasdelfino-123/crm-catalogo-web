@@ -1122,6 +1122,10 @@ def dashboard():
         a for a in pending_actions
         if a.priority == "urgent"
     ]
+    urgent_standalone_actions = StandaloneAction.query.filter(
+        StandaloneAction.status.in_(("pending", "in_progress")),
+        StandaloneAction.priority == "urgent",
+    ).all()
     pending_payments = [
         p for p in payments
         if p.client.archived_at is None and p.status in ("pending", "partial", "overdue")
@@ -1160,11 +1164,19 @@ def dashboard():
             "business_name": action.client.business_name,
         }
 
+    def standalone_action_item(action):
+        return {
+            **action.to_dict(),
+            "client_id": None,
+            "client_name": action.context_name,
+            "business_name": "Acción independiente",
+        }
+
     data = {
         "active_clients": len(active_clients), "at_risk_clients": len(at_risk_clients),
         "pending_actions": len(pending_actions) + len(overdue_payments), "overdue_actions": len(overdue_actions) + len(overdue_payments),
         "pending_payments": len(pending_payments),
-        "urgent_actions": len(urgent_actions),
+        "urgent_actions": len(urgent_actions) + len(urgent_standalone_actions),
         "renewals_week": len(renewals_week), "new_clients_month": len(new_clients_month),
         "sold_clients_month": len(sold_clients_month),
         "collected": money,
@@ -1182,7 +1194,10 @@ def dashboard():
                 }
                 for payment in pending_payments
             ],
-            "urgent_actions": [action_item(action) for action in urgent_actions],
+            "urgent_actions": (
+                [action_item(action) for action in urgent_actions]
+                + [standalone_action_item(action) for action in urgent_standalone_actions]
+            ),
             "renewals_week": [client_item(c) for c in renewals_week],
             "new_clients_month": [client_item(c) for c in new_clients_month],
             "sold_clients_month": [client_item(c) for c in sold_clients_month],

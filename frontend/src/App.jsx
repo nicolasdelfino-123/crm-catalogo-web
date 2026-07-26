@@ -759,7 +759,9 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
     }
   }
   function renderMetricItem(item) {
-    const clickableClientMetric = Boolean(actionMetric || paymentMetric || item.id);
+    const clickableClientMetric = actionMetric || paymentMetric
+      ? Boolean(item.client_id)
+      : Boolean(item.id);
     const targetClientId = actionMetric || paymentMetric ? item.client_id : item.id;
     return (
       <article
