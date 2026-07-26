@@ -666,7 +666,7 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
     setSelectedCalendarDate(null);
   }
   function renderMetricItem(item) {
-    const clickableClientMetric = actionMetric || metricKey === "active_clients";
+    const clickableClientMetric = Boolean(actionMetric || item.id);
     const targetClientId = actionMetric ? item.client_id : item.id;
     return (
       <article
@@ -843,7 +843,13 @@ function DashboardMetricModal({ title, metricKey, items, onClose }) {
             setSelectedActionClient(null);
             setActionClientForm(client);
           }}
-          initialTab={metricKey === "active_clients" ? "payments" : "actions"}
+          initialTab={
+            actionMetric
+              ? "actions"
+              : metricKey === "active_clients" || metricKey === "renewals_week"
+                ? "payments"
+                : "summary"
+          }
         />
       )}
       {actionClientForm && (
