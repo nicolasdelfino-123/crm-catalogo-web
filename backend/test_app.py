@@ -599,6 +599,29 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
     assert client.get("/api/dashboard/income?payment_type=otro").status_code == 422
 
 
+def test_deposit_has_no_due_date_and_uses_paid_date(client):
+    created = client.post("/api/clients", json={
+        "name": "Cliente seña", "business_name": "Reserva",
+        "signup_date": "2026-07-01", "country": "Argentina",
+        "currency": "ARS", "payment_amount": 30000,
+    }).get_json()["data"]
+    deposit = client.post(f'/api/clients/{created["id"]}/payments', json={
+        "amount": 5000, "currency": "ARS", "payment_type": "deposit",
+        "status": "paid", "due_date": "2026-08-01", "paid_at": "2026-07-15",
+    }).get_json()["data"]
+    assert deposit["due_date"] is None
+    income = client.get(
+        "/api/dashboard/income?month=2026-07&payment_type=deposit"
+    ).get_json()["data"]
+    assert income["totals"]["ARS"] == 5000
+    assert income["items"][0]["display_date"] == "2026-07-15"
+
+    updated = client.patch(f'/api/payments/{deposit["id"]}', json={
+        "payment_type": "deposit", "due_date": "2026-09-01",
+    }).get_json()["data"]
+    assert updated["due_date"] is None
+
+
 def test_operational_statuses(client):
     created = client.post("/api/clients", json={
         "name": "Cliente Operativo", "business_name": "Marca Operativa",

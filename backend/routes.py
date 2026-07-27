@@ -879,8 +879,13 @@ def payments_create(client_id):
     try:
         amount = float(data.get("amount", 0))
         if amount < 0: raise ValueError("El importe no puede ser negativo")
-        due_date = parse_date(data.get("due_date")) or client.next_renewal_date or add_calendar_months(client.signup_date, 1)
-        payment = Payment(client=client, amount=amount, currency=data.get("currency", client.currency), payment_type=data.get("payment_type", "monthly"), period_year=data.get("period_year"), period_month=data.get("period_month"), due_date=due_date, status=data.get("status", "pending"), payment_method=data.get("payment_method"), notes=data.get("notes"))
+        payment_type = data.get("payment_type", "monthly")
+        due_date = None if payment_type == "deposit" else (
+            parse_date(data.get("due_date"))
+            or client.next_renewal_date
+            or add_calendar_months(client.signup_date, 1)
+        )
+        payment = Payment(client=client, amount=amount, currency=data.get("currency", client.currency), payment_type=payment_type, period_year=data.get("period_year"), period_month=data.get("period_month"), due_date=due_date, status=data.get("status", "pending"), payment_method=data.get("payment_method"), notes=data.get("notes"))
         if payment.status == "paid":
             paid_date = parse_date(data.get("paid_at"))
             payment.paid_at = (
@@ -905,6 +910,8 @@ def payments_update(payment_id):
     for field in ["currency", "payment_type", "status", "payment_method", "notes", "period_year", "period_month"]:
         if field in data: setattr(payment, field, data[field])
     if "due_date" in data: payment.due_date = parse_date(data["due_date"])
+    if payment.payment_type == "deposit":
+        payment.due_date = None
     if payment.status == "paid":
         if "paid_at" in data:
             paid_date = parse_date(data.get("paid_at"))

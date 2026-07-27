@@ -1481,6 +1481,7 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
       <strong>{conf.title}</strong>
       <div>
         {conf.fields.map(([name, label, kind]) => (
+          name === "due_date" && form.payment_type === "deposit" ? null :
           <label key={name}>
             {label}
             {kind === "actionpreset" ? (
@@ -1714,7 +1715,7 @@ function PaymentEditor({ payment, onCancel, onSaved }) {
         <label>Moneda<select name="currency" value={form.currency || "ARS"} onChange={change}><option value="ARS">ARS</option><option value="USD">USD</option></select></label>
         <label>Concepto<select name="payment_type" value={form.payment_type || "monthly"} onChange={change}><option value="monthly">Mensualidad</option><option value="deposit">Seña</option><option value="domain">Dominio</option><option value="extra_work">Trabajo extra</option><option value="discount">Descuento</option><option value="other">Otro</option></select></label>
         <label>Estado<select name="status" value={form.status || "pending"} onChange={change}><option value="pending">Pendiente</option><option value="paid">Pagado</option><option value="partial">Parcial</option><option value="overdue">Vencido</option><option value="waived">Bonificado</option></select></label>
-        <label>Vencimiento<input type="date" name="due_date" value={form.due_date || ""} onChange={change} /></label>
+        {form.payment_type !== "deposit" && <label>Vencimiento<input type="date" name="due_date" value={form.due_date || ""} onChange={change} /></label>}
         <label>Fecha de pago<input type="date" name="paid_at" value={form.paid_at || ""} onChange={change} required={form.status === "paid"} /></label>
         <label>Método de pago<input name="payment_method" value={form.payment_method || ""} onChange={change} placeholder="Transferencia, efectivo..." /></label>
         <label className="span-2">Notas<textarea name="notes" value={form.notes || ""} onChange={change} /></label>
@@ -2284,10 +2285,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
                     </span>
                     <div>
                       <strong>{fmtMoney(p.amount, p.currency)}</strong>
-                      <p>
-                        {LABEL[p.payment_type] || "Mensual"} · vence{" "}
-                        {fmtDate(p.due_date)}
-                      </p>
+                      <p>{LABEL[p.payment_type] || "Mensual"}{p.due_date ? ` · vence ${fmtDate(p.due_date)}` : ""}</p>
                       {p.paid_at && <p>Pagado: {fmtDate(p.paid_at)}</p>}
                       {p.notes && <p>{p.notes}</p>}
                     </div>
