@@ -429,6 +429,14 @@ function Dashboard({ goClients }) {
   const filteredIncomeItems = incomeCurrencyItems.filter((item) =>
     item.client_name.toLocaleLowerCase("es").includes(incomeClientSearch.trim().toLocaleLowerCase("es"))
   );
+  const currentYear = currentMonth.slice(0, 4);
+  const selectableIncomeMonths = [...new Set([
+    ...Array.from(
+      { length: 12 },
+      (_, index) => `${currentYear}-${String(index + 1).padStart(2, "0")}`,
+    ),
+    ...incomeMonths,
+  ])].sort((first, second) => second.localeCompare(first));
   const cards = [
     ["active_clients", "Clientes activos", data.active_clients, Users, "green"],
     ["active_client_days", "Días activos de clientes", `${data.active_client_days_average} días prom.`, Timer, "violet"],
@@ -497,9 +505,7 @@ function Dashboard({ goClients }) {
             {incomeType === "monthly_forecast"
               ? "Mensualidades previstas de clientes activos, en riesgo y sin alta."
               : incomeType === "monthly"
-                ? "Solo mensualidades cobradas."
-                : incomeType === "deposit"
-                  ? "Solo señas cobradas."
+                ? "Mensualidades y señas cobradas durante el mes seleccionado."
                 : incomeType === "extra_work"
                   ? "Solo trabajos extra cobrados."
                   : "Todos los pagos cobrados, incluidas mensualidades, señas y extras."}
@@ -514,19 +520,18 @@ function Dashboard({ goClients }) {
                 setIncomeLoading(true);
                 const selectedMonth = event.target.value;
                 setIncomeMonth(selectedMonth);
-                setIncomeType(selectedMonth === nextMonth ? "monthly_forecast" : "all");
+                setIncomeType((currentType) =>
+                  selectedMonth === nextMonth
+                    ? "monthly_forecast"
+                    : currentType === "monthly_forecast" ? "all" : currentType
+                );
               }}
             >
               <option value="all">Todos los meses</option>
               <option value={nextMonth}>
                 {fmtMonth(nextMonth)} · a cobrar
               </option>
-              {!incomeMonths.includes(currentMonth) && currentMonth !== nextMonth && (
-                <option value={currentMonth}>
-                  {fmtMonth(currentMonth)}
-                </option>
-              )}
-              {incomeMonths.filter((month) => month !== nextMonth).map((month) => (
+              {selectableIncomeMonths.filter((month) => month !== nextMonth).map((month) => (
                 <option value={month} key={month}>{fmtMonth(month)}</option>
               ))}
             </select>
@@ -543,8 +548,7 @@ function Dashboard({ goClients }) {
               }}
             >
               <option value="all">Total: mensualidades + extras</option>
-              <option value="monthly">Solo mensualidades</option>
-              <option value="deposit">Solo señas</option>
+              <option value="monthly">Mensualidades + señas cobradas</option>
               <option value="extra_work">Solo trabajos extra</option>
               <option value="monthly_forecast">Mensualidades del mes siguiente</option>
             </select>

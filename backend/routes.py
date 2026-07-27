@@ -1322,8 +1322,8 @@ def renewals_by_week():
 def dashboard_income():
     month = request.args.get("month", date.today().strftime("%Y-%m"))
     payment_type = request.args.get("payment_type", "all")
-    if payment_type not in {"all", "monthly", "deposit", "extra_work", "monthly_forecast"}:
-        return error("El tipo de pago debe ser all, monthly, deposit, extra_work o monthly_forecast", 422)
+    if payment_type not in {"all", "monthly", "extra_work", "monthly_forecast"}:
+        return error("El tipo de pago debe ser all, monthly, extra_work o monthly_forecast", 422)
     if payment_type == "monthly_forecast":
         try:
             forecast_month = date.fromisoformat(f"{month}-01")
@@ -1337,9 +1337,13 @@ def dashboard_income():
         for client in billable_clients:
             totals[client.currency] = totals.get(client.currency, 0) + float(client.payment_amount or 0)
         available_months = sorted({
-            (payment.paid_at.date() if payment.paid_at else payment.due_date).strftime("%Y-%m")
+            month
             for payment in Payment.query.filter(Payment.status == "paid").all()
-            if payment.due_date or payment.paid_at
+            for month in {
+                payment.due_date.strftime("%Y-%m") if payment.due_date else None,
+                payment.paid_at.strftime("%Y-%m") if payment.paid_at else None,
+            }
+            if month
         }, reverse=True)
         return ok({
             "month": month,
@@ -1366,18 +1370,20 @@ def dashboard_income():
         month_end = add_calendar_months(month_start, 1)
     query = Payment.query.filter(Payment.status == "paid")
     if payment_type == "monthly":
-        query = query.filter(Payment.payment_type == "monthly")
-    elif payment_type == "deposit":
-        query = query.filter(Payment.payment_type == "deposit")
+        query = query.filter(Payment.payment_type.in_(("monthly", "deposit")))
     elif payment_type == "extra_work":
         query = query.filter(Payment.payment_type == "extra_work")
     totals = {"ARS": 0, "USD": 0}
     paid_payments = query.all()
     matching_payments = []
     available_months = sorted({
-        (payment.paid_at.date() if payment.paid_at else payment.due_date).strftime("%Y-%m")
+        month
         for payment in Payment.query.filter(Payment.status == "paid").all()
-        if payment.due_date or payment.paid_at
+        for month in {
+            payment.due_date.strftime("%Y-%m") if payment.due_date else None,
+            payment.paid_at.strftime("%Y-%m") if payment.paid_at else None,
+        }
+        if month
     }, reverse=True)
     for payment in paid_payments:
         payment_date = payment.paid_at.date() if payment.paid_at else payment.due_date
