@@ -1337,13 +1337,13 @@ def dashboard_income():
         for client in billable_clients:
             totals[client.currency] = totals.get(client.currency, 0) + float(client.payment_amount or 0)
         available_months = sorted({
-            month
+            (
+                payment.paid_at.date()
+                if payment.payment_type == "deposit" and payment.paid_at
+                else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
+            ).strftime("%Y-%m")
             for payment in Payment.query.filter(Payment.status == "paid").all()
-            for month in {
-                payment.due_date.strftime("%Y-%m") if payment.due_date else None,
-                payment.paid_at.strftime("%Y-%m") if payment.paid_at else None,
-            }
-            if month
+            if payment.due_date or payment.paid_at
         }, reverse=True)
         return ok({
             "month": month,
@@ -1377,16 +1377,20 @@ def dashboard_income():
     paid_payments = query.all()
     matching_payments = []
     available_months = sorted({
-        month
+        (
+            payment.paid_at.date()
+            if payment.payment_type == "deposit" and payment.paid_at
+            else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
+        ).strftime("%Y-%m")
         for payment in Payment.query.filter(Payment.status == "paid").all()
-        for month in {
-            payment.due_date.strftime("%Y-%m") if payment.due_date else None,
-            payment.paid_at.strftime("%Y-%m") if payment.paid_at else None,
-        }
-        if month
+        if payment.due_date or payment.paid_at
     }, reverse=True)
     for payment in paid_payments:
-        payment_date = payment.paid_at.date() if payment.paid_at else payment.due_date
+        payment_date = (
+            payment.paid_at.date()
+            if payment.payment_type == "deposit" and payment.paid_at
+            else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
+        )
         if month_start and (not payment_date or not month_start <= payment_date < month_end):
             continue
         totals[payment.currency] = totals.get(payment.currency, 0) + float(payment.amount)
