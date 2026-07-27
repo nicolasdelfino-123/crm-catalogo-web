@@ -498,9 +498,11 @@ function Dashboard({ goClients }) {
               ? "Mensualidades previstas de clientes activos, en riesgo y sin alta."
               : incomeType === "monthly"
                 ? "Solo mensualidades cobradas."
+                : incomeType === "deposit"
+                  ? "Solo señas cobradas."
                 : incomeType === "extra_work"
                   ? "Solo trabajos extra cobrados."
-                  : "Mensualidades y trabajos extra cobrados."}
+                  : "Todos los pagos cobrados, incluidas mensualidades, señas y extras."}
           </p>
         </div>
         <div className="dashboard-income-controls">
@@ -542,6 +544,7 @@ function Dashboard({ goClients }) {
             >
               <option value="all">Total: mensualidades + extras</option>
               <option value="monthly">Solo mensualidades</option>
+              <option value="deposit">Solo señas</option>
               <option value="extra_work">Solo trabajos extra</option>
               <option value="monthly_forecast">Mensualidades del mes siguiente</option>
             </select>
@@ -1416,9 +1419,10 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
       ],
     },
     payment: {
-      title: "Registrar mensualidad",
+      title: "Registrar pago",
       fields: [
         ["amount", "Importe", "number"],
+        ["payment_type", "Concepto", "paymenttype"],
         ["due_date", "Vencimiento", "date"],
         ["status", "Estado", "payselect"],
         ["paid_at", "Fecha de pago", "date"],
@@ -1517,6 +1521,18 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
                 <option value="paid">Pagado</option>
                 <option value="partial">Parcial</option>
                 <option value="overdue">Vencido</option>
+              </select>
+            ) : kind === "paymenttype" ? (
+              <select
+                value={form[name] || "monthly"}
+                onChange={(e) => setForm({ ...form, [name]: e.target.value })}
+              >
+                <option value="monthly">Mensualidad</option>
+                <option value="deposit">Seña</option>
+                <option value="domain">Dominio</option>
+                <option value="extra_work">Trabajo extra</option>
+                <option value="discount">Descuento</option>
+                <option value="other">Otro</option>
               </select>
             ) : kind === "textarea" ? (
               <textarea
@@ -1975,9 +1991,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
   const visiblePayments = client.payments.filter((payment) =>
     paymentView === "all"
       ? true
-      : paymentView === "extra_work"
-        ? payment.payment_type === "extra_work"
-        : payment.payment_type !== "extra_work",
+      : payment.payment_type === paymentView,
   );
   const paidVisiblePayments = visiblePayments.filter(
     (payment) => payment.status === "paid",
@@ -1985,6 +1999,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
   const paymentViewLabel = {
     all: "Todos",
     monthly: "Mensualidades",
+    deposit: "Señas",
     extra_work: "Trabajos extra",
   }[paymentView];
   const tabs = [
@@ -2227,10 +2242,11 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
                     >
                       <option value="all">Todos</option>
                       <option value="monthly">Mensualidades</option>
+                      <option value="deposit">Señas</option>
                       <option value="extra_work">Trabajos extra</option>
                     </select>
                   </label>
-                  <button className="secondary small" onClick={() => setAdding("payment")}><Plus size={16} />Registrar mensualidad</button>
+                  <button className="secondary small" onClick={() => setAdding("payment")}><Plus size={16} />Registrar pago</button>
                   <button className="secondary small" onClick={() => setAdding("extra_work")}><Plus size={16} />Registrar trabajo extra</button>
                 </div>
               </div>
@@ -4507,7 +4523,16 @@ function Payments() {
   );
   const extraWorkPaidTotals = useMemo(
     () => items
-      .filter((payment) => payment.status === "paid" && payment.payment_type !== "monthly")
+      .filter((payment) => payment.status === "paid" && payment.payment_type === "extra_work")
+      .reduce((result, payment) => ({
+        ...result,
+        [payment.currency]: (result[payment.currency] || 0) + payment.amount,
+      }), {}),
+    [items],
+  );
+  const depositPaidTotals = useMemo(
+    () => items
+      .filter((payment) => payment.status === "paid" && payment.payment_type === "deposit")
       .reduce((result, payment) => ({
         ...result,
         [payment.currency]: (result[payment.currency] || 0) + payment.amount,
@@ -4619,7 +4644,13 @@ function Payments() {
           </button>
         ))}
         {paymentCurrencies.map((currency) => (
-          <button type="button" className="payment-summary-trigger" key={`extra-work-paid-${currency}`} onClick={() => showSummary(`Trabajos extra pagados · ${currency}`, (payment) => payment.currency === currency && payment.status === "paid" && payment.payment_type !== "monthly")}>
+          <button type="button" className="payment-summary-trigger" key={`deposit-paid-${currency}`} onClick={() => showSummary(`Señas pagadas · ${currency}`, (payment) => payment.currency === currency && payment.status === "paid" && payment.payment_type === "deposit")}>
+            <small>Pagos Señas · {currency}</small>
+            <strong>{fmtMoney(depositPaidTotals[currency] || 0, currency)}</strong>
+          </button>
+        ))}
+        {paymentCurrencies.map((currency) => (
+          <button type="button" className="payment-summary-trigger" key={`extra-work-paid-${currency}`} onClick={() => showSummary(`Trabajos extra pagados · ${currency}`, (payment) => payment.currency === currency && payment.status === "paid" && payment.payment_type === "extra_work")}>
             <small>Pagos Trabajos extra · {currency}</small>
             <strong>{fmtMoney(extraWorkPaidTotals[currency] || 0, currency)}</strong>
           </button>
@@ -4628,7 +4659,7 @@ function Payments() {
           <button type="button" className="payment-summary-trigger" key={`total-paid-${currency}`} onClick={() => showSummary(`Todos los pagos completados · ${currency}`, (payment) => payment.currency === currency && payment.status === "paid")}>
             <small>Pagos Totales · {currency}</small>
             <strong>{fmtMoney(
-              (monthlyPaidTotals[currency] || 0) + (extraWorkPaidTotals[currency] || 0),
+              paidTotals[currency] || 0,
               currency,
             )}</strong>
           </button>

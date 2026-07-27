@@ -562,6 +562,7 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
             Payment(client_id=created["id"], amount=100000, currency="ARS", payment_type="monthly", status="paid", due_date=date(2026, 6, 5), paid_at=datetime(2026, 7, 2)),
             Payment(client_id=created["id"], amount=50, currency="USD", payment_type="extra_work", status="paid", due_date=date(2026, 6, 12), paid_at=datetime(2026, 7, 2)),
             Payment(client_id=created["id"], amount=25000, currency="ARS", payment_type="extra_work", status="paid", due_date=date(2026, 7, 1), paid_at=datetime(2026, 7, 1)),
+            Payment(client_id=created["id"], amount=5000, currency="ARS", payment_type="deposit", status="paid", due_date=date(2026, 6, 20), paid_at=datetime(2026, 7, 3)),
             Payment(client_id=created["id"], amount=99999, currency="ARS", payment_type="monthly", status="pending", due_date=date(2026, 6, 20), paid_at=datetime(2026, 6, 20)),
         ])
         db.session.commit()
@@ -569,21 +570,23 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
     june_total = client.get("/api/dashboard/income?month=2026-06&payment_type=all").get_json()["data"]["totals"]
     june_monthly = client.get("/api/dashboard/income?month=2026-06&payment_type=monthly").get_json()["data"]["totals"]
     june_extras_data = client.get("/api/dashboard/income?month=2026-06&payment_type=extra_work").get_json()["data"]
+    july_deposits = client.get("/api/dashboard/income?month=2026-07&payment_type=deposit").get_json()["data"]
     june_extras = june_extras_data["totals"]
     july_total = client.get("/api/dashboard/income?month=2026-07&payment_type=all").get_json()["data"]["totals"]
     all_months = client.get("/api/dashboard/income?month=all&payment_type=all").get_json()["data"]
     monthly_forecast_data = client.get("/api/dashboard/income?month=2026-08&payment_type=monthly_forecast").get_json()["data"]
     monthly_forecast = monthly_forecast_data["totals"]
 
-    assert june_total == {"ARS": 100000.0, "USD": 50.0}
-    assert june_monthly == {"ARS": 100000.0, "USD": 0}
-    assert june_extras == {"ARS": 0, "USD": 50.0}
-    assert len(june_extras_data["items"]) == 1
-    assert june_extras_data["items"][0]["client_name"] == "Cliente ingresos"
-    assert june_extras_data["items"][0]["amount"] == 50.0
-    assert july_total == {"ARS": 25000.0, "USD": 0}
-    assert all_months["totals"] == {"ARS": 125000.0, "USD": 50.0}
-    assert all_months["available_months"] == ["2026-07", "2026-06"]
+    assert june_total == {"ARS": 0, "USD": 0}
+    assert june_monthly == {"ARS": 0, "USD": 0}
+    assert june_extras == {"ARS": 0, "USD": 0}
+    assert june_extras_data["items"] == []
+    assert july_deposits["totals"] == {"ARS": 5000.0, "USD": 0}
+    assert july_deposits["items"][0]["payment_type"] == "deposit"
+    assert july_deposits["items"][0]["display_date"] == "2026-07-03"
+    assert july_total == {"ARS": 130000.0, "USD": 50.0}
+    assert all_months["totals"] == {"ARS": 130000.0, "USD": 50.0}
+    assert all_months["available_months"] == ["2026-07"]
     assert monthly_forecast == {"ARS": 170000.0, "USD": 40.0}
     assert monthly_forecast_data["month"] == "2026-08"
     assert all(item["due_date"].startswith("2026-08") for item in monthly_forecast_data["items"])
