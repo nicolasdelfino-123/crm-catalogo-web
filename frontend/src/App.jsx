@@ -3715,6 +3715,7 @@ function WorkedHours() {
   const [cursor, setCursor] = useState(fromDateKey(today));
   const [selectedDate, setSelectedDate] = useState(today);
   const [form, setForm] = useState({ work_date: today, hours: "", notes: "" });
+  const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const load = useCallback(() => api("/work-logs").then(setItems), [setItems]);
   useEffect(() => { load(); }, [load]);
@@ -3749,6 +3750,17 @@ function WorkedHours() {
     if (!window.confirm(`¿Eliminar esta carga de ${fmtHours(item.hours)}?`)) return;
     await api(`/work-logs/${item.id}`, { method: "DELETE" });
     await load();
+  }
+  async function saveEdit(event) {
+    event.preventDefault(); setSaving(true);
+    try {
+      await api(`/work-logs/${editing.id}`, { method: "PATCH", body: JSON.stringify(editing) });
+      const savedDate = fromDateKey(editing.work_date);
+      setCursor(savedDate); setSelectedDate(editing.work_date);
+      setForm((current) => ({ ...current, work_date: editing.work_date }));
+      setEditing(null);
+      await load();
+    } finally { setSaving(false); }
   }
   function move(amount) {
     setCursor((current) => view === "calendar"
@@ -3846,9 +3858,36 @@ function WorkedHours() {
       <div className="hours-detail">
         <div><span className="eyebrow">Detalle del día</span><h3>{fmtDate(selectedDate)} · {fmtHours(totalsByDay[selectedDate])}</h3></div>
         {selectedEntries.length ? <div className="hours-entries">{selectedEntries.map((item) => (
-          <article key={item.id}><div><strong>+ {fmtHours(item.hours)}</strong><span>{item.notes || "Sin nota"}</span></div><IconButton label="Eliminar carga" onClick={() => remove(item)}><Trash2 /></IconButton></article>
+          <article key={item.id}>
+            <div><strong>+ {fmtHours(item.hours)}</strong><span>{item.notes || "Sin nota"}</span></div>
+            <div className="hours-entry-actions">
+              <IconButton label="Editar carga" onClick={() => setEditing({ ...item })}><Edit3 /></IconButton>
+              <IconButton label="Eliminar carga" onClick={() => remove(item)}><Trash2 /></IconButton>
+            </div>
+          </article>
         ))}</div> : <p className="hours-empty">Todavía no cargaste horas para este día.</p>}
       </div>
+      {editing && (
+        <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && !saving && setEditing(null)}>
+          <div className="form-modal">
+            <div className="modal-head">
+              <div><span className="eyebrow">Horas trabajadas</span><h2>Editar carga</h2></div>
+              <IconButton label="Cerrar" onClick={() => setEditing(null)}><X /></IconButton>
+            </div>
+            <form onSubmit={saveEdit}>
+              <div className="form-grid">
+                <label>Fecha<input type="date" value={editing.work_date} onChange={(event) => setEditing({ ...editing, work_date: event.target.value })} required /></label>
+                <label>Horas<input type="number" min="0.25" max="24" step="0.25" value={editing.hours} onChange={(event) => setEditing({ ...editing, hours: event.target.value })} required /></label>
+                <label className="span-2">Nota opcional<input value={editing.notes || ""} onChange={(event) => setEditing({ ...editing, notes: event.target.value })} placeholder="¿En qué trabajaste?" /></label>
+              </div>
+              <div className="form-actions">
+                <button type="button" className="secondary" onClick={() => setEditing(null)} disabled={saving}>Cancelar</button>
+                <button className="primary" disabled={saving}><Save size={16} />{saving ? "Guardando..." : "Guardar cambios"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

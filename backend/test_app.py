@@ -101,6 +101,22 @@ def test_work_logs_reject_invalid_hours(client):
     }).status_code == 422
 
 
+def test_work_logs_can_be_edited(client):
+    created = client.post("/api/work-logs", json={
+        "work_date": "2026-07-21", "hours": 2, "notes": "Diseño",
+    }).get_json()["data"]
+    updated = client.patch(f'/api/work-logs/{created["id"]}', json={
+        "work_date": "2026-07-22", "hours": 3.5, "notes": "Desarrollo",
+    })
+    assert updated.status_code == 200
+    assert updated.get_json()["data"] == {
+        **created, "work_date": "2026-07-22", "hours": 3.5, "notes": "Desarrollo",
+    }
+    assert client.patch(f'/api/work-logs/{created["id"]}', json={
+        "work_date": "2026-07-22", "hours": 0,
+    }).status_code == 422
+
+
 def test_prospecting_stores_weekly_goals_and_accumulates_actual_messages(client):
     saved = client.put("/api/prospecting/goals", json={"goals": [
         {"weekday": 0, "channel": "facebook_marketplace", "target": 20},

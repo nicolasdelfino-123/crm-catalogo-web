@@ -531,6 +531,26 @@ def work_logs_create():
     return ok(item.to_dict(), "Horas registradas", 201)
 
 
+@api.patch("/work-logs/<int:work_log_id>")
+def work_logs_update(work_log_id):
+    item = WorkLog.query.get_or_404(work_log_id)
+    data = request.get_json(silent=True) or {}
+    try:
+        work_date = parse_date(data.get("work_date"))
+        hours = float(data.get("hours") or 0)
+    except (ValueError, TypeError):
+        return error("Revisá la fecha y la cantidad de horas", 422)
+    if not work_date:
+        return error("Elegí una fecha válida", 422)
+    if hours <= 0 or hours > 24:
+        return error("Las horas deben ser mayores que 0 y no superar 24", 422)
+    item.work_date = work_date
+    item.hours = hours
+    item.notes = str(data.get("notes") or "").strip() or None
+    db.session.commit()
+    return ok(item.to_dict(), "Horas actualizadas")
+
+
 @api.delete("/work-logs/<int:work_log_id>")
 def work_logs_delete(work_log_id):
     item = WorkLog.query.get_or_404(work_log_id)
