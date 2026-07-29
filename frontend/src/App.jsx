@@ -223,6 +223,16 @@ const addCalendarMonths = (isoDate, months = 1) => {
   return `${targetYear}-${String(targetMonth).padStart(2, "0")}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
 };
 const addCalendarMonth = (isoDate) => addCalendarMonths(isoDate, 1);
+const clientBillingDateInMonth = (client, month) => {
+  if (!["active", "at_risk"].includes(client.status) || !client.signup_date || !client.next_renewal_date) {
+    return null;
+  }
+  if (month < client.next_renewal_date.slice(0, 7)) return null;
+  const day = Number(client.signup_date.slice(8, 10));
+  const [year, monthNumber] = month.split("-").map(Number);
+  const lastDay = new Date(year, monthNumber, 0).getDate();
+  return `${month}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
+};
 const stageForDates = (signupDate, renewalDate) => {
   if (!signupDate) return "first_month";
   const reference = renewalDate || new Date().toISOString().slice(0, 10);
@@ -745,23 +755,27 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
     })
     : statusFilteredItems;
   const displayedItems = useMemo(() => {
-    const dateField = actionMetric || paymentMetric
-      ? "due_date"
-        : metricKey === "active_clients"
-          ? "signup_date"
-          : metricKey === "active_client_days"
-            ? "signup_date"
-        : metricKey === "renewals_week"
-          ? "next_renewal_date"
-        : metricKey === "new_clients_month"
-          ? "signup_date"
-          : metricKey === "sold_clients_month"
-            ? "sale_date"
-        : null;
-    if (!dateField) return filteredSourceItems;
+    const hasDate = actionMetric || paymentMetric || [
+      "active_clients",
+      "active_client_days",
+      "renewals_week",
+      "new_clients_month",
+      "sold_clients_month",
+    ].includes(metricKey);
+    const itemDate = (item) => {
+      if (actionMetric || paymentMetric) return item.due_date;
+      if (metricKey === "active_clients") {
+        return item.status === "no_signup" ? item.sale_date : item.signup_date;
+      }
+      if (metricKey === "active_client_days" || metricKey === "new_clients_month") return item.signup_date;
+      if (metricKey === "renewals_week") return item.next_renewal_date;
+      if (metricKey === "sold_clients_month") return item.sale_date;
+      return null;
+    };
+    if (!hasDate) return filteredSourceItems;
     return [...filteredSourceItems].sort((first, second) => {
-      const firstDate = first[dateField];
-      const secondDate = second[dateField];
+      const firstDate = itemDate(first);
+      const secondDate = itemDate(second);
       if (!firstDate && !secondDate) return first.id - second.id;
       if (!firstDate) return 1;
       if (!secondDate) return -1;
@@ -784,12 +798,16 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
     const mondayOffset = (firstDay.getUTCDay() + 6) % 7;
     const gridStart = new Date(Date.UTC(year, month - 1, 1 - mondayOffset));
     const counts = displayedItems.reduce((result, item) => {
-      const itemDate = item[calendarDateField];
+      const itemDate = metricKey === "active_clients"
+        ? clientBillingDateInMonth(item, calendarMonth)
+        : item[calendarDateField];
       if (itemDate) result[itemDate] = (result[itemDate] || 0) + 1;
       return result;
     }, {});
     const riskCounts = sourceItems.reduce((result, item) => {
-      const itemDate = item[calendarDateField];
+      const itemDate = metricKey === "active_clients"
+        ? clientBillingDateInMonth(item, calendarMonth)
+        : item[calendarDateField];
       if (item.status === "at_risk" && itemDate) {
         result[itemDate] = (result[itemDate] || 0) + 1;
       }
@@ -807,7 +825,7 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
         riskCount: riskCounts[iso] || 0,
       };
     });
-  }, [calendarMonth, displayedItems, sourceItems, calendarDateField]);
+  }, [calendarMonth, displayedItems, sourceItems, calendarDateField, metricKey]);
   const calendarTitle = new Intl.DateTimeFormat("es-AR", {
     month: "long",
     year: "numeric",
@@ -825,7 +843,11 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
             ? ["venta", "ventas", "Ventas"]
             : ["acción", "acciones", "Acciones"];
   const selectedDayItems = selectedCalendarDate
-    ? displayedItems.filter((item) => item[calendarDateField] === selectedCalendarDate)
+    ? displayedItems.filter((item) => (
+      metricKey === "active_clients"
+        ? clientBillingDateInMonth(item, calendarMonth)
+        : item[calendarDateField]
+    ) === selectedCalendarDate)
     : [];
   const todayIso = new Date().toLocaleDateString("en-CA");
   async function moveDashboardCalendar(offset) {
@@ -908,7 +930,21 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
           ) : metricKey === "sold_clients_month" ? (
             <><small>Fecha de venta</small><strong>{fmtDate(item.sale_date)}</strong>{badge(item.status)}</>
           ) : metricKey === "active_clients" ? (
-            <><small>{metricView === "calendar" ? "Próximo cobro" : "Fecha de alta"}</small><strong>{fmtDate(metricView === "calendar" ? item.next_renewal_date : item.signup_date)}</strong>{badge(item.status)}{badge(item.service_stage)}</>
+            <>
+              <small>
+                {metricView === "calendar"
+                  ? "Cobro"
+                  : item.status === "no_signup" ? "Fecha de venta" : "Fecha de alta"}
+              </small>
+              <strong>
+                {fmtDate(
+                  metricView === "calendar"
+                    ? clientBillingDateInMonth(item, calendarMonth)
+                    : item.status === "no_signup" ? item.sale_date : item.signup_date,
+                )}
+              </strong>
+              {badge(item.status)}{badge(item.service_stage)}
+            </>
           ) : metricKey === "active_client_days" ? (
             <>
               <small>Desde {fmtDate(item.signup_date)}</small>
@@ -1140,7 +1176,6 @@ function ClientForm({ client, onClose, onSaved }) {
     name: "",
     business_name: "",
     sale_date: new Date().toISOString().slice(0, 10),
-    commercial_signup_date: new Date().toISOString().slice(0, 10),
     signup_date: new Date().toISOString().slice(0, 10),
     next_renewal_date: "",
     country: "Argentina",
@@ -1286,29 +1321,19 @@ function ClientForm({ client, onClose, onSaved }) {
             <legend>Servicio y cobro</legend>
             <div className="form-grid">
               <label>
-                Fecha de venta
+                Fecha de venta *
                 <input
                   type="date"
                   name="sale_date"
                   value={form.sale_date || ""}
                   onChange={change}
-                />
-              </label>
-              <label>
-                Fecha de alta comercial *
-                <input
-                  type="date"
-                  name="commercial_signup_date"
-                  value={form.commercial_signup_date || ""}
-                  onChange={change}
                   required
                 />
               </label>
-              <label>
-                {form.status === "no_signup" ? "Inicio del servicio" : "Inicio del servicio y cobro *"}
-                {form.status === "no_signup" ? (
-                  <input value="Sin alta" readOnly />
-                ) : (
+              {form.status !== "no_signup" && (
+                <>
+                  <label>
+                    Inicio del servicio y cobro *
                   <input
                     type="date"
                     name="signup_date"
@@ -1316,21 +1341,18 @@ function ClientForm({ client, onClose, onSaved }) {
                     onChange={change}
                     required
                   />
-                )}
-              </label>
-              <label>
-                Próxima renovación
-                {form.status === "no_signup" ? (
-                  <input value="Sin alta" readOnly />
-                ) : (
+                  </label>
+                  <label>
+                    Próxima renovación
                   <input
                     type="date"
                     name="next_renewal_date"
                     value={form.next_renewal_date || ""}
                     onChange={change}
                   />
-                )}
-              </label>
+                  </label>
+                </>
+              )}
               <label>
                 Estado
                 <select name="status" value={form.status} onChange={change}>
@@ -2072,9 +2094,9 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
         </div>
         <div className="quick-stats">
           <div>
-            <small>Alta</small>
-            <strong>{client.status === "no_signup" ? "Sin alta" : fmtDate(client.signup_date)}</strong>
-            <span>{client.days_as_client} días</span>
+            <small>{client.status === "no_signup" ? "Venta" : "Alta"}</small>
+            <strong>{fmtDate(client.status === "no_signup" ? client.sale_date : client.signup_date)}</strong>
+            <span>{client.status === "no_signup" ? "Pendiente de alta" : `${client.days_as_client} días`}</span>
           </div>
           <div>
             <small>Próxima renovación</small>
@@ -2883,8 +2905,8 @@ function Clients() {
                     <td>{badge(c.status)}</td>
                     <td>{badge(c.service_stage)}</td>
                     <td>
-                      <strong>{c.status === "no_signup" ? "Sin alta" : fmtDate(c.signup_date)}</strong>
-                      {c.status !== "no_signup" && <span>{c.days_as_client} días</span>}
+                      <strong>{fmtDate(c.status === "no_signup" ? c.sale_date : c.signup_date)}</strong>
+                      <span>{c.status === "no_signup" ? "Fecha de venta" : `${c.days_as_client} días`}</span>
                     </td>
                     <td>
                       <strong>{c.status === "no_signup" ? "Sin alta" : fmtDate(c.next_renewal_date)}</strong>

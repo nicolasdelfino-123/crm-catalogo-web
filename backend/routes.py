@@ -205,7 +205,7 @@ def sync_service_stages(clients):
 
 
 def apply_client(client, data):
-    required = {"name", "business_name", "signup_date", "country", "currency"}
+    required = {"name", "business_name", "sale_date", "signup_date", "country", "currency"}
     missing = [key for key in required if not data.get(key) and not getattr(client, key, None)]
     if missing:
         raise ValueError("Completá los campos obligatorios: " + ", ".join(missing))
@@ -215,11 +215,10 @@ def apply_client(client, data):
     for field in text_fields:
         if field in data:
             setattr(client, field, data[field] or None)
-    for field in ["sale_date", "commercial_signup_date", "signup_date", "next_renewal_date"]:
+    for field in ["sale_date", "signup_date", "next_renewal_date"]:
         if field in data:
             setattr(client, field, parse_date(data[field]))
-    if not client.commercial_signup_date:
-        client.commercial_signup_date = client.sale_date or date.today()
+    client.commercial_signup_date = client.sale_date or date.today()
     if "signup_date" in data and client.signup_date and not data.get("next_renewal_date"):
         client.next_renewal_date = add_calendar_months(client.signup_date, 1)
     for field in ["payment_amount"]:
@@ -960,7 +959,7 @@ def payments_list():
 def payments_monthly_forecast():
     clients = Client.query.filter(
         Client.archived_at.is_(None),
-        Client.status.in_(("active", "at_risk", "no_signup")),
+        Client.status.in_(("active", "at_risk")),
     ).order_by(Client.name.asc()).all()
     items = [{
         "id": client.id, "name": client.name, "business_name": client.business_name,
@@ -1204,7 +1203,7 @@ def dashboard():
     renewals_week_end = renewals_week_start + timedelta(days=7)
     renewals_week = [
         c for c in clients
-        if c.status != "cancelled"
+        if c.status in ("active", "at_risk")
         and c.next_renewal_date
         and renewals_week_start <= c.next_renewal_date < renewals_week_end
     ]
@@ -1301,7 +1300,7 @@ def renewals_by_week():
     week_end = week_start + timedelta(days=7)
     clients = Client.query.filter(
         Client.archived_at.is_(None),
-        Client.status != "cancelled",
+        Client.status.in_(("active", "at_risk")),
         Client.next_renewal_date >= week_start,
         Client.next_renewal_date < week_end,
     ).order_by(Client.next_renewal_date.asc(), Client.name.asc()).all()
@@ -1333,7 +1332,7 @@ def dashboard_income():
         totals = {"ARS": 0, "USD": 0}
         billable_clients = Client.query.filter(
             Client.archived_at.is_(None),
-            Client.status.in_(("active", "at_risk", "no_signup")),
+            Client.status.in_(("active", "at_risk")),
         ).all()
         for client in billable_clients:
             totals[client.currency] = totals.get(client.currency, 0) + float(client.payment_amount or 0)
