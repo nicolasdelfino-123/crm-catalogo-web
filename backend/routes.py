@@ -1182,6 +1182,7 @@ def dashboard():
     for p in payments:
         if p.status == "paid" and p.paid_at and p.paid_at.date() >= month_start: money[p.currency] = money.get(p.currency, 0) + float(p.amount)
     active_clients = [c for c in clients if c.status in ("active", "at_risk", "no_signup")]
+    active_clients_detail = [c for c in clients if c.status in ("active", "at_risk", "no_signup", "cancelled")]
     tenure_clients = [c for c in clients if c.status in ("active", "at_risk") and c.signup_date]
     at_risk_clients = [c for c in clients if c.status == "at_risk"]
     pending_actions = [a for a in actions if a.status in ("pending", "in_progress")]
@@ -1265,7 +1266,7 @@ def dashboard():
         "sold_clients_month": len(sold_clients_month),
         "collected": money,
         "details": {
-            "active_clients": [client_item(c) for c in active_clients],
+            "active_clients": [client_item(c) for c in active_clients_detail],
             "active_client_days": [client_item(c) for c in tenure_clients],
             "at_risk_clients": [client_item(c) for c in at_risk_clients],
             "pending_actions": [action_item(a) for a in pending_actions] + [payment_collection_item(p) for p in overdue_payments],

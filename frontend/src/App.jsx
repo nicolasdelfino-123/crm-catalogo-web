@@ -729,6 +729,9 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
       if (activeStatusFilter === "at_risk") {
         return item.status === "at_risk";
       }
+      if (activeStatusFilter === "cancelled") {
+        return item.status === "cancelled";
+      }
       return ["active", "at_risk", "no_signup"].includes(item.status);
     })
     : sourceItems;
@@ -785,6 +788,13 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
       if (itemDate) result[itemDate] = (result[itemDate] || 0) + 1;
       return result;
     }, {});
+    const riskCounts = sourceItems.reduce((result, item) => {
+      const itemDate = item[calendarDateField];
+      if (item.status === "at_risk" && itemDate) {
+        result[itemDate] = (result[itemDate] || 0) + 1;
+      }
+      return result;
+    }, {});
     return Array.from({ length: 42 }, (_, index) => {
       const current = new Date(gridStart);
       current.setUTCDate(gridStart.getUTCDate() + index);
@@ -794,9 +804,10 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
         day: current.getUTCDate(),
         currentMonth: current.getUTCMonth() === month - 1,
         count: counts[iso] || 0,
+        riskCount: riskCounts[iso] || 0,
       };
     });
-  }, [calendarMonth, displayedItems, calendarDateField]);
+  }, [calendarMonth, displayedItems, sourceItems, calendarDateField]);
   const calendarTitle = new Intl.DateTimeFormat("es-AR", {
     month: "long",
     year: "numeric",
@@ -1017,6 +1028,7 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
                     <option value="active">Activos</option>
                     <option value="no_signup">Solo sin alta</option>
                     <option value="at_risk">Solo en riesgo</option>
+                    <option value="cancelled">Cancelados</option>
                   </select>
                 </label>
               )}
@@ -1059,6 +1071,15 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
                     aria-label={`${day.iso}: ${day.count} ${calendarItemLabel[1]}`}
                   >
                     <time>{day.day}</time>
+                    {metricKey === "active_clients" && day.riskCount > 0 && (
+                      <span
+                        className="calendar-risk-markers"
+                        aria-label={`${day.riskCount} ${day.riskCount === 1 ? "cliente en riesgo" : "clientes en riesgo"}`}
+                        title={`${day.riskCount} ${day.riskCount === 1 ? "cliente en riesgo" : "clientes en riesgo"}`}
+                      >
+                        {"*".repeat(day.riskCount)}
+                      </span>
+                    )}
                     {day.count > 0 && (
                       <strong>
                         {day.count} {day.count === 1 ? calendarItemLabel[0] : calendarItemLabel[1]}
@@ -1432,7 +1453,6 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
       fields: [
         ["title", "Acción", "actionpreset"],
         ["due_date", "Fecha prevista", "date"],
-        ["implementation_date", "Fecha de implementación", "date"],
         ["priority", "Prioridad", "select"],
         ["description", "Nota", "textarea"],
       ],
@@ -1621,15 +1641,6 @@ function ActionEditor({ action, onCancel, onSaved }) {
             type="date"
             name="due_date"
             value={form.due_date || ""}
-            onChange={change}
-          />
-        </label>
-        <label>
-          Fecha de implementación
-          <input
-            type="date"
-            name="implementation_date"
-            value={form.implementation_date || ""}
             onChange={change}
           />
         </label>
@@ -2194,7 +2205,6 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
                           <strong>{a.title}</strong>
                           <p>
                             Prevista: {fmtDate(a.due_date)}
-                            {a.implementation_date && ` · Implementada: ${fmtDate(a.implementation_date)}`}
                             {" · "}{LABEL[a.priority] || a.priority}
                           </p>
                           {a.description && <p>{a.description}</p>}
@@ -3391,13 +3401,14 @@ function CompleteActionModal({ action, onClose, onConfirm }) {
 function AgendaNewAction({ undated, onClose, onSaved }) {
   const [clients, setClients] = useState([]);
   const [actionPreset, setActionPreset] = useState("");
+  const [customClient, setCustomClient] = useState(false);
+  const [customAction, setCustomAction] = useState(false);
   const [form, setForm] = useState({
     client_id: "",
     custom_context: "",
     title: "",
     description: "",
     due_date: new Date().toISOString().slice(0, 10),
-    implementation_date: "",
     priority: "medium",
   });
   const [saving, setSaving] = useState(false);
@@ -3429,7 +3440,6 @@ function AgendaNewAction({ undated, onClose, onSaved }) {
           title: undated ? form.title : actionPreset === "__custom" ? form.title : actionPreset,
           description: form.description,
           due_date: undated ? null : form.due_date,
-          implementation_date: form.implementation_date || null,
           priority: form.priority,
           status: "pending",
         }),
@@ -3459,19 +3469,37 @@ function AgendaNewAction({ undated, onClose, onSaved }) {
                 </label>
                 <label className="span-2">Título<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="¿Qué tenés pendiente?" required /></label>
                 <label className="span-2">Descripción<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Agregá los detalles necesarios..." required /></label>
-                <label>Fecha de implementación<input type="date" value={form.implementation_date} onChange={(event) => setForm({ ...form, implementation_date: event.target.value })} /></label>
               </>
             ) : (
               <>
                 <label className="span-2">
                   Cliente
-                  <select value={form.client_id} onChange={(event) => setForm({ ...form, client_id: event.target.value })} required>
+                  <select
+                    value={customClient ? "" : form.client_id}
+                    onChange={(event) => setForm({ ...form, client_id: event.target.value })}
+                    required={!customClient}
+                    disabled={customClient}
+                  >
                     <option value="">Elegí un cliente</option>
                     {clients.map((client) => <option value={client.id} key={client.id}>{client.name} · {client.business_name}</option>)}
-                    <option value="__custom">PERSONALIZADO / SIN CLIENTE...</option>
                   </select>
                 </label>
-                {form.client_id === "__custom" && (
+                <label className="urgent-action-check span-2">
+                  <input
+                    type="checkbox"
+                    checked={customClient}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setCustomClient(checked);
+                      setForm({ ...form, client_id: checked ? "__custom" : "", custom_context: "" });
+                    }}
+                  />
+                  <span>
+                    <strong>Cliente personalizado / sin cliente</strong>
+                    <small>Usar un nombre o contexto que no está en la lista de clientes</small>
+                  </span>
+                </label>
+                {customClient && (
                   <label className="span-2">
                     ¿Para quién o para qué es?
                     <input value={form.custom_context} onChange={(event) => setForm({ ...form, custom_context: event.target.value })} placeholder="Ej.: proveedor, trámite, tarea interna..." required />
@@ -3479,17 +3507,36 @@ function AgendaNewAction({ undated, onClose, onSaved }) {
                 )}
                 <label className="span-2">
                   Acción
-                  <select value={actionPreset} onChange={(event) => setActionPreset(event.target.value)} required>
+                  <select
+                    value={customAction ? "" : actionPreset}
+                    onChange={(event) => setActionPreset(event.target.value)}
+                    required={!customAction}
+                    disabled={customAction}
+                  >
                     <option value="">Elegí una acción</option>
                     {ACTION_PRESETS.map((preset) => <option value={preset} key={preset}>{preset}</option>)}
-                    <option value="__custom">ACCIÓN PERSONALIZADA...</option>
                   </select>
                 </label>
-                {actionPreset === "__custom" && (
+                <label className="urgent-action-check span-2">
+                  <input
+                    type="checkbox"
+                    checked={customAction}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setCustomAction(checked);
+                      setActionPreset(checked ? "__custom" : "");
+                      setForm({ ...form, title: "" });
+                    }}
+                  />
+                  <span>
+                    <strong>Acción personalizada</strong>
+                    <small>Escribir una acción que no está en la lista</small>
+                  </span>
+                </label>
+                {customAction && (
                   <label className="span-2">Nombre de la acción<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
                 )}
                 <label>Fecha prevista<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>
-                <label>Fecha de implementación<input type="date" value={form.implementation_date} onChange={(event) => setForm({ ...form, implementation_date: event.target.value })} /></label>
                 <label>
                   Prioridad
                   <select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}>
@@ -3528,7 +3575,6 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
     title: action.title,
     context_name: action.client_name,
     due_date: action.due_date || "",
-    implementation_date: action.implementation_date || "",
     priority: action.priority || "medium",
     description: action.description || "",
   });
@@ -3565,7 +3611,6 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
             <label className="span-2">Acción<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
             {!action.due_date && <label className="span-2">Descripción<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} required /></label>}
             {action.due_date && <label>Fecha prevista<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>}
-            <label>Fecha de implementación<input type="date" value={form.implementation_date} onChange={(event) => setForm({ ...form, implementation_date: event.target.value })} /></label>
             <label className="urgent-action-check">
               <input
                 type="checkbox"
@@ -3608,7 +3653,6 @@ function AgendaItem({ action: a, onStatus, onComplete, onEdit, onOpenClient }) {
       <div>
         <time>Prevista: {fmtDate(a.due_date)}</time>
         <h3>{a.title}</h3>
-        {a.implementation_date && <p>Implementada: {fmtDate(a.implementation_date)}</p>}
         {a.client_id && <p>{a.client_name} · {a.business_name}</p>}
         {(a.description || !a.client_id || a.projected) && (
           <p>{a.description || `${a.client_name} · ${a.business_name}`}{a.projected ? " · Cobro previsto" : ""}</p>
@@ -4911,8 +4955,8 @@ function Login({ onAuthenticated }) {
   );
 }
 export default function App() {
-  const [page, setPage] = useState("clients");
-  const [visitedPages, setVisitedPages] = useState(() => new Set(["clients"]));
+  const [page, setPage] = useState("dashboard");
+  const [visitedPages, setVisitedPages] = useState(() => new Set(["dashboard"]));
   const [session, setSession] = useState(() => ({ checking: Boolean(getToken()), user: null }));
   const navigate = useCallback((nextPage) => {
     setVisitedPages((current) => {
