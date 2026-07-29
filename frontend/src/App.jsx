@@ -4575,6 +4575,7 @@ function Payments() {
   const [forecast, setForecast] = useState({ items: [], totals: {} });
   const [editing, setEditing] = useState(null);
   const [summaryDetail, setSummaryDetail] = useState(null);
+  const [summaryClientQuery, setSummaryClientQuery] = useState("");
   const [selectedClient, setSelectedClient] = useState(null);
   const [clientForm, setClientForm] = useState(null);
   const [clientQuery, setClientQuery] = useState("");
@@ -4684,6 +4685,22 @@ function Payments() {
       return (dueDateOrder === "asc" ? dateOrder : -dateOrder) || byClient(first, second);
     });
   }, [items, clientQuery, clientNameOrder, dueDateOrder, statusOrder]);
+  const summaryVisibleItems = useMemo(() => {
+    if (!summaryDetail || summaryDetail.kind !== "forecast" || !summaryClientQuery.trim()) {
+      return summaryDetail?.items || [];
+    }
+    const query = summaryClientQuery.trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("es");
+    return summaryDetail.items.filter((client) =>
+      `${client.name} ${client.business_name || ""}`
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase("es")
+        .includes(query),
+    );
+  }, [summaryDetail, summaryClientQuery]);
   async function setPaymentStatus(id, status) {
     await api(`/payments/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
     setSummaryDetail((current) => current?.kind === "payments" ? {
@@ -4702,13 +4719,17 @@ function Payments() {
     load();
   }
   function showSummary(title, predicate) {
+    setSummaryClientQuery("");
     setSummaryDetail({ title, items: items.filter(predicate), kind: "payments" });
   }
   function showForecast(currency) {
+    setSummaryClientQuery("");
     setSummaryDetail({
       title: `Mensualidad a cobrar por mes · ${currency}`,
       items: forecast.items.filter((client) => client.currency === currency),
       kind: "forecast",
+      currency,
+      total: forecast.totals[currency] || 0,
     });
   }
   function openClientPayments(clientId) {
@@ -4886,13 +4907,38 @@ function Payments() {
       {summaryDetail && (
         <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && setSummaryDetail(null)}>
           <div className="payment-summary-modal">
-            <div className="modal-head"><div><span className="eyebrow">Desglose del total</span><h2>{summaryDetail.title}</h2></div><IconButton label="Cerrar" onClick={() => setSummaryDetail(null)}><X /></IconButton></div>
-            <div className="summary-payment-count">{summaryDetail.items.length} {summaryDetail.kind === "forecast" ? summaryDetail.items.length === 1 ? "cliente incluido" : "clientes incluidos" : summaryDetail.items.length === 1 ? "pago incluido" : "pagos incluidos"}</div>
+            <div className="modal-head"><div><span className="eyebrow">Desglose del total</span><h2>{summaryDetail.title}{summaryDetail.kind === "forecast" && ` · Total ${fmtMoney(summaryDetail.total, summaryDetail.currency)}`}</h2></div><IconButton label="Cerrar" onClick={() => setSummaryDetail(null)}><X /></IconButton></div>
+            {summaryDetail.kind === "forecast" && (
+              <div className="toolbar">
+                <label className="search">
+                  <Search />
+                  <input
+                    value={summaryClientQuery}
+                    onChange={(event) => setSummaryClientQuery(event.target.value)}
+                    placeholder="Buscar por cliente o negocio"
+                    autoFocus
+                  />
+                </label>
+                {summaryClientQuery && (
+                  <button type="button" className="text-btn" onClick={() => setSummaryClientQuery("")}>
+                    <X size={15} />
+                    Limpiar
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="summary-payment-count">
+              {summaryVisibleItems.length}{" "}
+              {summaryDetail.kind === "forecast"
+                ? summaryVisibleItems.length === 1 ? "cliente incluido" : "clientes incluidos"
+                : summaryVisibleItems.length === 1 ? "pago incluido" : "pagos incluidos"}
+              {summaryDetail.kind === "forecast" && summaryClientQuery && ` de ${summaryDetail.items.length}`}
+            </div>
             {summaryDetail.items.length && summaryDetail.kind === "payments" ? (
               <div className="table-wrap summary-payments-table"><table><thead><tr><th>Cliente</th><th>Importe</th><th>Concepto</th><th>Vencimiento</th><th>Fecha de pago</th><th>Estado</th><th>Acción</th></tr></thead><tbody>{summaryDetail.items.map((payment) => <tr key={payment.id} className="clickable-payment-row" tabIndex={0} role="button" onClick={() => openClientPayments(payment.client_id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openClientPayments(payment.client_id); } }}><td><button type="button" className="client-link" onClick={(event) => { event.stopPropagation(); openClientPayments(payment.client_id); }}>{payment.client_name}</button></td><td><strong>{fmtMoney(payment.amount, payment.currency)}</strong></td><td>{LABEL[payment.payment_type] || payment.payment_type}</td><td>{fmtDate(payment.due_date)}</td><td>{payment.paid_at ? fmtDate(payment.paid_at) : "Todavía no pagado"}</td><td>{badge(payment.status)}</td><td>{payment.status !== "paid" ? <button className="text-btn complete" onClick={(event) => { event.stopPropagation(); setPaymentStatus(payment.id, "paid"); }}><Check size={16} />Marcar pagado</button> : <span>Pagado</span>}</td></tr>)}</tbody></table></div>
-            ) : summaryDetail.items.length ? (
-              <div className="table-wrap summary-payments-table forecast-detail-table"><table><thead><tr><th>Cliente</th><th>Negocio</th><th>Estado</th><th>Mensualidad</th></tr></thead><tbody>{summaryDetail.items.map((client) => <tr key={client.id} className="clickable-payment-row" tabIndex={0} role="button" onClick={() => openClientPayments(client.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openClientPayments(client.id); } }}><td><button type="button" className="client-link" onClick={(event) => { event.stopPropagation(); openClientPayments(client.id); }}>{client.name}</button></td><td>{client.business_name}</td><td>{badge(client.status)}</td><td><strong>{client.amount > 0 ? fmtMoney(client.amount, client.currency) : "Sin monto configurado"}</strong></td></tr>)}</tbody></table></div>
-            ) : <div className="summary-payment-empty">Este total no contiene registros.</div>}
+            ) : summaryVisibleItems.length ? (
+              <div className="table-wrap summary-payments-table forecast-detail-table"><table><thead><tr><th>Cliente</th><th>Negocio</th><th>Estado</th><th>Mensualidad</th></tr></thead><tbody>{summaryVisibleItems.map((client) => <tr key={client.id} className="clickable-payment-row" tabIndex={0} role="button" onClick={() => openClientPayments(client.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openClientPayments(client.id); } }}><td><button type="button" className="client-link" onClick={(event) => { event.stopPropagation(); openClientPayments(client.id); }}>{client.name}</button></td><td>{client.business_name}</td><td>{badge(client.status)}</td><td><strong>{client.amount > 0 ? fmtMoney(client.amount, client.currency) : "Sin monto configurado"}</strong></td></tr>)}</tbody></table></div>
+            ) : <div className="summary-payment-empty">{summaryClientQuery ? "No se encontraron clientes." : "Este total no contiene registros."}</div>}
           </div>
         </div>
       )}
