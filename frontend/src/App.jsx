@@ -4576,6 +4576,7 @@ function Payments() {
   const [editing, setEditing] = useState(null);
   const [summaryDetail, setSummaryDetail] = useState(null);
   const [summaryClientQuery, setSummaryClientQuery] = useState("");
+  const [forecastStatusFilter, setForecastStatusFilter] = useState("active");
   const [selectedClient, setSelectedClient] = useState(null);
   const [clientForm, setClientForm] = useState(null);
   const [clientQuery, setClientQuery] = useState("");
@@ -4686,21 +4687,37 @@ function Payments() {
     });
   }, [items, clientQuery, clientNameOrder, dueDateOrder, statusOrder]);
   const summaryVisibleItems = useMemo(() => {
-    if (!summaryDetail || summaryDetail.kind !== "forecast" || !summaryClientQuery.trim()) {
+    if (!summaryDetail || summaryDetail.kind !== "forecast") {
       return summaryDetail?.items || [];
     }
+    const statusItems = summaryDetail.items.filter((client) =>
+      forecastStatusFilter === "active_no_signup"
+        ? ["active", "at_risk", "no_signup"].includes(client.status)
+        : ["active", "at_risk"].includes(client.status),
+    );
+    if (!summaryClientQuery.trim()) return statusItems;
     const query = summaryClientQuery.trim()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .toLocaleLowerCase("es");
-    return summaryDetail.items.filter((client) =>
+    return statusItems.filter((client) =>
       `${client.name} ${client.business_name || ""}`
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .toLocaleLowerCase("es")
         .includes(query),
     );
-  }, [summaryDetail, summaryClientQuery]);
+  }, [summaryDetail, summaryClientQuery, forecastStatusFilter]);
+  const summaryForecastTotal = useMemo(() => {
+    if (!summaryDetail || summaryDetail.kind !== "forecast") return 0;
+    return summaryDetail.items
+      .filter((client) =>
+        forecastStatusFilter === "active_no_signup"
+          ? ["active", "at_risk", "no_signup"].includes(client.status)
+          : ["active", "at_risk"].includes(client.status),
+      )
+      .reduce((total, client) => total + Number(client.amount || 0), 0);
+  }, [summaryDetail, forecastStatusFilter]);
   async function setPaymentStatus(id, status) {
     await api(`/payments/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
     setSummaryDetail((current) => current?.kind === "payments" ? {
@@ -4724,6 +4741,7 @@ function Payments() {
   }
   function showForecast(currency) {
     setSummaryClientQuery("");
+    setForecastStatusFilter("active");
     setSummaryDetail({
       title: `Mensualidad a cobrar por mes · ${currency}`,
       items: forecast.items.filter((client) => client.currency === currency),
@@ -4907,9 +4925,19 @@ function Payments() {
       {summaryDetail && (
         <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && setSummaryDetail(null)}>
           <div className="payment-summary-modal">
-            <div className="modal-head"><div><span className="eyebrow">Desglose del total</span><h2>{summaryDetail.title}{summaryDetail.kind === "forecast" && ` · Total ${fmtMoney(summaryDetail.total, summaryDetail.currency)}`}</h2></div><IconButton label="Cerrar" onClick={() => setSummaryDetail(null)}><X /></IconButton></div>
+            <div className="modal-head"><div><span className="eyebrow">Desglose del total</span><h2>{summaryDetail.title}{summaryDetail.kind === "forecast" && ` · Total ${fmtMoney(summaryForecastTotal, summaryDetail.currency)}`}</h2></div><IconButton label="Cerrar" onClick={() => setSummaryDetail(null)}><X /></IconButton></div>
             {summaryDetail.kind === "forecast" && (
               <div className="toolbar">
+                <label className="dashboard-status-filter">
+                  Estado
+                  <select
+                    value={forecastStatusFilter}
+                    onChange={(event) => setForecastStatusFilter(event.target.value)}
+                  >
+                    <option value="active">Activos</option>
+                    <option value="active_no_signup">Activos y sin alta</option>
+                  </select>
+                </label>
                 <label className="search">
                   <Search />
                   <input

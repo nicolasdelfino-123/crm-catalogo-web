@@ -959,7 +959,7 @@ def payments_list():
 def payments_monthly_forecast():
     clients = Client.query.filter(
         Client.archived_at.is_(None),
-        Client.status.in_(("active", "at_risk")),
+        Client.status.in_(("active", "at_risk", "no_signup")),
     ).order_by(Client.name.asc()).all()
     items = [{
         "id": client.id, "name": client.name, "business_name": client.business_name,
@@ -967,7 +967,7 @@ def payments_monthly_forecast():
         "currency": client.currency,
     } for client in clients]
     totals = {}
-    for item in items:
+    for item in (item for item in items if item["status"] in ("active", "at_risk")):
         totals[item["currency"]] = totals.get(item["currency"], 0) + item["amount"]
     return ok({"items": items, "totals": totals})
 
