@@ -388,6 +388,7 @@ function Dashboard({ goClients }) {
   const currentMonth = monthKey();
   const nextMonth = nextMonthKey();
   const [data, setData] = useState(null);
+  const [showNewAction, setShowNewAction] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState(null);
   const [incomeMonth, setIncomeMonth] = useState(currentMonth);
   const [incomeType, setIncomeType] = useState("all");
@@ -457,6 +458,10 @@ function Dashboard({ goClients }) {
           <p>Estado comercial y tareas que requieren movimiento.</p>
         </div>
         <div className="intro-actions">
+          <button className="primary" onClick={() => setShowNewAction(true)}>
+            <Plus size={18} />
+            Agregar acción
+          </button>
           <button
             type="button"
             className="secondary"
@@ -645,6 +650,16 @@ function Dashboard({ goClients }) {
           client={incomeClientForm}
           onClose={() => setIncomeClientForm(null)}
           onSaved={() => setIncomeClientForm(null)}
+        />
+      )}
+      {showNewAction && (
+        <AgendaNewAction
+          undated={false}
+          onClose={() => setShowNewAction(false)}
+          onSaved={() => {
+            setShowNewAction(false);
+            loadDashboard();
+          }}
         />
       )}
     </section>
@@ -3478,11 +3493,25 @@ function AgendaNewAction({ undated, onClose, onSaved }) {
                 <label>
                   Prioridad
                   <select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}>
-                    <option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option>
+                    <option value="medium">Media</option><option value="high">Alta</option>
                   </select>
                 </label>
               </>
             )}
+            <label className="urgent-action-check span-2">
+              <input
+                type="checkbox"
+                checked={form.priority === "urgent"}
+                onChange={(event) => setForm({
+                  ...form,
+                  priority: event.target.checked ? "urgent" : "medium",
+                })}
+              />
+              <span>
+                <strong>Acción urgente</strong>
+                <small>Mostrar también en Acciones urgentes del Resumen</small>
+              </span>
+            </label>
           </div>
           <div className="form-actions">
             <button type="button" className="secondary" onClick={onClose}>Cancelar</button>
