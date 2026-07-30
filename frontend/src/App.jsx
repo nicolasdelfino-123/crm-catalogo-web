@@ -1627,10 +1627,18 @@ function MiniForm({ type, clientId, defaultDueDate, onDone }) {
 }
 
 function ActionEditor({ action, onCancel, onSaved }) {
-  const [form, setForm] = useState(action);
+  const [form, setForm] = useState({
+    ...action,
+    completed_date: action.completed_at?.slice(0, 10) || "",
+  });
   const [saving, setSaving] = useState(false);
-  const change = (e) =>
-    setForm((v) => ({ ...v, [e.target.name]: e.target.value }));
+  const change = (e) => setForm((value) => ({
+    ...value,
+    [e.target.name]: e.target.value,
+    ...(e.target.name === "status" && e.target.value === "completed" && !value.completed_date
+      ? { completed_date: dateKey() }
+      : {}),
+  }));
   async function submit(e) {
     e.preventDefault();
     setSaving(true);
@@ -1664,6 +1672,16 @@ function ActionEditor({ action, onCancel, onSaved }) {
             name="due_date"
             value={form.due_date || ""}
             onChange={change}
+          />
+        </label>
+        <label>
+          Fecha completada
+          <input
+            type="date"
+            name="completed_date"
+            value={form.completed_date || ""}
+            onChange={change}
+            required={form.status === "completed"}
           />
         </label>
         <label className="urgent-action-check">
@@ -1993,7 +2011,10 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
   async function patchAction(id, status) {
     await api(`/actions/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({
+        status,
+        ...(status === "completed" ? { completed_date: dateKey() } : {}),
+      }),
     });
     load();
     onRefresh();
@@ -2229,6 +2250,9 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
                             Prevista: {fmtDate(a.due_date)}
                             {" · "}{LABEL[a.priority] || a.priority}
                           </p>
+                          {a.status === "completed" && (
+                            <p>Completada: {fmtDate(a.completed_at)}</p>
+                          )}
                           {a.description && <p>{a.description}</p>}
                           {a.status === "cancelled" && <span className="badge cancelled">Anulada</span>}
                         </div>
@@ -3375,7 +3399,7 @@ function Agenda() {
 }
 
 function CompleteActionModal({ action, onClose, onConfirm }) {
-  const [completedDate, setCompletedDate] = useState(dateKey());
+  const completedDate = dateKey();
   const [saving, setSaving] = useState(false);
   useEscapeClose(onClose, !saving);
   async function submit(event) {
@@ -3400,13 +3424,11 @@ function CompleteActionModal({ action, onClose, onConfirm }) {
         <form onSubmit={submit}>
           <p className="complete-action-name">{action.title}</p>
           <label>
-            Fecha en la que se completó
+            Fecha completada
             <input
               type="date"
               value={completedDate}
-              onChange={(event) => setCompletedDate(event.target.value)}
-              required
-              autoFocus
+              readOnly
             />
           </label>
           <p className="complete-action-hint">Después de confirmar, podés deshacer con Ctrl+Z.</p>
@@ -3597,6 +3619,7 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
     title: action.title,
     context_name: action.client_name,
     due_date: action.due_date || "",
+    completed_date: action.completed_at?.slice(0, 10) || "",
     priority: action.priority || "medium",
     description: action.description || "",
   });
@@ -3633,6 +3656,12 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
             <label className="span-2">Acción<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
             {!action.due_date && <label className="span-2">Descripción<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} required /></label>}
             {action.due_date && <label>Fecha prevista<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>}
+            {action.status === "completed" && (
+              <label>
+                Fecha completada
+                <input type="date" value={form.completed_date} onChange={(event) => setForm({ ...form, completed_date: event.target.value })} required />
+              </label>
+            )}
             <label className="urgent-action-check">
               <input
                 type="checkbox"

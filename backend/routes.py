@@ -830,6 +830,10 @@ def standalone_actions_update(action_id):
             if action.status == "completed" and completed_date
             else datetime.utcnow() if action.status == "completed" else None
         )
+    elif "completed_date" in data and action.status == "completed":
+        completed_date = parse_date(data.get("completed_date"))
+        if completed_date:
+            action.completed_at = datetime.combine(completed_date, datetime.min.time())
     db.session.commit()
     return ok(action.to_dict(), "Acción actualizada")
 
@@ -860,6 +864,10 @@ def actions_update(action_id):
             action.completed_at = datetime.combine(completed_date, datetime.min.time())
         elif not action.completed_at:
             action.completed_at = datetime.utcnow()
+    elif "completed_date" in data and action.status == "completed":
+        completed_date = parse_date(data.get("completed_date"))
+        if completed_date:
+            action.completed_at = datetime.combine(completed_date, datetime.min.time())
     if "status" in data and data["status"] != "completed": action.completed_at = None
     db.session.commit(); return ok(action.to_dict(), "Acción actualizada")
 

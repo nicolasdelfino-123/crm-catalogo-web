@@ -1004,6 +1004,31 @@ def test_undated_actions_are_separate_and_support_description_and_status(client)
     }).get_json()["data"]
     assert reopened["description"] == "Descripción actualizada"
     assert reopened["status"] == "pending"
+    assert reopened["completed_at"] is None
+
+
+def test_completing_actions_keeps_due_date_and_tracks_completion_date(client):
+    customer = client.post("/api/clients", json={
+        "name": "Fechas", "business_name": "Fechas SA",
+        "signup_date": "2026-07-01", "country": "Argentina", "currency": "ARS",
+        "generate_schedule": False,
+    }).get_json()["data"]
+    action = client.post(f'/api/clients/{customer["id"]}/actions', json={
+        "title": "Acción con fecha", "due_date": "2026-08-20",
+    }).get_json()["data"]
+
+    completed = client.patch(f'/api/actions/{action["id"]}', json={
+        "status": "completed", "completed_date": "2026-07-29",
+    }).get_json()["data"]
+
+    assert completed["due_date"] == "2026-08-20"
+    assert completed["completed_at"].startswith("2026-07-29")
+
+    edited = client.patch(f'/api/actions/{action["id"]}', json={
+        "completed_date": "2026-07-28",
+    }).get_json()["data"]
+    assert edited["due_date"] == "2026-08-20"
+    assert edited["completed_at"].startswith("2026-07-28")
 
 
 def test_undated_action_can_be_assigned_to_a_client(client):
