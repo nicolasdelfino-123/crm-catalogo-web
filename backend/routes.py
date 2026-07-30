@@ -167,23 +167,6 @@ def advance_service_stage(client, today=None):
         return False
     original = client.service_stage
     original_renewal = client.next_renewal_date
-    latest_paid_period = max(
-        (
-            payment.due_date
-            for payment in client.payments
-            if payment.status == "paid" and payment.payment_type == "monthly" and payment.due_date
-        ),
-        default=None,
-    )
-    renewal_month = (
-        (client.next_renewal_date.year, client.next_renewal_date.month)
-        if client.next_renewal_date else None
-    )
-    paid_month = (latest_paid_period.year, latest_paid_period.month) if latest_paid_period else None
-    if latest_paid_period and (
-        not renewal_month or paid_month >= renewal_month
-    ):
-        client.next_renewal_date = next_billing_date(client, latest_paid_period)
     reference_date = client.next_renewal_date or today
     elapsed_months = max(0, (reference_date.year - client.signup_date.year) * 12 + reference_date.month - client.signup_date.month)
     if reference_date < add_calendar_months(client.signup_date, elapsed_months):

@@ -691,6 +691,31 @@ def test_monthly_payment_advances_renewal_and_stage(client):
     assert updated["service_stage"] == "second_month"
 
 
+def test_manual_renewal_correction_is_not_overridden_by_paid_first_month(client):
+    created = client.post("/api/clients", json={
+        "name": "Amadeo", "business_name": "Auro Fragancias",
+        "sale_date": "2026-07-17", "signup_date": "2026-07-30",
+        "next_renewal_date": "2026-08-30",
+        "country": "Argentina", "currency": "ARS", "payment_amount": 30000,
+    }).get_json()["data"]
+    client.post(f'/api/clients/{created["id"]}/payments', json={
+        "amount": 10000, "currency": "ARS", "payment_type": "monthly",
+        "due_date": "2026-08-30", "paid_at": "2026-07-30",
+        "status": "paid", "notes": "primer mes al 50%",
+    })
+
+    corrected = client.patch(f'/api/clients/{created["id"]}', json={
+        "signup_date": "2026-07-30",
+        "next_renewal_date": "2026-08-30",
+    }).get_json()["data"]
+    assert corrected["next_renewal_date"] == "2026-08-30"
+    assert corrected["service_stage"] == "first_month"
+
+    reopened = client.get(f'/api/clients/{created["id"]}').get_json()["data"]
+    assert reopened["next_renewal_date"] == "2026-08-30"
+    assert reopened["service_stage"] == "first_month"
+
+
 def test_general_table_syncs_every_client(app):
     with app.app_context():
         first = Client(
