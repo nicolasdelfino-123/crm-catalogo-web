@@ -542,7 +542,6 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
     created = client.post("/api/clients", json={
         "name": "Cliente ingresos",
         "business_name": "Ingresos separados",
-        "sale_date": "2026-06-01",
         "signup_date": "2026-06-01",
         "country": "Argentina",
         "currency": "ARS",
@@ -550,13 +549,11 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
     }).get_json()["data"]
     client.post("/api/clients", json={
         "name": "Cliente en riesgo USD", "business_name": "Riesgo",
-        "sale_date": "2026-06-01",
         "signup_date": "2026-06-01", "country": "Argentina", "currency": "USD",
         "payment_amount": 40, "status": "at_risk",
     })
     client.post("/api/clients", json={
         "name": "Cliente todavía sin alta", "business_name": "Sin alta",
-        "sale_date": "2026-06-17",
         "signup_date": "2026-06-17", "country": "Argentina", "currency": "ARS",
         "payment_amount": 90000, "status": "no_signup",
     })
@@ -579,26 +576,29 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
     monthly_forecast_data = client.get("/api/dashboard/income?month=2026-08&payment_type=monthly_forecast").get_json()["data"]
     monthly_forecast = monthly_forecast_data["totals"]
 
-    assert june_total == {"ARS": 0, "USD": 0}
-    assert june_monthly == {"ARS": 0, "USD": 0}
-    assert june_extras == {"ARS": 0, "USD": 0}
-    assert june_extras_data["items"] == []
+    assert june_total == {"ARS": 100000.0, "USD": 50.0}
+    assert june_monthly == {"ARS": 100000.0, "USD": 0}
+    assert june_extras == {"ARS": 0, "USD": 50.0}
+    assert len(june_extras_data["items"]) == 1
+    assert june_extras_data["items"][0]["client_name"] == "Cliente ingresos"
+    assert june_extras_data["items"][0]["amount"] == 50.0
     july_monthly = client.get("/api/dashboard/income?month=2026-07&payment_type=monthly").get_json()["data"]
-    assert july_monthly["totals"] == {"ARS": 105000.0, "USD": 0}
-    assert {item["payment_type"] for item in july_monthly["items"]} == {"monthly", "deposit"}
+    assert july_monthly["totals"] == {"ARS": 5000.0, "USD": 0}
+    assert {item["payment_type"] for item in july_monthly["items"]} == {"deposit"}
     assert next(
         item for item in july_monthly["items"] if item["payment_type"] == "deposit"
     )["display_date"] == "2026-07-03"
-    assert july_total == {"ARS": 130000.0, "USD": 50.0}
+    assert july_total == {"ARS": 30000.0, "USD": 0}
     assert all_months["totals"] == {"ARS": 130000.0, "USD": 50.0}
-    assert all_months["available_months"] == ["2026-07"]
-    assert monthly_forecast == {"ARS": 80000.0, "USD": 40.0}
+    assert all_months["available_months"] == ["2026-07", "2026-06"]
+    assert monthly_forecast == {"ARS": 170000.0, "USD": 40.0}
     assert monthly_forecast_data["month"] == "2026-08"
     assert all(item["due_date"].startswith("2026-08") for item in monthly_forecast_data["items"])
-    assert all(
-        item["client_name"] != "Cliente todavía sin alta"
-        for item in monthly_forecast_data["items"]
+    no_signup_forecast = next(
+        item for item in monthly_forecast_data["items"]
+        if item["client_name"] == "Cliente todavía sin alta"
     )
+    assert no_signup_forecast["due_date"] == "2026-08-17"
     assert client.get("/api/dashboard/income?month=junio").status_code == 422
     assert client.get("/api/dashboard/income?payment_type=otro").status_code == 422
 
@@ -606,7 +606,6 @@ def test_dashboard_income_filters_month_type_and_currency(client, app):
 def test_deposit_has_no_due_date_and_uses_paid_date(client):
     created = client.post("/api/clients", json={
         "name": "Cliente seña", "business_name": "Reserva",
-        "sale_date": "2026-07-01",
         "signup_date": "2026-07-01", "country": "Argentina",
         "currency": "ARS", "payment_amount": 30000,
     }).get_json()["data"]
@@ -677,7 +676,6 @@ def test_service_stage_uses_next_renewal_date(client):
 def test_monthly_payment_advances_renewal_and_stage(client):
     created = client.post("/api/clients", json={
         "name": "Jonathan", "business_name": "Negocio Jonathan",
-        "sale_date": "2026-06-04",
         "signup_date": "2026-06-04", "next_renewal_date": "2026-07-04",
         "country": "Argentina", "currency": "ARS",
     }).get_json()["data"]
@@ -686,40 +684,11 @@ def test_monthly_payment_advances_renewal_and_stage(client):
         "due_date": "2026-07-04", "status": "pending",
     }).get_json()["data"]
 
-    client.patch(f'/api/payments/{payment["id"]}', json={
-        "status": "paid", "paid_at": "2026-07-04",
-    })
+    client.patch(f'/api/payments/{payment["id"]}', json={"status": "paid"})
     updated = client.get(f'/api/clients/{created["id"]}').get_json()["data"]
 
     assert updated["next_renewal_date"] == "2026-08-04"
     assert updated["service_stage"] == "second_month"
-
-
-def test_editing_client_dates_is_not_overridden_by_previous_paid_month(client):
-    created = client.post("/api/clients", json={
-        "name": "Cliente corregido", "business_name": "Marca corregida",
-        "sale_date": "2026-07-10", "signup_date": "2026-07-10",
-        "next_renewal_date": "2026-08-10",
-        "country": "Argentina", "currency": "ARS",
-    }).get_json()["data"]
-    client.post(f'/api/clients/{created["id"]}/payments', json={
-        "amount": 30000, "currency": "ARS", "payment_type": "monthly",
-        "due_date": "2026-08-10", "status": "paid",
-    })
-
-    response = client.patch(f'/api/clients/{created["id"]}', json={
-        "signup_date": "2026-07-10",
-        "next_renewal_date": "2026-07-10",
-    })
-    assert response.status_code == 200
-    updated = response.get_json()["data"]
-    assert updated["signup_date"] == "2026-07-10"
-    assert updated["next_renewal_date"] == "2026-07-10"
-    assert updated["service_stage"] == "first_month"
-
-    reloaded = client.get(f'/api/clients/{created["id"]}').get_json()["data"]
-    assert reloaded["next_renewal_date"] == "2026-07-10"
-    assert reloaded["service_stage"] == "first_month"
 
 
 def test_general_table_syncs_every_client(app):
@@ -856,9 +825,7 @@ def test_monthly_collections_appear_in_all_list_and_calendar(client, app):
         "amount": 1000, "currency": "ARS", "payment_type": "monthly",
         "due_date": "2026-08-10", "status": "pending",
     }).get_json()["data"]
-    client.patch(f'/api/payments/{payment["id"]}', json={
-        "status": "paid", "paid_at": date.today().isoformat(),
-    })
+    client.patch(f'/api/payments/{payment["id"]}', json={"status": "paid"})
 
     september = client.get("/api/actions?view=calendar&month=2026-09&status=pending").get_json()["data"]
     completed = client.get("/api/actions?view=all&status=completed").get_json()["data"]
@@ -890,9 +857,7 @@ def test_overdue_calendar_charge_becomes_pending_payment_and_overdue_action(clie
     calendar_items = client.get(f"/api/actions?view=calendar&month={month}&status=pending").get_json()["data"]
     assert any(item.get("payment_id") == payment["id"] for item in calendar_items)
 
-    client.patch(f'/api/payments/{payment["id"]}', json={
-        "status": "paid", "paid_at": payment["due_date"],
-    })
+    client.patch(f'/api/payments/{payment["id"]}', json={"status": "paid"})
     detail = client.get(f'/api/clients/{customer["id"]}').get_json()["data"]
     assert any(p["id"] == payment["id"] and p["status"] == "paid" for p in detail["payments"])
 

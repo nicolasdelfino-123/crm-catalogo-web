@@ -207,15 +207,6 @@ const monthKey = (value = new Date()) =>
 const nextMonthKey = (value = new Date()) =>
   monthKey(new Date(value.getFullYear(), value.getMonth() + 1, 1));
 const billingDay = (value) => value ? Number(value.slice(8, 10)) : 32;
-const askPaymentDate = () => {
-  const value = window.prompt("Fecha real de pago (AAAA-MM-DD)", dateKey());
-  if (value === null) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    window.alert("Ingresá la fecha con el formato AAAA-MM-DD.");
-    return null;
-  }
-  return value;
-};
 const fmtMoney = (value, currency = "ARS") =>
   new Intl.NumberFormat("es-AR", {
     style: "currency",
@@ -427,21 +418,15 @@ function Dashboard({ goClients }) {
   }, [loadDashboard]);
   useEffect(() => {
     let active = true;
-    setIncomeLoading(true);
-    setIncomeTotals({ ARS: 0, USD: 0 });
-    setIncomeItems([]);
-    setExpandedIncomeCurrency(null);
-    setIncomeClientSearch("");
     api(`/dashboard/income?month=${incomeMonth}&payment_type=${incomeType}`)
       .then((result) => {
         if (active) {
           setIncomeTotals(result.totals);
           setIncomeItems(result.items || []);
           setIncomeMonths(result.available_months || []);
+          setExpandedIncomeCurrency(null);
+          setIncomeClientSearch("");
         }
-      })
-      .catch((error) => {
-        if (active) window.alert(error.message);
       })
       .finally(() => {
         if (active) setIncomeLoading(false);
@@ -590,7 +575,6 @@ function Dashboard({ goClients }) {
               type="button"
               className={expandedIncomeCurrency === currency ? "income-total-card active" : "income-total-card"}
               key={currency}
-              disabled={incomeLoading}
               onClick={() => {
                 setExpandedIncomeCurrency((current) => current === currency ? null : currency);
                 setIncomeClientSearch("");
@@ -2068,12 +2052,7 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
     onRefresh();
   }
   async function patchPayment(id, status) {
-    const paidAt = status === "paid" ? askPaymentDate() : null;
-    if (status === "paid" && !paidAt) return;
-    await api(`/payments/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status, ...(paidAt ? { paid_at: paidAt } : {}) }),
-    });
+    await api(`/payments/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
     load();
     onRefresh();
   }
@@ -4824,18 +4803,13 @@ function Payments() {
       .reduce((total, client) => total + Number(client.amount || 0), 0);
   }, [summaryDetail, forecastStatusFilter]);
   async function setPaymentStatus(id, status) {
-    const paidAt = status === "paid" ? askPaymentDate() : null;
-    if (status === "paid" && !paidAt) return;
-    await api(`/payments/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status, ...(paidAt ? { paid_at: paidAt } : {}) }),
-    });
+    await api(`/payments/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
     setSummaryDetail((current) => current?.kind === "payments" ? {
       ...current,
       items: current.items.map((payment) => payment.id === id ? {
         ...payment,
         status,
-        paid_at: status === "paid" ? paidAt : null,
+        paid_at: status === "paid" ? new Date().toISOString() : null,
       } : payment),
     } : current);
     await load();
