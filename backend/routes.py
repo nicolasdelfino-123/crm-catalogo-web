@@ -65,8 +65,8 @@ def billing_date_in_month(client, year, month):
 
 
 def payment_effective_date(payment):
-    """Fecha contable de un cobro: cuándo se pagó, no cuándo vencía."""
-    return payment.paid_at.date() if payment.paid_at else payment.due_date
+    """Fecha contable de un cobro: exclusivamente cuándo se pagó."""
+    return payment.paid_at.date() if payment.paid_at else None
 
 
 def sync_overdue_monthly_payments(clients, today=None):
