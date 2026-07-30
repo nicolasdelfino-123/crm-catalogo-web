@@ -64,6 +64,11 @@ def billing_date_in_month(client, year, month):
     return date(year, month, day)
 
 
+def payment_effective_date(payment):
+    """Fecha contable de un cobro: cuándo se pagó, no cuándo vencía."""
+    return payment.paid_at.date() if payment.paid_at else payment.due_date
+
+
 def sync_overdue_monthly_payments(clients, today=None):
     """Materializa mensualidades vencidas y actualiza su estado visible."""
     today = today or date.today()
@@ -1328,13 +1333,9 @@ def dashboard_income():
         for client in billable_clients:
             totals[client.currency] = totals.get(client.currency, 0) + float(client.payment_amount or 0)
         available_months = sorted({
-            (
-                payment.paid_at.date()
-                if payment.payment_type == "deposit" and payment.paid_at
-                else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
-            ).strftime("%Y-%m")
+            payment_effective_date(payment).strftime("%Y-%m")
             for payment in Payment.query.filter(Payment.status == "paid").all()
-            if payment.due_date or payment.paid_at
+            if payment_effective_date(payment)
         }, reverse=True)
         return ok({
             "month": month,
@@ -1368,20 +1369,12 @@ def dashboard_income():
     paid_payments = query.all()
     matching_payments = []
     available_months = sorted({
-        (
-            payment.paid_at.date()
-            if payment.payment_type == "deposit" and payment.paid_at
-            else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
-        ).strftime("%Y-%m")
+        payment_effective_date(payment).strftime("%Y-%m")
         for payment in Payment.query.filter(Payment.status == "paid").all()
-        if payment.due_date or payment.paid_at
+        if payment_effective_date(payment)
     }, reverse=True)
     for payment in paid_payments:
-        payment_date = (
-            payment.paid_at.date()
-            if payment.payment_type == "deposit" and payment.paid_at
-            else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
-        )
+        payment_date = payment_effective_date(payment)
         if month_start and (not payment_date or not month_start <= payment_date < month_end):
             continue
         totals[payment.currency] = totals.get(payment.currency, 0) + float(payment.amount)
