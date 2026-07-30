@@ -690,6 +690,8 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
   const [calendarMonth, setCalendarMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const [selectedActionClient, setSelectedActionClient] = useState(null);
+  const [selectedActionId, setSelectedActionId] = useState(null);
+  const [selectedStandaloneAction, setSelectedStandaloneAction] = useState(null);
   const [actionClientForm, setActionClientForm] = useState(null);
   const [monthlyItems, setMonthlyItems] = useState(items);
   const [renewalItems, setRenewalItems] = useState(null);
@@ -888,21 +890,31 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
     }
   }
   function renderMetricItem(item) {
-    const clickableClientMetric = actionMetric || paymentMetric
-      ? Boolean(item.client_id)
+    const clickableClientMetric = actionMetric
+      ? Boolean(item.client_id || (item.standalone && !item.projected))
+      : paymentMetric
+        ? Boolean(item.client_id)
       : Boolean(item.id);
     const targetClientId = actionMetric || paymentMetric ? item.client_id : item.id;
+    const openMetricItem = () => {
+      if (actionMetric && item.standalone && !item.projected) {
+        setSelectedStandaloneAction(item);
+      } else {
+        setSelectedActionId(actionMetric && !item.projected ? item.id : null);
+        setSelectedActionClient(targetClientId);
+      }
+    };
     return (
       <article
         key={item.id}
         className={clickableClientMetric ? "dashboard-action-card" : undefined}
         role={clickableClientMetric ? "button" : undefined}
         tabIndex={clickableClientMetric ? 0 : undefined}
-        onClick={clickableClientMetric ? () => setSelectedActionClient(targetClientId) : undefined}
+        onClick={clickableClientMetric ? openMetricItem : undefined}
         onKeyDown={clickableClientMetric ? (event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            setSelectedActionClient(targetClientId);
+            openMetricItem();
           }
         } : undefined}
         aria-label={clickableClientMetric ? `Abrir ficha de ${actionMetric || paymentMetric ? item.client_name : item.name}` : undefined}
@@ -1143,7 +1155,10 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
       {selectedActionClient && (
         <DetailModal
           clientId={selectedActionClient}
-          onClose={() => setSelectedActionClient(null)}
+          onClose={() => {
+            setSelectedActionClient(null);
+            setSelectedActionId(null);
+          }}
           onRefresh={refreshMetric}
           onEdit={(client) => {
             setSelectedActionClient(null);
@@ -1158,6 +1173,7 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
                 ? "payments"
                 : "summary"
           }
+          initialActionId={selectedActionId}
         />
       )}
       {actionClientForm && (
@@ -1165,6 +1181,16 @@ function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
           client={actionClientForm}
           onClose={() => setActionClientForm(null)}
           onSaved={() => setActionClientForm(null)}
+        />
+      )}
+      {selectedStandaloneAction && (
+        <AgendaActionEditor
+          action={selectedStandaloneAction}
+          onClose={() => setSelectedStandaloneAction(null)}
+          onSaved={() => {
+            setSelectedStandaloneAction(null);
+            refreshMetric();
+          }}
         />
       )}
     </>
@@ -1966,16 +1992,16 @@ function ClientCredentials({ clientId }) {
   );
 }
 
-function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summary" }) {
+function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summary", initialActionId = null }) {
   const [client, setClient] = useState(null);
   const [tab, setTab] = useState(initialTab);
   const [adding, setAdding] = useState(null);
-  const [editingAction, setEditingAction] = useState(null);
+  const [editingAction, setEditingAction] = useState(initialActionId);
   const [editingPayment, setEditingPayment] = useState(null);
   const [editingMetric, setEditingMetric] = useState(null);
   const [editingNote, setEditingNote] = useState(null);
   const [actionView, setActionView] = useState("pending");
-  const [focusedActionId, setFocusedActionId] = useState(null);
+  const [focusedActionId, setFocusedActionId] = useState(initialActionId);
   const [paymentView, setPaymentView] = useState("all");
   const load = useCallback(
     () => api(`/clients/${clientId}`).then(setClient),
@@ -3620,6 +3646,7 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
     context_name: action.client_name,
     due_date: action.due_date || "",
     completed_date: action.completed_at?.slice(0, 10) || "",
+    status: action.status || "pending",
     priority: action.priority || "medium",
     description: action.description || "",
   });
@@ -3656,12 +3683,33 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
             <label className="span-2">Acción<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
             {!action.due_date && <label className="span-2">Descripción<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} required /></label>}
             {action.due_date && <label>Fecha prevista<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} required /></label>}
-            {action.status === "completed" && (
-              <label>
-                Fecha completada
-                <input type="date" value={form.completed_date} onChange={(event) => setForm({ ...form, completed_date: event.target.value })} required />
-              </label>
-            )}
+            <label>
+              Estado
+              <select
+                value={form.status}
+                onChange={(event) => setForm((value) => ({
+                  ...value,
+                  status: event.target.value,
+                  ...(event.target.value === "completed" && !value.completed_date
+                    ? { completed_date: dateKey() }
+                    : {}),
+                }))}
+              >
+                <option value="pending">Pendiente</option>
+                <option value="in_progress">En curso</option>
+                <option value="completed">Completada</option>
+                <option value="cancelled">Cancelada</option>
+              </select>
+            </label>
+            <label>
+              Fecha completada
+              <input
+                type="date"
+                value={form.completed_date}
+                onChange={(event) => setForm({ ...form, completed_date: event.target.value })}
+                required={form.status === "completed"}
+              />
+            </label>
             <label className="urgent-action-check">
               <input
                 type="checkbox"
@@ -3685,18 +3733,25 @@ function AgendaActionEditor({ action, onClose, onSaved }) {
 }
 
 function AgendaItem({ action: a, onStatus, onComplete, onEdit, onOpenClient }) {
-  const openClient = () => a.client_id && onOpenClient(a.client_id);
+  const openAction = () => {
+    if (a.client_id) {
+      onOpenClient(a.client_id);
+    } else if (!a.projected) {
+      onEdit(a);
+    }
+  };
+  const isClickable = Boolean(a.client_id || !a.projected);
   return (
     <article
       key={a.id}
-      className={a.client_id ? "clickable-action" : ""}
-      onClick={openClient}
-      role={a.client_id ? "button" : undefined}
-      tabIndex={a.client_id ? 0 : undefined}
+      className={isClickable ? "clickable-action" : ""}
+      onClick={isClickable ? openAction : undefined}
+      role={isClickable ? "button" : undefined}
+      tabIndex={isClickable ? 0 : undefined}
       onKeyDown={(event) => {
-        if (a.client_id && (event.key === "Enter" || event.key === " ")) {
+        if (isClickable && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
-          openClient();
+          openAction();
         }
       }}
     >
