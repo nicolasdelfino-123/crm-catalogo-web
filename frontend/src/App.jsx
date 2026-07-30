@@ -418,15 +418,21 @@ function Dashboard({ goClients }) {
   }, [loadDashboard]);
   useEffect(() => {
     let active = true;
+    setIncomeLoading(true);
+    setIncomeTotals({ ARS: 0, USD: 0 });
+    setIncomeItems([]);
+    setExpandedIncomeCurrency(null);
+    setIncomeClientSearch("");
     api(`/dashboard/income?month=${incomeMonth}&payment_type=${incomeType}`)
       .then((result) => {
         if (active) {
           setIncomeTotals(result.totals);
           setIncomeItems(result.items || []);
           setIncomeMonths(result.available_months || []);
-          setExpandedIncomeCurrency(null);
-          setIncomeClientSearch("");
         }
+      })
+      .catch((error) => {
+        if (active) window.alert(error.message);
       })
       .finally(() => {
         if (active) setIncomeLoading(false);
@@ -575,6 +581,7 @@ function Dashboard({ goClients }) {
               type="button"
               className={expandedIncomeCurrency === currency ? "income-total-card active" : "income-total-card"}
               key={currency}
+              disabled={incomeLoading}
               onClick={() => {
                 setExpandedIncomeCurrency((current) => current === currency ? null : currency);
                 setIncomeClientSearch("");

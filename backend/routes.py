@@ -1365,6 +1365,11 @@ def dashboard_income():
         query = query.filter(Payment.payment_type.in_(("monthly", "deposit")))
     elif payment_type == "extra_work":
         query = query.filter(Payment.payment_type == "extra_work")
+    if month_start:
+        query = query.filter(
+            Payment.paid_at >= datetime.combine(month_start, datetime.min.time()),
+            Payment.paid_at < datetime.combine(month_end, datetime.min.time()),
+        )
     totals = {"ARS": 0, "USD": 0}
     paid_payments = query.all()
     matching_payments = []
@@ -1375,7 +1380,7 @@ def dashboard_income():
     }, reverse=True)
     for payment in paid_payments:
         payment_date = payment_effective_date(payment)
-        if month_start and (not payment_date or not month_start <= payment_date < month_end):
+        if not payment_date:
             continue
         totals[payment.currency] = totals.get(payment.currency, 0) + float(payment.amount)
         matching_payments.append({
