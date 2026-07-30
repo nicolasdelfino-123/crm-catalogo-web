@@ -898,6 +898,8 @@ def payments_create(client_id):
 def payments_update(payment_id):
     payment = Payment.query.get_or_404(payment_id); data = request.get_json() or {}
     was_paid = payment.status == "paid"
+    if data.get("status") == "paid" and not was_paid and not data.get("paid_at"):
+        return error("Indicá la fecha real de pago", 422)
     if "amount" in data:
         amount = float(data["amount"])
         if amount < 0: return error("El importe no puede ser negativo", 422)

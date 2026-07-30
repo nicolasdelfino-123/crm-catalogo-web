@@ -207,6 +207,15 @@ const monthKey = (value = new Date()) =>
 const nextMonthKey = (value = new Date()) =>
   monthKey(new Date(value.getFullYear(), value.getMonth() + 1, 1));
 const billingDay = (value) => value ? Number(value.slice(8, 10)) : 32;
+const askPaymentDate = () => {
+  const value = window.prompt("Fecha real de pago (AAAA-MM-DD)", dateKey());
+  if (value === null) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    window.alert("Ingresá la fecha con el formato AAAA-MM-DD.");
+    return null;
+  }
+  return value;
+};
 const fmtMoney = (value, currency = "ARS") =>
   new Intl.NumberFormat("es-AR", {
     style: "currency",
@@ -2059,7 +2068,12 @@ function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summa
     onRefresh();
   }
   async function patchPayment(id, status) {
-    await api(`/payments/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+    const paidAt = status === "paid" ? askPaymentDate() : null;
+    if (status === "paid" && !paidAt) return;
+    await api(`/payments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, ...(paidAt ? { paid_at: paidAt } : {}) }),
+    });
     load();
     onRefresh();
   }
@@ -4810,13 +4824,18 @@ function Payments() {
       .reduce((total, client) => total + Number(client.amount || 0), 0);
   }, [summaryDetail, forecastStatusFilter]);
   async function setPaymentStatus(id, status) {
-    await api(`/payments/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+    const paidAt = status === "paid" ? askPaymentDate() : null;
+    if (status === "paid" && !paidAt) return;
+    await api(`/payments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, ...(paidAt ? { paid_at: paidAt } : {}) }),
+    });
     setSummaryDetail((current) => current?.kind === "payments" ? {
       ...current,
       items: current.items.map((payment) => payment.id === id ? {
         ...payment,
         status,
-        paid_at: status === "paid" ? new Date().toISOString() : null,
+        paid_at: status === "paid" ? paidAt : null,
       } : payment),
     } : current);
     await load();

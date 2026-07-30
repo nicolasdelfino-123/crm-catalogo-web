@@ -677,6 +677,7 @@ def test_service_stage_uses_next_renewal_date(client):
 def test_monthly_payment_advances_renewal_and_stage(client):
     created = client.post("/api/clients", json={
         "name": "Jonathan", "business_name": "Negocio Jonathan",
+        "sale_date": "2026-06-04",
         "signup_date": "2026-06-04", "next_renewal_date": "2026-07-04",
         "country": "Argentina", "currency": "ARS",
     }).get_json()["data"]
@@ -685,7 +686,9 @@ def test_monthly_payment_advances_renewal_and_stage(client):
         "due_date": "2026-07-04", "status": "pending",
     }).get_json()["data"]
 
-    client.patch(f'/api/payments/{payment["id"]}', json={"status": "paid"})
+    client.patch(f'/api/payments/{payment["id"]}', json={
+        "status": "paid", "paid_at": "2026-07-04",
+    })
     updated = client.get(f'/api/clients/{created["id"]}').get_json()["data"]
 
     assert updated["next_renewal_date"] == "2026-08-04"
@@ -853,7 +856,9 @@ def test_monthly_collections_appear_in_all_list_and_calendar(client, app):
         "amount": 1000, "currency": "ARS", "payment_type": "monthly",
         "due_date": "2026-08-10", "status": "pending",
     }).get_json()["data"]
-    client.patch(f'/api/payments/{payment["id"]}', json={"status": "paid"})
+    client.patch(f'/api/payments/{payment["id"]}', json={
+        "status": "paid", "paid_at": date.today().isoformat(),
+    })
 
     september = client.get("/api/actions?view=calendar&month=2026-09&status=pending").get_json()["data"]
     completed = client.get("/api/actions?view=all&status=completed").get_json()["data"]
@@ -885,7 +890,9 @@ def test_overdue_calendar_charge_becomes_pending_payment_and_overdue_action(clie
     calendar_items = client.get(f"/api/actions?view=calendar&month={month}&status=pending").get_json()["data"]
     assert any(item.get("payment_id") == payment["id"] for item in calendar_items)
 
-    client.patch(f'/api/payments/{payment["id"]}', json={"status": "paid"})
+    client.patch(f'/api/payments/{payment["id"]}', json={
+        "status": "paid", "paid_at": payment["due_date"],
+    })
     detail = client.get(f'/api/clients/{customer["id"]}').get_json()["data"]
     assert any(p["id"] == payment["id"] and p["status"] == "paid" for p in detail["payments"])
 
