@@ -314,6 +314,14 @@ def clients_list():
         query = query.filter(Client.status == requested_status)
     for field in ["service_stage", "country", "currency", "acquisition_source"]:
         if request.args.get(field): query = query.filter(getattr(Client, field) == request.args[field])
+    renewal_totals = {"ARS": 0.0, "USD": 0.0}
+    totals_query = query.with_entities(
+        Client.currency,
+        func.coalesce(func.sum(Client.payment_amount), 0),
+    ).group_by(Client.currency)
+    for currency, total in totals_query.all():
+        if currency in renewal_totals:
+            renewal_totals[currency] = float(total or 0)
     sort_by = request.args.get("sort_by", "name")
     if sort_by == "billing_day":
         # Ordena solamente por el número de día (1-31), sin considerar mes ni año.
@@ -336,7 +344,11 @@ def clients_list():
     query = query.order_by(direction, Client.name.asc())
     page = max(1, request.args.get("page", 1, type=int)); per_page = min(100, request.args.get("per_page", 25, type=int))
     result = query.paginate(page=page, per_page=per_page, error_out=False)
-    return ok({"items": [c.summary() for c in result.items], "pagination": {"page": page, "per_page": per_page, "total": result.total, "pages": result.pages}})
+    return ok({
+        "items": [c.summary() for c in result.items],
+        "pagination": {"page": page, "per_page": per_page, "total": result.total, "pages": result.pages},
+        "renewal_totals": renewal_totals,
+    })
 
 
 @api.post("/clients")

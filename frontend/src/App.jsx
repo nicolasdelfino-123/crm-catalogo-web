@@ -2727,7 +2727,7 @@ function DeleteClientModal({ client, onClose, onConfirm }) {
 }
 
 function Clients() {
-  const [data, setData] = useState({ items: [], pagination: {} });
+  const [data, setData] = useState({ items: [], pagination: {}, renewal_totals: { ARS: 0, USD: 0 } });
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [acquisition, setAcquisition] = useState("");
@@ -2896,6 +2896,16 @@ function Clients() {
             Limpiar
           </button>
         )}
+        <div className={`client-renewal-totals${loading ? " loading-totals" : ""}`} aria-live="polite">
+          <div>
+            <small>Mensualidades · Pesos</small>
+            <strong>{fmtMoney(data.renewal_totals?.ARS || 0, "ARS")}</strong>
+          </div>
+          <div>
+            <small>Mensualidades · USD</small>
+            <strong>{fmtMoney(data.renewal_totals?.USD || 0, "USD")}</strong>
+          </div>
+        </div>
       </div>
       {loading ? (
         <Loading />

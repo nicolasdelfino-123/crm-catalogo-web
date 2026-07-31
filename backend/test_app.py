@@ -320,6 +320,27 @@ def test_create_and_list_client(client):
     assert payment.get_json()["data"]["due_date"] == "2026-08-01"
 
 
+def test_client_list_renewal_totals_follow_filters_and_include_no_signup(client, app):
+    with app.app_context():
+        db.session.add_all([
+            Client(name="Activo ARS", business_name="Marca Norte", signup_date=date(2026, 7, 1), status="active", currency="ARS", payment_amount=30000),
+            Client(name="Riesgo USD", business_name="Marca Norte", signup_date=date(2026, 7, 2), status="at_risk", currency="USD", payment_amount=250),
+            Client(name="Otro ARS", business_name="Marca Sur", signup_date=date(2026, 7, 3), status="active", currency="ARS", payment_amount=12000),
+            Client(name="Sin alta", business_name="Marca Norte", sale_date=date(2026, 7, 4), status="no_signup", currency="ARS", payment_amount=99999),
+        ])
+        db.session.commit()
+
+    all_totals = client.get("/api/clients").get_json()["data"]["renewal_totals"]
+    assert all_totals == {"ARS": 141999.0, "USD": 250.0}
+
+    filtered = client.get("/api/clients?search=Norte&status=active").get_json()["data"]
+    assert filtered["pagination"]["total"] == 2
+    assert filtered["renewal_totals"] == {"ARS": 30000.0, "USD": 250.0}
+
+    no_signup = client.get("/api/clients?status=no_signup").get_json()["data"]
+    assert no_signup["renewal_totals"] == {"ARS": 99999.0, "USD": 0.0}
+
+
 def test_actions_store_planned_and_implementation_dates_separately(client):
     created_client = client.post("/api/clients", json={
         "name": "Cliente acciones", "business_name": "Marca acciones",
