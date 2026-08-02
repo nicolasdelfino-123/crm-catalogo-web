@@ -410,6 +410,9 @@ function Dashboard({ goClients }) {
   const [incomeClientForm, setIncomeClientForm] = useState(null);
   const [incomeMonths, setIncomeMonths] = useState([]);
   const [incomeLoading, setIncomeLoading] = useState(true);
+  const [showTrafficLights, setShowTrafficLights] = useState(false);
+  const [selectedTrafficClient, setSelectedTrafficClient] = useState(null);
+  const [trafficClientForm, setTrafficClientForm] = useState(null);
   const loadDashboard = useCallback(() => api("/dashboard/summary").then(setData), []);
   useEffect(() => {
     loadDashboard();
@@ -488,6 +491,14 @@ function Dashboard({ goClients }) {
         </div>
       </div>
       <div className="metrics-grid">
+        <button type="button" className="metric metric-button traffic-summary-card" onClick={() => setShowTrafficLights(true)} aria-label="Abrir resumen de semáforos">
+          <span className="traffic-summary-icon"><List size={20} /></span>
+          <div><small>Semáforo</small><strong className="traffic-summary-counts">
+            <span><i className="traffic-dot red" />{data.traffic_lights?.red || 0}</span>
+            <span><i className="traffic-dot yellow" />{data.traffic_lights?.yellow || 0}</span>
+            <span><i className="traffic-dot green" />{data.traffic_lights?.green || 0}</span>
+          </strong></div>
+        </button>
         {cards.map(([key, label, value, Icon, color]) => (
           <button
             type="button"
@@ -643,6 +654,9 @@ function Dashboard({ goClients }) {
           onClose={() => setSelectedMetric(null)}
         />
       )}
+      {showTrafficLights && <TrafficLightModal items={data.details?.traffic_lights || []} onClose={() => setShowTrafficLights(false)} onClient={(clientId) => { setShowTrafficLights(false); setSelectedTrafficClient(clientId); }} onRefresh={loadDashboard} />}
+      {selectedTrafficClient && <DetailModal clientId={selectedTrafficClient} onClose={() => setSelectedTrafficClient(null)} onRefresh={loadDashboard} onEdit={(client) => { setSelectedTrafficClient(null); setTrafficClientForm(client); }} />}
+      {trafficClientForm && <ClientForm client={trafficClientForm} onClose={() => setTrafficClientForm(null)} onSaved={() => { setTrafficClientForm(null); loadDashboard(); }} />}
       {selectedIncomeClient && (
         <DetailModal
           clientId={selectedIncomeClient}
@@ -674,6 +688,48 @@ function Dashboard({ goClients }) {
       )}
     </section>
   );
+}
+
+function TrafficLightModal({ items, onClose, onClient, onRefresh }) {
+  const [query, setQuery] = useState("");
+  const [order, setOrder] = useState("green_first");
+  const [clients, setClients] = useState(items);
+  const [updating, setUpdating] = useState(new Set());
+  useEscapeClose(onClose);
+  const colorRank = order === "green_first" ? { green: 1, yellow: 2, red: 3 } : { red: 1, yellow: 2, green: 3 };
+  const visibleClients = clients.filter((client) => `${client.name} ${client.business_name || ""}`.toLocaleLowerCase("es").includes(query.trim().toLocaleLowerCase("es"))).sort((first, second) => {
+    const difference = colorRank[first.traffic_light || "red"] - colorRank[second.traffic_light || "red"];
+    return difference || first.name.localeCompare(second.name, "es");
+  });
+  async function cycleTrafficLight(event, client) {
+    event.stopPropagation();
+    if (updating.has(client.id)) return;
+    const colors = ["red", "yellow", "green"];
+    const current = client.traffic_light || "red";
+    const next = colors[(colors.indexOf(current) + 1) % colors.length];
+    setUpdating((ids) => new Set(ids).add(client.id));
+    setClients((all) => all.map((item) => item.id === client.id ? { ...item, traffic_light: next } : item));
+    try {
+      await api(`/clients/${client.id}`, { method: "PATCH", body: JSON.stringify({ traffic_light: next }) });
+      await onRefresh();
+    } catch (error) {
+      setClients((all) => all.map((item) => item.id === client.id ? { ...item, traffic_light: current } : item));
+      window.alert(error.message);
+    } finally {
+      setUpdating((ids) => { const nextIds = new Set(ids); nextIds.delete(client.id); return nextIds; });
+    }
+  }
+  return <div className="modal-layer"><section className="dashboard-metric-modal traffic-modal" role="dialog" aria-modal="true" aria-labelledby="traffic-modal-title">
+    <div className="modal-head"><div><span className="eyebrow">Resumen por color</span><h2 id="traffic-modal-title">Semáforo de clientes</h2></div><IconButton label="Cerrar" onClick={onClose}><X /></IconButton></div>
+    <div className="traffic-modal-toolbar">
+      <label className="search"><Search size={17} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente o negocio…" autoFocus /></label>
+      <label className="filter"><ArrowUpDown size={17} /><select value={order} onChange={(event) => setOrder(event.target.value)}><option value="green_first">Verde → amarillo → rojo</option><option value="red_first">Rojo → amarillo → verde</option></select></label>
+    </div>
+    <div className="traffic-client-list">{visibleClients.map((client) => <article key={client.id} tabIndex={0} role="button" onClick={() => onClient(client.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClient(client.id); } }}>
+      <button type="button" className={`traffic-light ${client.traffic_light || "red"}`} aria-label={`Cambiar semáforo de ${client.name}`} title="Cambiar color" disabled={updating.has(client.id)} onClick={(event) => cycleTrafficLight(event, client)} />
+      <div><strong>{client.name}</strong><span>{client.business_name}</span></div><ChevronRight size={18} />
+    </article>)}{!visibleClients.length && <div className="empty"><Search size={28} /><h3>No se encontraron clientes</h3><p>Probá con otra palabra.</p></div>}</div>
+  </section></div>;
 }
 
 function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {

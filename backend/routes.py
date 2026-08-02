@@ -187,11 +187,12 @@ def sync_service_stages(clients):
         db.session.commit()
 
 
-def apply_client(client, data):
-    required = {"name", "business_name", "sale_date", "signup_date", "country", "currency"}
-    missing = [key for key in required if not data.get(key) and not getattr(client, key, None)]
-    if missing:
-        raise ValueError("Completá los campos obligatorios: " + ", ".join(missing))
+def apply_client(client, data, partial=False):
+    if not partial:
+        required = {"name", "business_name", "sale_date", "signup_date", "country", "currency"}
+        missing = [key for key in required if not data.get(key) and not getattr(client, key, None)]
+        if missing:
+            raise ValueError("Completá los campos obligatorios: " + ", ".join(missing))
     if data.get("status") and data["status"] not in STATUSES:
         raise ValueError("Estado inválido")
     if data.get("traffic_light") and data["traffic_light"] not in ("red", "yellow", "green"):
@@ -391,7 +392,7 @@ def clients_update(client_id):
     try:
         data = request.get_json() or {}
         previous_counts = (client.followers_count or 0, client.publications_count or 0)
-        apply_client(client, data)
+        apply_client(client, data, partial=True)
         current_counts = (client.followers_count or 0, client.publications_count or 0)
         if current_counts != previous_counts:
             record_client_metric(client)
@@ -1226,6 +1227,10 @@ def dashboard():
         and month_start <= c.signup_date < next_month_start
     ]
     sold_clients_month = [c for c in clients if c.sale_date and month_start <= c.sale_date < next_month_start]
+    traffic_light_counts = {
+        color: sum(1 for client in clients if (client.traffic_light or "red") == color)
+        for color in ("red", "yellow", "green")
+    }
 
     def client_item(client):
         days_active = max(0, (today - client.signup_date).days) if client.signup_date else 0
@@ -1246,6 +1251,7 @@ def dashboard():
             "next_renewal_date": client.next_renewal_date.isoformat() if client.next_renewal_date else None,
             "days_active": days_active,
             "active_month": elapsed_months + 1 if client.signup_date else None,
+            "traffic_light": client.traffic_light or "red",
         }
 
     def action_item(action):
@@ -1275,6 +1281,7 @@ def dashboard():
         ),
         "renewals_week": len(renewals_week), "new_clients_month": len(new_clients_month),
         "sold_clients_month": len(sold_clients_month),
+        "traffic_lights": traffic_light_counts,
         "collected": money,
         "details": {
             "active_clients": [client_item(c) for c in active_clients_detail],
@@ -1298,6 +1305,7 @@ def dashboard():
             "renewals_week": [client_item(c) for c in renewals_week],
             "new_clients_month": [client_item(c) for c in new_clients_month],
             "sold_clients_month": [client_item(c) for c in sold_clients_month],
+            "traffic_lights": [client_item(c) for c in clients],
         },
     }
     return ok(data)

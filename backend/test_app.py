@@ -44,6 +44,33 @@ def test_cancelled_clients_are_excluded_from_weekly_renewals(client, app):
     assert [item["name"] for item in weekly] == ["Cliente activo"]
 
 
+def test_dashboard_includes_traffic_light_counts_and_clients(client, app):
+    with app.app_context():
+        db.session.add_all([
+            Client(name="Rojo", business_name="Uno", country="Argentina", currency="ARS", traffic_light="red"),
+            Client(name="Amarillo", business_name="Dos", country="Argentina", currency="ARS", traffic_light="yellow"),
+            Client(name="Verde", business_name="Tres", country="Argentina", currency="ARS", traffic_light="green"),
+        ])
+        db.session.commit()
+    summary = client.get("/api/dashboard/summary").get_json()["data"]
+    assert summary["traffic_lights"] == {"red": 1, "yellow": 1, "green": 1}
+    assert {item["traffic_light"] for item in summary["details"]["traffic_lights"]} == {"red", "yellow", "green"}
+
+
+def test_traffic_light_patch_does_not_require_missing_legacy_sale_date(client, app):
+    with app.app_context():
+        legacy_client = Client(
+            name="Cliente anterior", business_name="Legado", country="Argentina",
+            currency="ARS", traffic_light="red", sale_date=None,
+        )
+        db.session.add(legacy_client)
+        db.session.commit()
+        client_id = legacy_client.id
+    response = client.patch(f"/api/clients/{client_id}", json={"traffic_light": "green"})
+    assert response.status_code == 200
+    assert response.get_json()["data"]["traffic_light"] == "green"
+
+
 def test_message_logs_can_be_created_listed_and_deleted(client):
     created = client.post("/api/messages", json={
         "sent_date": "2026-07-21", "channel": "business_whatsapp",
