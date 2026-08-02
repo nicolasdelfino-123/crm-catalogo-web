@@ -42,6 +42,7 @@ class Client(db.Model):
     signup_date = db.Column(db.Date, nullable=False, default=date.today, index=True)
     next_renewal_date = db.Column(db.Date, index=True)
     status = db.Column(db.String(30), nullable=False, default="active", index=True)
+    traffic_light = db.Column(db.String(10), nullable=False, default="red")
     service_stage = db.Column(db.String(30), nullable=False, default="onboarding")
     service_stage_manual = db.Column(db.Boolean, default=False)
     page_status = db.Column(db.String(30), default="pending")
@@ -89,6 +90,7 @@ class Client(db.Model):
             "payment_amount": float(self.payment_amount or 0), "sale_date": iso(self.sale_date),
             "commercial_signup_date": iso(self.commercial_signup_date), "signup_date": iso(self.signup_date),
             "next_renewal_date": iso(self.next_renewal_date), "status": self.status,
+            "traffic_light": self.traffic_light or "red",
             "service_stage": self.service_stage, "link_in_bio_status": self.link_in_bio_status,
             "story_status": self.story_status or "no",
             "service_stage_manual": bool(self.service_stage_manual),

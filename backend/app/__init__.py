@@ -121,6 +121,9 @@ def create_app(test_config=None):
         if "acquisition_source" not in columns:
             db.session.execute(text("ALTER TABLE client ADD COLUMN acquisition_source VARCHAR(60)"))
             db.session.commit()
+        if "traffic_light" not in columns:
+            db.session.execute(text("ALTER TABLE client ADD COLUMN traffic_light VARCHAR(10) DEFAULT 'red' NOT NULL"))
+            db.session.commit()
         if "twelve_products_status" not in columns:
             db.session.execute(text("ALTER TABLE client ADD COLUMN twelve_products_status VARCHAR(10) DEFAULT 'no'"))
             db.session.commit()

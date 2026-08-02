@@ -2739,6 +2739,7 @@ function Clients() {
   const [form, setForm] = useState(null);
   const [clientToDelete, setClientToDelete] = useState(null);
   const [toast, setToast] = useState("");
+  const [updatingTrafficLight, setUpdatingTrafficLight] = useState(new Set());
   const [sort, setSort] = useState({ by: "billing_day", dir: "asc" });
   const selectedServiceStage = stageMonth === "custom"
     ? Number(customStageMonth) > 6 ? `month_${Number(customStageMonth)}` : ""
@@ -2787,6 +2788,36 @@ function Clients() {
     } catch (error) {
       alert(error.message);
       throw error;
+    }
+  }
+  async function cycleTrafficLight(event, client) {
+    event.stopPropagation();
+    if (updatingTrafficLight.has(client.id)) return;
+    const colors = ["red", "yellow", "green"];
+    const current = client.traffic_light || "red";
+    const next = colors[(colors.indexOf(current) + 1) % colors.length];
+    setUpdatingTrafficLight((ids) => new Set(ids).add(client.id));
+    setData((previous) => ({
+      ...previous,
+      items: previous.items.map((item) => item.id === client.id ? { ...item, traffic_light: next } : item),
+    }));
+    try {
+      await api(`/clients/${client.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ traffic_light: next }),
+      });
+    } catch (error) {
+      setData((previous) => ({
+        ...previous,
+        items: previous.items.map((item) => item.id === client.id ? { ...item, traffic_light: current } : item),
+      }));
+      window.alert(error.message);
+    } finally {
+      setUpdatingTrafficLight((ids) => {
+        const nextIds = new Set(ids);
+        nextIds.delete(client.id);
+        return nextIds;
+      });
     }
   }
   return (
@@ -2927,6 +2958,7 @@ function Clients() {
                     sort={sort}
                     toggle={toggleSort}
                   />
+                  <th>Semáforo</th>
                   <th>Estado</th>
                   <Th
                     label="Etapa"
@@ -2961,6 +2993,16 @@ function Clients() {
                     <td>
                       <strong>{c.name}</strong>
                       <span>{c.business_name}</span>
+                    </td>
+                    <td className="traffic-light-cell">
+                      <button
+                        type="button"
+                        className={`traffic-light ${c.traffic_light || "red"}`}
+                        aria-label={`Semáforo de ${c.name}. Cambiar color`}
+                        title="Hacé clic para cambiar el color"
+                        disabled={updatingTrafficLight.has(c.id)}
+                        onClick={(event) => cycleTrafficLight(event, c)}
+                      />
                     </td>
                     <td>{badge(c.status)}</td>
                     <td>{badge(c.service_stage)}</td>
@@ -3030,6 +3072,13 @@ function Clients() {
                     <strong>{c.name}</strong>
                     <small>{c.business_name}</small>
                   </span>
+                  <button
+                    type="button"
+                    className={`traffic-light ${c.traffic_light || "red"}`}
+                    aria-label={`Semáforo de ${c.name}. Cambiar color`}
+                    disabled={updatingTrafficLight.has(c.id)}
+                    onClick={(event) => cycleTrafficLight(event, c)}
+                  />
                   {badge(c.status)}
                   <IconButton
                     label={`Eliminar a ${c.name}`}
