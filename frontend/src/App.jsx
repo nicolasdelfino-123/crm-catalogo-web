@@ -2958,7 +2958,12 @@ function Clients() {
                     sort={sort}
                     toggle={toggleSort}
                   />
-                  <th>Semáforo</th>
+                  <Th
+                    label="Semáforo"
+                    name="traffic_light"
+                    sort={sort}
+                    toggle={toggleSort}
+                  />
                   <th>Estado</th>
                   <Th
                     label="Etapa"

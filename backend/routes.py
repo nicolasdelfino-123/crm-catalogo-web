@@ -328,6 +328,13 @@ def clients_list():
     if sort_by == "billing_day":
         # Ordena solamente por el número de día (1-31), sin considerar mes ni año.
         column = func.extract("day", Client.signup_date)
+    elif sort_by == "traffic_light":
+        column = case(
+            (Client.traffic_light == "red", 1),
+            (Client.traffic_light == "yellow", 2),
+            (Client.traffic_light == "green", 3),
+            else_=1,
+        )
     elif sort_by == "service_stage":
         # Las etapas se guardan como texto, pero en la tabla deben seguir el
         # orden natural de los meses (mes 2 antes que mes 10).
