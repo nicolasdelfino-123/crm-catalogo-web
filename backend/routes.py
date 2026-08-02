@@ -1227,8 +1227,9 @@ def dashboard():
         and month_start <= c.signup_date < next_month_start
     ]
     sold_clients_month = [c for c in clients if c.sale_date and month_start <= c.sale_date < next_month_start]
+    traffic_light_clients = [c for c in clients if c.status != "cancelled"]
     traffic_light_counts = {
-        color: sum(1 for client in clients if (client.traffic_light or "red") == color)
+        color: sum(1 for client in traffic_light_clients if (client.traffic_light or "red") == color)
         for color in ("red", "yellow", "green")
     }
 
@@ -1305,7 +1306,7 @@ def dashboard():
             "renewals_week": [client_item(c) for c in renewals_week],
             "new_clients_month": [client_item(c) for c in new_clients_month],
             "sold_clients_month": [client_item(c) for c in sold_clients_month],
-            "traffic_lights": [client_item(c) for c in clients],
+            "traffic_lights": [client_item(c) for c in traffic_light_clients],
         },
     }
     return ok(data)
