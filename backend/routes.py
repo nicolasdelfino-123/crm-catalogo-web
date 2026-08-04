@@ -51,16 +51,18 @@ def add_calendar_months(value, months):
 
 
 def next_billing_date(client, paid_period):
-    """Conserva el día de alta al abrir el período posterior al pagado."""
+    """Conserva el día de vencimiento al abrir el período posterior al pagado."""
     next_month = add_calendar_months(paid_period.replace(day=1), 1)
-    signup_day = client.signup_date.day if client.signup_date else paid_period.day
-    day = min(signup_day, calendar.monthrange(next_month.year, next_month.month)[1])
+    day = min(paid_period.day, calendar.monthrange(next_month.year, next_month.month)[1])
     return date(next_month.year, next_month.month, day)
 
 
 def billing_date_in_month(client, year, month):
-    signup_day = client.signup_date.day
-    day = min(signup_day, calendar.monthrange(year, month)[1])
+    billing_day = (
+        client.next_renewal_date.day
+        if client.next_renewal_date else client.signup_date.day
+    )
+    day = min(billing_day, calendar.monthrange(year, month)[1])
     return date(year, month, day)
 
 
@@ -82,7 +84,8 @@ def sync_overdue_monthly_payments(clients, today=None):
             for payment in client.payments
             if payment.payment_type == "monthly" and payment.due_date
         }
-        due_date = add_calendar_months(client.signup_date, 1)
+        first_billing = add_calendar_months(client.signup_date, 1)
+        due_date = billing_date_in_month(client, first_billing.year, first_billing.month)
         while due_date < next_month_start:
             period = (due_date.year, due_date.month)
             if period not in existing_months:

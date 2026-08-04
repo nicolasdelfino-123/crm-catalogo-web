@@ -484,12 +484,20 @@ export function createDashboardPage(dependencies) {
         : metricKey === "sold_clients_month"
           ? "sale_date"
         : "due_date";
+    const calendarVisibleItems = metricView === "calendar"
+      ? displayedItems.filter((item) => {
+        const itemDate = metricKey === "active_clients"
+          ? clientBillingDateInMonth(item, calendarMonth)
+          : item[calendarDateField];
+        return itemDate?.slice(0, 7) === calendarMonth;
+      })
+      : displayedItems;
     const calendarDays = useMemo(() => {
       const [year, month] = calendarMonth.split("-").map(Number);
       const firstDay = new Date(Date.UTC(year, month - 1, 1));
       const mondayOffset = (firstDay.getUTCDay() + 6) % 7;
       const gridStart = new Date(Date.UTC(year, month - 1, 1 - mondayOffset));
-      const counts = displayedItems.reduce((result, item) => {
+      const counts = calendarVisibleItems.reduce((result, item) => {
         const itemDate = metricKey === "active_clients"
           ? clientBillingDateInMonth(item, calendarMonth)
           : item[calendarDateField];
@@ -517,7 +525,7 @@ export function createDashboardPage(dependencies) {
           riskCount: riskCounts[iso] || 0,
         };
       });
-    }, [calendarMonth, displayedItems, sourceItems, calendarDateField, metricKey]);
+    }, [calendarMonth, calendarVisibleItems, sourceItems, calendarDateField, metricKey]);
     const calendarTitle = new Intl.DateTimeFormat("es-AR", {
       month: "long",
       year: "numeric",
@@ -535,7 +543,7 @@ export function createDashboardPage(dependencies) {
               ? ["venta", "ventas", "Ventas"]
               : ["acción", "acciones", "Acciones"];
     const selectedDayItems = selectedCalendarDate
-      ? displayedItems.filter((item) => (
+      ? calendarVisibleItems.filter((item) => (
         metricKey === "active_clients"
           ? clientBillingDateInMonth(item, calendarMonth)
           : item[calendarDateField]

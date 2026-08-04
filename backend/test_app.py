@@ -40,6 +40,22 @@ def test_current_month_payment_is_created_before_its_due_date(app):
         assert payment.amount == 32000
 
 
+def test_monthly_generation_respects_configured_renewal_day(app):
+    with app.app_context():
+        customer = Client(
+            name="Vence el treinta", business_name="Día configurado SA",
+            signup_date=date(2026, 6, 12), next_renewal_date=date(2026, 7, 30),
+            country="Argentina", currency="ARS", payment_amount=44000, status="active",
+        )
+        db.session.add(customer)
+        db.session.flush()
+        sync_overdue_monthly_payments([customer], date(2026, 8, 1))
+        august_payment = Payment.query.filter_by(
+            client_id=customer.id, due_date=date(2026, 8, 30),
+        ).one()
+        assert august_payment.status == "pending"
+
+
 def test_calendar_can_mark_projected_monthly_payment_as_paid(client, app):
     today = date.today()
     with app.app_context():

@@ -205,7 +205,12 @@ const clientBillingDateInMonth = (client, month) => {
   }
   const firstBillingMonth = addCalendarMonths(client.signup_date, 1).slice(0, 7);
   if (month < firstBillingMonth) return null;
-  const day = Number(client.signup_date.slice(8, 10));
+  const persistedPayment = client.monthly_payments?.find(
+    (payment) => payment.due_date?.slice(0, 7) === month,
+  );
+  if (persistedPayment) return persistedPayment.due_date;
+  const billingReference = client.next_renewal_date || client.signup_date;
+  const day = Number(billingReference.slice(8, 10));
   const [year, monthNumber] = month.split("-").map(Number);
   const lastDay = new Date(year, monthNumber, 0).getDate();
   return `${month}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
