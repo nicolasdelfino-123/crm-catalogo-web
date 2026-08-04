@@ -373,6 +373,7 @@ def clients_create():
         if "followers_count" in data or "publications_count" in data:
             record_client_metric(client)
         if data.get("generate_schedule", False): generate_schedule(client)
+        sync_overdue_monthly_payments([client])
         ensure_collection_action(client)
         db.session.commit(); return ok(client.detail(), "Cliente creado", 201)
     except (ValueError, TypeError) as exc:
@@ -400,6 +401,7 @@ def clients_update(client_id):
         current_counts = (client.followers_count or 0, client.publications_count or 0)
         if current_counts != previous_counts:
             record_client_metric(client)
+        sync_overdue_monthly_payments([client])
         ensure_collection_action(client)
         db.session.commit(); return ok(client.detail(), "Cliente actualizado")
     except (ValueError, TypeError) as exc:

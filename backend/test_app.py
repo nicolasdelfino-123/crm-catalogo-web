@@ -1,3 +1,4 @@
+import calendar
 import pytest
 from datetime import date, datetime, timedelta
 from app import create_app
@@ -54,6 +55,28 @@ def test_monthly_generation_respects_configured_renewal_day(app):
             client_id=customer.id, due_date=date(2026, 8, 30),
         ).one()
         assert august_payment.status == "pending"
+
+
+def test_creating_client_materializes_current_month_payment_immediately(client):
+    today = date.today()
+    previous_year = today.year - 1 if today.month == 1 else today.year
+    previous_month_number = 12 if today.month == 1 else today.month - 1
+    previous_day = min(30, calendar.monthrange(previous_year, previous_month_number)[1])
+    previous_month = date(previous_year, previous_month_number, previous_day)
+    expected_day = min(previous_day, calendar.monthrange(today.year, today.month)[1])
+    expected_due_date = date(today.year, today.month, expected_day)
+    response = client.post("/api/clients", json={
+        "name": "Alta con mensualidad", "business_name": "Mensualidad inmediata SA",
+        "sale_date": previous_month.isoformat(), "signup_date": previous_month.isoformat(),
+        "next_renewal_date": expected_due_date.isoformat(), "status": "active",
+        "country": "Argentina", "currency": "ARS", "payment_amount": 51000,
+    })
+    assert response.status_code == 201
+    payments = response.get_json()["data"]["payments"]
+    assert any(
+        payment["due_date"] == expected_due_date.isoformat() and payment["status"] == "pending"
+        for payment in payments
+    )
 
 
 def test_calendar_can_mark_projected_monthly_payment_as_paid(client, app):
