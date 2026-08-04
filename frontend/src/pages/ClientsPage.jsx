@@ -301,7 +301,7 @@ export function createClientsPage(dependencies) {
     );
   }
 
-  function MiniForm({ type, clientId, defaultDueDate, onDone }) {
+  function MiniForm({ type, clientId, defaultDueDate, onDone, onCancel }) {
     const schemas = {
       action: {
         title: "Nueva acción",
@@ -468,10 +468,15 @@ export function createClientsPage(dependencies) {
             </label>
           ))}
         </div>
-        <button className="primary">
-          <Plus size={16} />
-          Agregar
-        </button>
+        <div className="mini-form-actions">
+          {onCancel && (
+            <button type="button" className="secondary" onClick={onCancel}>Cancelar</button>
+          )}
+          <button className="primary">
+            <Plus size={16} />
+            Agregar
+          </button>
+        </div>
       </form>
     );
   }
@@ -1059,6 +1064,7 @@ export function createClientsPage(dependencies) {
                   <MiniForm
                     type="action"
                     clientId={client.id}
+                    onCancel={() => setAdding(null)}
                     onDone={() => {
                       setAdding(null);
                       load();
