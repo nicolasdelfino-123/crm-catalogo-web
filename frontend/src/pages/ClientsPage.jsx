@@ -1175,7 +1175,14 @@ export function createClientsPage(dependencies) {
                   <MiniForm
                     type={adding}
                     clientId={client.id}
-                    defaultDueDate={client.next_renewal_date}
+                    defaultDueDate={
+                      adding === "payment"
+                        && !client.payments.some((payment) =>
+                          payment.payment_type === "monthly"
+                          && payment.due_date?.slice(0, 7) === client.signup_date?.slice(0, 7))
+                        ? client.signup_date
+                        : client.next_renewal_date
+                    }
                     onDone={() => {
                       setAdding(null);
                       load();

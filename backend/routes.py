@@ -74,6 +74,27 @@ def sync_overdue_monthly_payments(clients, today=None):
     for client in clients:
         if client.status not in ("active", "at_risk") or not client.signup_date:
             continue
+        # Versiones anteriores asignaban la próxima renovación al primer pago
+        # hecho el mismo día del alta. Ese pago pertenece al mes de inicio.
+        first_renewal = add_calendar_months(client.signup_date, 1)
+        has_signup_month_payment = any(
+            payment.payment_type == "monthly" and payment.due_date
+            and (payment.due_date.year, payment.due_date.month)
+            == (client.signup_date.year, client.signup_date.month)
+            for payment in client.payments
+        )
+        initial_payment = next((
+            payment for payment in client.payments
+            if not has_signup_month_payment
+            and payment.payment_type == "monthly" and payment.status == "paid"
+            and payment.paid_at and payment.paid_at.date() == client.signup_date
+            and payment.due_date == first_renewal
+        ), None)
+        if initial_payment:
+            initial_payment.due_date = client.signup_date
+            initial_payment.period_year = client.signup_date.year
+            initial_payment.period_month = client.signup_date.month
+            changed.append(initial_payment)
         for payment in client.payments:
             if (payment.payment_type == "monthly" and payment.status == "pending"
                     and payment.due_date and payment.due_date < today):
@@ -84,7 +105,7 @@ def sync_overdue_monthly_payments(clients, today=None):
             for payment in client.payments
             if payment.payment_type == "monthly" and payment.due_date
         }
-        first_billing = add_calendar_months(client.signup_date, 1)
+        first_billing = first_renewal
         due_date = billing_date_in_month(client, first_billing.year, first_billing.month)
         while due_date < next_month_start:
             period = (due_date.year, due_date.month)

@@ -85,6 +85,31 @@ def test_monthly_generation_respects_configured_renewal_day(app):
         assert august_payment.status == "pending"
 
 
+def test_initial_payment_misassigned_to_first_renewal_is_repaired(app):
+    signup = date(2026, 7, 30)
+    renewal = date(2026, 8, 30)
+    with app.app_context():
+        customer = Client(
+            name="Primer mes", business_name="Primer mes SA", signup_date=signup,
+            next_renewal_date=renewal, country="Argentina", currency="ARS",
+            payment_amount=30000, status="active",
+        )
+        db.session.add(customer)
+        db.session.flush()
+        first_payment = Payment(
+            client=customer, amount=10000, currency="ARS", payment_type="monthly",
+            due_date=renewal, paid_at=datetime(2026, 7, 30, 12, 0), status="paid",
+            notes="Primer mes",
+        )
+        db.session.add(first_payment)
+        db.session.flush()
+        sync_overdue_monthly_payments([customer], date(2026, 8, 4))
+        assert first_payment.due_date == signup
+        august_payment = Payment.query.filter_by(client_id=customer.id, due_date=renewal).one()
+        assert august_payment.status == "pending"
+        assert august_payment.amount == 30000
+
+
 def test_creating_client_materializes_current_month_payment_immediately(client):
     today = date.today()
     previous_year = today.year - 1 if today.month == 1 else today.year
