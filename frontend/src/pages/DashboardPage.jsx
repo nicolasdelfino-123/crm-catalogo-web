@@ -21,6 +21,7 @@ export function createDashboardPage(dependencies) {
     const [incomeMonths, setIncomeMonths] = useState([]);
     const [incomeLoading, setIncomeLoading] = useState(true);
     const [showTrafficLights, setShowTrafficLights] = useState(false);
+    const [showPaymentCalendar, setShowPaymentCalendar] = useState(false);
     const [selectedTrafficClient, setSelectedTrafficClient] = useState(null);
     const [trafficClientForm, setTrafficClientForm] = useState(null);
     const loadDashboard = useCallback(() => api("/dashboard/summary").then(setData), []);
@@ -108,6 +109,10 @@ export function createDashboardPage(dependencies) {
               <span><i className="traffic-dot yellow" />{data.traffic_lights?.yellow || 0}</span>
               <span><i className="traffic-dot green" />{data.traffic_lights?.green || 0}</span>
             </strong></div>
+          </button>
+          <button type="button" className="metric metric-button" onClick={() => setShowPaymentCalendar(true)} aria-label="Abrir calendario visual de pagos">
+            <span className="green"><CalendarDays size={20} /></span>
+            <div><small>Calendario de pagos visual</small><strong>Ver tabla</strong></div>
           </button>
           {cards.map(([key, label, value, Icon, color]) => (
             <button
@@ -265,6 +270,16 @@ export function createDashboardPage(dependencies) {
           />
         )}
         {showTrafficLights && <TrafficLightModal items={data.details?.traffic_lights || []} onClose={() => setShowTrafficLights(false)} onClient={(clientId) => { setShowTrafficLights(false); setSelectedTrafficClient(clientId); }} onRefresh={loadDashboard} />}
+        {showPaymentCalendar && (
+          <PaymentCalendarModal
+            items={data.details?.active_clients || []}
+            onClose={() => setShowPaymentCalendar(false)}
+            onClient={(clientId) => {
+              setShowPaymentCalendar(false);
+              setSelectedTrafficClient(clientId);
+            }}
+          />
+        )}
         {selectedTrafficClient && <DetailModal clientId={selectedTrafficClient} onClose={() => setSelectedTrafficClient(null)} onRefresh={loadDashboard} onEdit={(client) => { setSelectedTrafficClient(null); setTrafficClientForm(client); }} />}
         {trafficClientForm && <ClientForm client={trafficClientForm} onClose={() => setTrafficClientForm(null)} onSaved={() => { setTrafficClientForm(null); loadDashboard(); }} />}
         {selectedIncomeClient && (
@@ -361,6 +376,81 @@ export function createDashboardPage(dependencies) {
         <div><strong>{client.name}</strong><span>{client.business_name}</span></div><ChevronRight size={18} />
       </article>)}{!visibleClients.length && <div className="empty"><Search size={28} /><h3>No se encontraron clientes</h3><p>Probá con otra palabra.</p></div>}</div>
     </section></div>;
+  }
+
+  function PaymentCalendarModal({ items, onClose, onClient }) {
+    useEscapeClose(onClose);
+    const clients = useMemo(() => items
+      .filter((client) => ["active", "at_risk"].includes(client.status) && client.signup_date)
+      .sort((first, second) => first.signup_date.localeCompare(second.signup_date)
+        || first.name.localeCompare(second.name, "es")), [items]);
+    const months = useMemo(() => {
+      if (!clients.length) return [];
+      const firstMonth = clients.reduce((earliest, client) =>
+        client.signup_date.slice(0, 7) < earliest ? client.signup_date.slice(0, 7) : earliest,
+      clients[0].signup_date.slice(0, 7));
+      const currentMonth = monthKey();
+      const result = [];
+      let [year, month] = firstMonth.split("-").map(Number);
+      while (`${year}-${String(month).padStart(2, "0")}` <= currentMonth && result.length < 120) {
+        result.push(`${year}-${String(month).padStart(2, "0")}`);
+        month += 1;
+        if (month === 13) { month = 1; year += 1; }
+      }
+      return result;
+    }, [clients]);
+    const currentMonth = monthKey();
+    const cellFor = (client, month) => {
+      const payment = client.monthly_payments?.find((item) => item.due_date?.slice(0, 7) === month);
+      if (payment) {
+        const visualStatus = payment.status === "paid"
+          ? "paid"
+          : payment.status === "overdue" ? "overdue" : "pending";
+        return { status: visualStatus, amount: payment.amount, currency: payment.currency || client.currency };
+      }
+      const firstRecurringMonth = (() => {
+        const [year, monthNumber] = client.signup_date.slice(0, 7).split("-").map(Number);
+        const next = new Date(Date.UTC(year, monthNumber, 1));
+        return next.toISOString().slice(0, 7);
+      })();
+      if (month < firstRecurringMonth || month > currentMonth) return null;
+      return {
+        status: month < currentMonth ? "overdue" : "pending",
+        amount: client.payment_amount,
+        currency: client.currency,
+      };
+    };
+    return (
+      <div className="modal-layer">
+        <section className="payment-calendar-modal" role="dialog" aria-modal="true" aria-labelledby="payment-calendar-title">
+          <div className="modal-head">
+            <div><span className="eyebrow">Seguimiento mensual</span><h2 id="payment-calendar-title">Calendario de pagos visual</h2></div>
+            <div className="payment-calendar-legend">
+              <span className="paid">Pagado</span><span className="pending">Pendiente</span><span className="overdue">Vencido</span>
+            </div>
+            <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
+          </div>
+          <div className="payment-calendar-scroll">
+            <table>
+              <thead><tr><th>Cliente</th><th>Alta</th>{months.map((month) => <th key={month}>{fmtMonth(month)}</th>)}</tr></thead>
+              <tbody>
+                {clients.map((client) => (
+                  <tr key={client.id}>
+                    <td><button type="button" onClick={() => onClient(client.id)}>{client.name}<small>{client.business_name}</small></button></td>
+                    <td>{fmtDate(client.signup_date)}</td>
+                    {months.map((month) => {
+                      const cell = cellFor(client, month);
+                      return <td key={month} className={cell ? `payment-month-cell ${cell.status}` : "payment-month-cell empty-month"}>{cell ? fmtMoney(cell.amount, cell.currency) : "—"}</td>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!clients.length && <Empty />}
+          </div>
+        </section>
+      </div>
+    );
   }
 
   function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
