@@ -700,14 +700,18 @@ def actions_generate(client_id):
 def actions_list():
     requested_view = request.args.get("view")
     requested_scope = request.args.get("scope", requested_view)
-    existing_clients = Client.query.filter(Client.archived_at.is_(None)).all()
+    existing_clients = Client.query.filter(
+        Client.archived_at.is_(None), Client.status != "cancelled",
+    ).all()
     collection_actions_changed = bool(sync_overdue_monthly_payments(existing_clients))
     for client in existing_clients:
         collection_actions_changed = advance_service_stage(client) or collection_actions_changed
         collection_actions_changed = ensure_collection_action(client) or collection_actions_changed
     if collection_actions_changed:
         db.session.commit()
-    query = ClientAction.query.join(Client).filter(Client.archived_at.is_(None))
+    query = ClientAction.query.join(Client).filter(
+        Client.archived_at.is_(None), Client.status != "cancelled",
+    )
     if requested_view == "calendar":
         # En el calendario los cobros se proyectan para cada mes; se excluye
         # la única acción persistida para no mostrar el mismo cobro dos veces.
@@ -771,7 +775,8 @@ def actions_list():
         result.sort(key=lambda item: (item["due_date"] or "9999-12-31", str(item["id"])))
     if request.args.get("status") == "pending" and requested_scope == "overdue":
         overdue_payments = Payment.query.join(Client).filter(
-            Client.archived_at.is_(None), Payment.payment_type == "monthly",
+            Client.archived_at.is_(None), Client.status != "cancelled",
+            Payment.payment_type == "monthly",
             Payment.status.in_(("pending", "partial", "overdue")),
             Payment.due_date < date.today(),
         ).order_by(Payment.due_date.asc()).all()
@@ -1000,7 +1005,10 @@ def payments_list():
         db.session.commit()
     items = (
         Payment.query.join(Client)
-        .filter(Client.archived_at.is_(None))
+        .filter(
+            Client.archived_at.is_(None),
+            or_(Client.status != "cancelled", Payment.status == "paid"),
+        )
         .order_by(Client.name.asc(), Payment.due_date.asc().nullslast(), Payment.id.asc())
         .limit(300)
         .all()
@@ -1227,6 +1235,7 @@ def dashboard():
         db.session.commit()
     actions = ClientAction.query.join(Client).filter(
         Client.archived_at.is_(None),
+        Client.status != "cancelled",
         or_(ClientAction.action_type != "collection", ClientAction.action_type.is_(None)),
     ).all()
     payments = Payment.query.all()
@@ -1248,9 +1257,15 @@ def dashboard():
     ).all()
     pending_payments = [
         p for p in payments
-        if p.client.archived_at is None and p.status in ("pending", "partial", "overdue")
+        if p.client.archived_at is None and p.client.status != "cancelled"
+        and p.status in ("pending", "partial", "overdue")
     ]
-    overdue_payments = [p for p in payments if p.payment_type == "monthly" and p.status in ("pending", "partial", "overdue") and p.due_date and p.due_date < today]
+    overdue_payments = [
+        p for p in payments
+        if p.client.status != "cancelled" and p.payment_type == "monthly"
+        and p.status in ("pending", "partial", "overdue")
+        and p.due_date and p.due_date < today
+    ]
     overdue_actions = [a for a in pending_actions if a.due_date and a.due_date < today]
     renewals_week_start = today - timedelta(days=today.weekday())
     renewals_week_end = renewals_week_start + timedelta(days=7)

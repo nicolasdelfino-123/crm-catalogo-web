@@ -2,7 +2,35 @@ import calendar
 import pytest
 from datetime import date, datetime, timedelta
 from app import create_app
-from models import db, Client, Payment, User, ClientCredential
+from models import db, Client, ClientAction, Payment, User, ClientCredential
+
+
+def test_cancelled_client_pending_items_are_hidden_from_dashboard_and_calendar(client, app):
+    yesterday = date.today() - timedelta(days=1)
+    with app.app_context():
+        customer = Client(
+            name="Cancelado con pendientes", business_name="Cancelado SA",
+            signup_date=date.today() - timedelta(days=60), next_renewal_date=yesterday,
+            country="Argentina", currency="ARS", payment_amount=27000, status="cancelled",
+        )
+        db.session.add(customer)
+        db.session.flush()
+        payment = Payment(
+            client=customer, amount=27000, currency="ARS", payment_type="monthly",
+            due_date=yesterday, status="overdue",
+        )
+        action = ClientAction(
+            client=customer, title="Acción vencida cancelada", due_date=yesterday,
+            status="pending", priority="urgent",
+        )
+        db.session.add_all([payment, action])
+        db.session.commit()
+
+    summary = client.get("/api/dashboard/summary").get_json()["data"]
+    assert not any(item.get("client_name") == "Cancelado con pendientes" for item in summary["details"]["pending_payments"])
+    assert not any(item.get("client_name") == "Cancelado con pendientes" for item in summary["details"]["overdue_actions"])
+    overdue = client.get("/api/actions?view=calendar&scope=overdue&status=pending&month=" + date.today().strftime("%Y-%m")).get_json()["data"]
+    assert not any(item.get("client_name") == "Cancelado con pendientes" for item in overdue)
 from routes import advance_service_stage, sync_overdue_monthly_payments, sync_service_stages
 
 
