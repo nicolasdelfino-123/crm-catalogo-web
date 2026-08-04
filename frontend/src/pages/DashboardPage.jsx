@@ -906,19 +906,24 @@ export function createDashboardPage(dependencies) {
             {metricView === "list" && supportsCalendar && (
               <div className="dashboard-metric-toolbar">
                 {metricKey === "active_clients" && (
-                  <label className="dashboard-status-filter">
-                    Estado
-                    <select
-                      value={activeStatusFilter}
-                      onChange={(event) => setActiveStatusFilter(event.target.value)}
-                    >
-                      <option value="active_no_signup">Activos y sin alta</option>
-                      <option value="active">Activos</option>
-                      <option value="no_signup">Solo sin alta</option>
-                      <option value="at_risk">Solo en riesgo</option>
-                      <option value="cancelled">Cancelados</option>
-                    </select>
-                  </label>
+                  <>
+                    <span className="dashboard-client-count">
+                      {displayedItems.length} {displayedItems.length === 1 ? "cliente" : "clientes"} en página
+                    </span>
+                    <label className="dashboard-status-filter">
+                      Estado
+                      <select
+                        value={activeStatusFilter}
+                        onChange={(event) => setActiveStatusFilter(event.target.value)}
+                      >
+                        <option value="active_no_signup">Activos y sin alta</option>
+                        <option value="active">Activos</option>
+                        <option value="no_signup">Solo sin alta</option>
+                        <option value="at_risk">Solo en riesgo</option>
+                        <option value="cancelled">Cancelados</option>
+                      </select>
+                    </label>
+                  </>
                 )}
                 <button
                   type="button"

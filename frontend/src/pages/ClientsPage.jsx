@@ -1946,6 +1946,7 @@ export function createClientsPage(dependencies) {
             onSaved={() => {
               setForm(null);
               load();
+              window.dispatchEvent(new Event("crm-dashboard-refresh"));
               setToast("Cambios guardados correctamente");
             }}
           />

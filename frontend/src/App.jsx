@@ -356,6 +356,9 @@ export default function App() {
   const [visitedPages, setVisitedPages] = useState(() => new Set(["dashboard"]));
   const [session, setSession] = useState(() => ({ checking: Boolean(getToken()), user: null }));
   const navigate = useCallback((nextPage) => {
+    if (nextPage === "dashboard") {
+      window.dispatchEvent(new Event("crm-dashboard-refresh"));
+    }
     setVisitedPages((current) => {
       if (current.has(nextPage)) return current;
       const next = new Set(current);
