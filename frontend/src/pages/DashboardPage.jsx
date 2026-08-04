@@ -586,14 +586,18 @@ export function createDashboardPage(dependencies) {
           ? Boolean(item.client_id)
         : Boolean(item.id);
       const targetClientId = actionMetric || paymentMetric ? item.client_id : item.id;
-      const collectionDueDate = metricKey === "active_clients" && metricView === "calendar"
-        ? clientBillingDateInMonth(item, calendarMonth)
+      const collectionMonth = metricView === "calendar" ? calendarMonth : monthKey();
+      const collectionDueDate = metricKey === "active_clients"
+        && ["active", "at_risk"].includes(item.status)
+        ? clientBillingDateInMonth(item, collectionMonth)
         : null;
       const monthlyPayment = collectionDueDate
         ? item.monthly_payments?.find((payment) => payment.due_date === collectionDueDate)
         : null;
       const collectionPaid = monthlyPayment?.status === "paid";
-      const collectionCanBePaid = collectionDueDate && collectionDueDate <= todayIso && !collectionPaid;
+      const collectionCanBePaid = collectionDueDate
+        && collectionDueDate.slice(0, 7) <= todayIso.slice(0, 7)
+        && !collectionPaid;
       const openMetricItem = () => {
         if (actionMetric && item.standalone && !item.projected) {
           setSelectedStandaloneAction(item);
@@ -653,6 +657,9 @@ export function createDashboardPage(dependencies) {
                       : item.status === "no_signup" ? item.sale_date : item.signup_date,
                   )}
                 </strong>
+                {metricView === "list" && collectionDueDate && (
+                  <><small>Vencimiento mensual</small><strong>{fmtDate(collectionDueDate)}</strong></>
+                )}
                 {badge(item.status)}{badge(item.service_stage)}
                 {collectionPaid && <span className="badge paid">Pagado</span>}
                 {collectionCanBePaid && (

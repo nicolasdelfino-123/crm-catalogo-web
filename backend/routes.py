@@ -65,8 +65,9 @@ def billing_date_in_month(client, year, month):
 
 
 def sync_overdue_monthly_payments(clients, today=None):
-    """Materializa mensualidades exigibles y actualiza su estado visible."""
+    """Materializa al iniciar el mes todas las mensualidades de ese período."""
     today = today or date.today()
+    next_month_start = add_calendar_months(today.replace(day=1), 1)
     changed = []
     for client in clients:
         if client.status not in ("active", "at_risk") or not client.signup_date:
@@ -82,7 +83,7 @@ def sync_overdue_monthly_payments(clients, today=None):
             if payment.payment_type == "monthly" and payment.due_date
         }
         due_date = add_calendar_months(client.signup_date, 1)
-        while due_date <= today:
+        while due_date < next_month_start:
             period = (due_date.year, due_date.month)
             if period not in existing_months:
                 payment = Payment(
@@ -93,8 +94,8 @@ def sync_overdue_monthly_payments(clients, today=None):
                     period_year=due_date.year,
                     period_month=due_date.month,
                     due_date=due_date,
-                    status="pending" if due_date == today else "overdue",
-                    notes="Generado automáticamente al llegar la fecha de cobro.",
+                    status="overdue" if due_date < today else "pending",
+                    notes="Generado automáticamente al iniciar el mes de la mensualidad.",
                 )
                 db.session.add(payment)
                 changed.append(payment)
@@ -919,8 +920,9 @@ def monthly_payment_pay(client_id, due_date):
         billing_date = date.fromisoformat(due_date)
     except ValueError:
         return error("La fecha de cobro debe tener el formato AAAA-MM-DD", 422)
-    if billing_date > date.today():
-        return error("No se puede cobrar una mensualidad futura", 422)
+    next_month_start = add_calendar_months(date.today().replace(day=1), 1)
+    if billing_date >= next_month_start:
+        return error("Sólo se pueden anticipar mensualidades del mes actual", 422)
     payment = Payment.query.filter(
         Payment.client_id == client.id,
         Payment.payment_type == "monthly",

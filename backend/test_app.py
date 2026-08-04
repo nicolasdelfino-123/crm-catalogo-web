@@ -22,6 +22,24 @@ def test_monthly_payment_is_created_as_pending_on_its_due_date(app):
         assert payment.status == "pending"
 
 
+def test_current_month_payment_is_created_before_its_due_date(app):
+    reference_date = date(2026, 8, 1)
+    with app.app_context():
+        customer = Client(
+            name="Pago anticipado", business_name="Anticipado SA",
+            signup_date=date(2026, 7, 20), country="Argentina", currency="ARS",
+            payment_amount=32000, status="active",
+        )
+        db.session.add(customer)
+        db.session.flush()
+        sync_overdue_monthly_payments([customer], reference_date)
+        payment = Payment.query.filter_by(
+            client_id=customer.id, due_date=date(2026, 8, 20),
+        ).one()
+        assert payment.status == "pending"
+        assert payment.amount == 32000
+
+
 def test_calendar_can_mark_projected_monthly_payment_as_paid(client, app):
     today = date.today()
     with app.app_context():
