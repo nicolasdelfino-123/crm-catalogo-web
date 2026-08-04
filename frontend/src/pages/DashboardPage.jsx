@@ -380,10 +380,20 @@ export function createDashboardPage(dependencies) {
 
   function PaymentCalendarModal({ items, onClose, onClient }) {
     useEscapeClose(onClose);
+    const [sortBySignupDay, setSortBySignupDay] = useState(false);
     const clients = useMemo(() => items
       .filter((client) => ["active", "at_risk"].includes(client.status) && client.signup_date)
-      .sort((first, second) => first.signup_date.localeCompare(second.signup_date)
-        || first.name.localeCompare(second.name, "es")), [items]);
+      .sort((first, second) => {
+        if (sortBySignupDay) {
+          const dayDifference = Number(first.signup_date.slice(8, 10))
+            - Number(second.signup_date.slice(8, 10));
+          if (dayDifference) return dayDifference;
+        } else {
+          const dateDifference = first.signup_date.localeCompare(second.signup_date);
+          if (dateDifference) return dateDifference;
+        }
+        return first.name.localeCompare(second.name, "es");
+      }), [items, sortBySignupDay]);
     const months = useMemo(() => {
       if (!clients.length) return [];
       const firstMonth = clients.reduce((earliest, client) =>
@@ -432,7 +442,7 @@ export function createDashboardPage(dependencies) {
           </div>
           <div className="payment-calendar-scroll">
             <table>
-              <thead><tr><th>Cliente</th><th>Alta</th>{months.map((month) => <th key={month}>{fmtMonth(month)}</th>)}</tr></thead>
+              <thead><tr><th>Cliente</th><th><button type="button" className={sortBySignupDay ? "active" : ""} onClick={() => setSortBySignupDay((current) => !current)} title={sortBySignupDay ? "Volver al orden por fecha de alta" : "Ordenar por día del mes del 1 al 31"}>Alta <ArrowUpDown size={13} /></button></th>{months.map((month) => <th key={month}>{fmtMonth(month)}</th>)}</tr></thead>
               <tbody>
                 {clients.map((client) => (
                   <tr key={client.id}>
