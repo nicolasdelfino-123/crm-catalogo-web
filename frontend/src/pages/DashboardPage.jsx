@@ -690,7 +690,12 @@ export function createDashboardPage(dependencies) {
     return (
       <>
         <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-          <section className="dashboard-metric-modal" role="dialog" aria-modal="true" aria-label={title}>
+          <section
+            className={`dashboard-metric-modal ${metricKey === "active_clients" ? "active-clients-modal" : ""}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label={title}
+          >
           <div className="modal-head">
             <div>
               <span className="eyebrow">Detalle del resumen</span>
