@@ -83,7 +83,7 @@ def test_cancelled_clients_are_excluded_from_weekly_renewals(client, app):
 def test_dashboard_includes_traffic_light_counts_and_clients(client, app):
     with app.app_context():
         db.session.add_all([
-            Client(name="Rojo", business_name="Uno", country="Argentina", currency="ARS", traffic_light="red"),
+            Client(name="Rojo", business_name="Uno", website_url="https://uno.example.com", country="Argentina", currency="ARS", traffic_light="red"),
             Client(name="Amarillo", business_name="Dos", country="Argentina", currency="ARS", traffic_light="yellow"),
             Client(name="Verde", business_name="Tres", country="Argentina", currency="ARS", traffic_light="green"),
             Client(name="Cancelado", business_name="Cuatro", country="Argentina", currency="ARS", status="cancelled", traffic_light="red"),
@@ -93,6 +93,7 @@ def test_dashboard_includes_traffic_light_counts_and_clients(client, app):
     assert summary["traffic_lights"] == {"red": 1, "yellow": 1, "green": 1}
     assert {item["traffic_light"] for item in summary["details"]["traffic_lights"]} == {"red", "yellow", "green"}
     assert {item["name"] for item in summary["details"]["traffic_lights"]} == {"Rojo", "Amarillo", "Verde"}
+    assert next(item for item in summary["details"]["traffic_lights"] if item["name"] == "Rojo")["website_url"] == "https://uno.example.com"
 
 
 def test_traffic_light_patch_does_not_require_missing_legacy_sale_date(client, app):

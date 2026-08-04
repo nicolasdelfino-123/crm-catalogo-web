@@ -1278,6 +1278,7 @@ def dashboard():
                 elapsed_months = max(0, elapsed_months - 1)
         return {
             "id": client.id, "name": client.name, "business_name": client.business_name,
+            "website_url": client.website_url,
             "status": client.status, "service_stage": client.service_stage,
             "sale_date": iso(client.sale_date),
             "commercial_signup_date": iso(client.commercial_signup_date),

@@ -350,6 +350,7 @@ export function createDashboardPage(dependencies) {
     const [metricView, setMetricView] = useState("list");
     const [dateOrder, setDateOrder] = useState(metricKey === "active_clients" ? "desc" : "asc");
     const [activeStatusFilter, setActiveStatusFilter] = useState("active_no_signup");
+    const [clientQuickSearch, setClientQuickSearch] = useState("");
     const [pendingTypeFilter, setPendingTypeFilter] = useState("all");
     const [renewalWeekStart, setRenewalWeekStart] = useState(() => dateKey(startOfWeek(new Date())));
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -423,6 +424,15 @@ export function createDashboardPage(dependencies) {
         return true;
       })
       : statusFilteredItems;
+    const searchedSourceItems = metricKey === "active_clients"
+      && metricView === "list"
+      && clientQuickSearch.trim()
+      ? filteredSourceItems.filter((item) => {
+        const query = clientQuickSearch.trim().toLocaleLowerCase("es");
+        return [item.name, item.business_name, item.website_url]
+          .some((value) => value?.toLocaleLowerCase("es").includes(query));
+      })
+      : filteredSourceItems;
     const displayedItems = useMemo(() => {
       const hasDate = actionMetric || paymentMetric || [
         "active_clients",
@@ -441,8 +451,8 @@ export function createDashboardPage(dependencies) {
         if (metricKey === "sold_clients_month") return item.sale_date;
         return null;
       };
-      if (!hasDate) return filteredSourceItems;
-      return [...filteredSourceItems].sort((first, second) => {
+      if (!hasDate) return searchedSourceItems;
+      return [...searchedSourceItems].sort((first, second) => {
         const firstDate = itemDate(first);
         const secondDate = itemDate(second);
         if (!firstDate && !secondDate) return first.id - second.id;
@@ -451,7 +461,7 @@ export function createDashboardPage(dependencies) {
         const comparison = firstDate.localeCompare(secondDate);
         return (dateOrder === "asc" ? comparison : -comparison) || first.id - second.id;
       });
-    }, [filteredSourceItems, metricKey, dateOrder, actionMetric, paymentMetric]);
+    }, [searchedSourceItems, metricKey, dateOrder, actionMetric, paymentMetric]);
     const calendarDateField = metricKey === "active_clients"
       ? "next_renewal_date"
       : metricKey === "renewals_week"
@@ -716,6 +726,29 @@ export function createDashboardPage(dependencies) {
                   Calendario
                 </button>
               </div>
+            )}
+            {metricKey === "active_clients" && metricView === "list" && (
+              <label className="search dashboard-client-search">
+                <Search size={17} />
+                <input
+                  type="search"
+                  value={clientQuickSearch}
+                  onChange={(event) => setClientQuickSearch(event.target.value)}
+                  placeholder="Buscar por cliente, negocio o página web…"
+                  aria-label="Buscar cliente o página web"
+                  autoFocus
+                />
+                {clientQuickSearch && (
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => setClientQuickSearch("")}
+                    aria-label="Limpiar búsqueda"
+                  >
+                    <X size={15} />
+                  </button>
+                )}
+              </label>
             )}
             {collectionFilterMetric && (
               <div className="dashboard-pending-type-filter">
