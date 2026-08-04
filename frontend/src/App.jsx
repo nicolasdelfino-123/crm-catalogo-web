@@ -200,10 +200,11 @@ const addCalendarMonths = (isoDate, months = 1) => {
 };
 const addCalendarMonth = (isoDate) => addCalendarMonths(isoDate, 1);
 const clientBillingDateInMonth = (client, month) => {
-  if (!["active", "at_risk"].includes(client.status) || !client.signup_date || !client.next_renewal_date) {
+  if (!["active", "at_risk"].includes(client.status) || !client.signup_date) {
     return null;
   }
-  if (month < client.next_renewal_date.slice(0, 7)) return null;
+  const firstBillingMonth = addCalendarMonths(client.signup_date, 1).slice(0, 7);
+  if (month < firstBillingMonth) return null;
   const day = Number(client.signup_date.slice(8, 10));
   const [year, monthNumber] = month.split("-").map(Number);
   const lastDay = new Date(year, monthNumber, 0).getDate();

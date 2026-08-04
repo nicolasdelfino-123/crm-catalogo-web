@@ -529,6 +529,37 @@ export function createDashboardPage(dependencies) {
       ) === selectedCalendarDate)
       : [];
     const todayIso = new Date().toLocaleDateString("en-CA");
+    const activeClientMonthlyTotals = useMemo(() => {
+      const currentMonth = todayIso.slice(0, 7);
+      const totals = {
+        expected: { ARS: 0, USD: 0 },
+        paid: { ARS: 0, USD: 0 },
+      };
+      sourceItems
+        .filter((item) => ["active", "at_risk"].includes(item.status) && item.signup_date)
+        .forEach((item) => {
+          const currency = item.currency || "ARS";
+          if (!(currency in totals.expected)) return;
+          const dueDate = clientBillingDateInMonth(item, currentMonth);
+          if (!dueDate) return;
+          const monthlyPayments = item.monthly_payments?.filter(
+            (candidate) => candidate.due_date?.slice(0, 7) === currentMonth,
+          ) || [];
+          const payment = monthlyPayments.find((candidate) => candidate.status === "paid")
+            || monthlyPayments.find((candidate) => candidate.due_date === dueDate);
+          const expectedAmount = Number(payment?.amount ?? item.payment_amount ?? 0);
+          totals.expected[currency] += expectedAmount;
+          monthlyPayments
+            .filter((candidate) => candidate.status === "paid")
+            .forEach((candidate) => {
+              const paymentCurrency = candidate.currency || currency;
+              if (paymentCurrency in totals.paid) {
+                totals.paid[paymentCurrency] += Number(candidate.amount || 0);
+              }
+            });
+        });
+      return totals;
+    }, [sourceItems, todayIso]);
     async function moveDashboardCalendar(offset) {
       const [year, month] = calendarMonth.split("-").map(Number);
       const next = new Date(Date.UTC(year, month - 1 + offset, 1));
@@ -687,6 +718,30 @@ export function createDashboardPage(dependencies) {
         </article>
       );
     }
+    const monthlyTotals = (
+      <div className="dashboard-monthly-totals">
+        <div className="dashboard-monthly-total paid-total">
+          <small>Mensualidades cobradas este mes</small>
+          <strong>{fmtMoney(activeClientMonthlyTotals.paid.ARS, "ARS")}</strong>
+          <span>{fmtMoney(activeClientMonthlyTotals.paid.USD, "USD")}</span>
+        </div>
+        <div className="dashboard-monthly-total pending-total">
+          <small>Mensualidades a cobrar · total mes</small>
+          <strong>{fmtMoney(activeClientMonthlyTotals.expected.ARS, "ARS")}</strong>
+          <span>{fmtMoney(activeClientMonthlyTotals.expected.USD, "USD")}</span>
+        </div>
+      </div>
+    );
+    const viewSwitch = (
+      <div className="dashboard-view-switch" aria-label={`Cambiar vista de ${title.toLowerCase()}`}>
+        <button type="button" className={metricView === "list" ? "active" : ""} onClick={() => setMetricView("list")} aria-pressed={metricView === "list"}>
+          <List size={16} />Lista
+        </button>
+        <button type="button" className={metricView === "calendar" ? "active" : ""} onClick={() => setMetricView("calendar")} aria-pressed={metricView === "calendar"}>
+          <CalendarDays size={16} />Calendario
+        </button>
+      </div>
+    );
     return (
       <>
         <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -703,6 +758,9 @@ export function createDashboardPage(dependencies) {
             </div>
             <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
           </div>
+          {metricKey === "active_clients" && (
+            <div className="dashboard-header-monthly-totals">{viewSwitch}{monthlyTotals}</div>
+          )}
           <div className="dashboard-metric-list">
             {metricKey === "active_client_days" && (
               <div className="dashboard-export-row">
@@ -717,7 +775,7 @@ export function createDashboardPage(dependencies) {
                 </button>
               </div>
             )}
-            {supportsCalendar && (
+            {supportsCalendar && metricKey !== "active_clients" && (
               <div className="dashboard-view-switch" aria-label={`Cambiar vista de ${title.toLowerCase()}`}>
                 <button
                   type="button"
@@ -740,27 +798,24 @@ export function createDashboardPage(dependencies) {
               </div>
             )}
             {metricKey === "active_clients" && metricView === "list" && (
-              <label className="search dashboard-client-search">
-                <Search size={17} />
-                <input
-                  type="search"
-                  value={clientQuickSearch}
-                  onChange={(event) => setClientQuickSearch(event.target.value)}
-                  placeholder="Buscar por cliente, negocio o página web…"
-                  aria-label="Buscar cliente o página web"
-                  autoFocus
-                />
-                {clientQuickSearch && (
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    onClick={() => setClientQuickSearch("")}
-                    aria-label="Limpiar búsqueda"
-                  >
-                    <X size={15} />
-                  </button>
-                )}
-              </label>
+              <div className="dashboard-client-list-toolbar">
+                <label className="search dashboard-client-search">
+                    <Search size={17} />
+                    <input
+                      type="search"
+                      value={clientQuickSearch}
+                      onChange={(event) => setClientQuickSearch(event.target.value)}
+                      placeholder="Buscar por cliente, negocio o página web…"
+                      aria-label="Buscar cliente o página web"
+                      autoFocus
+                    />
+                    {clientQuickSearch && (
+                      <button type="button" className="icon-btn" onClick={() => setClientQuickSearch("")} aria-label="Limpiar búsqueda">
+                        <X size={15} />
+                      </button>
+                    )}
+                </label>
+              </div>
             )}
             {collectionFilterMetric && (
               <div className="dashboard-pending-type-filter">

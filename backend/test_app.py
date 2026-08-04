@@ -112,6 +112,8 @@ def test_dashboard_includes_traffic_light_counts_and_clients(client, app):
     assert {item["traffic_light"] for item in summary["details"]["traffic_lights"]} == {"red", "yellow", "green"}
     assert {item["name"] for item in summary["details"]["traffic_lights"]} == {"Rojo", "Amarillo", "Verde"}
     assert next(item for item in summary["details"]["traffic_lights"] if item["name"] == "Rojo")["website_url"] == "https://uno.example.com"
+    assert "payment_amount" in summary["details"]["traffic_lights"][0]
+    assert "currency" in summary["details"]["traffic_lights"][0]
 
 
 def test_traffic_light_patch_does_not_require_missing_legacy_sale_date(client, app):

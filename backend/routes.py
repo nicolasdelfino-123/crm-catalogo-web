@@ -1281,6 +1281,8 @@ def dashboard():
         return {
             "id": client.id, "name": client.name, "business_name": client.business_name,
             "website_url": client.website_url,
+            "payment_amount": float(client.payment_amount or 0),
+            "currency": client.currency,
             "status": client.status, "service_stage": client.service_stage,
             "sale_date": iso(client.sale_date),
             "commercial_signup_date": iso(client.commercial_signup_date),
@@ -1295,6 +1297,8 @@ def dashboard():
                     "due_date": iso(payment.due_date),
                     "status": payment.status,
                     "paid_at": iso(payment.paid_at),
+                    "amount": float(payment.amount or 0),
+                    "currency": payment.currency,
                 }
                 for payment in client.payments
                 if payment.payment_type == "monthly" and payment.due_date
