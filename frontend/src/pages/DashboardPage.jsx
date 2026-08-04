@@ -582,15 +582,12 @@ export function createDashboardPage(dependencies) {
         .forEach((item) => {
           const currency = item.currency || "ARS";
           if (!(currency in totals.expected)) return;
-          const dueDate = clientBillingDateInMonth(item, currentMonth);
-          if (!dueDate) return;
+          // El total esperado debe coincidir con el pronóstico de Pagos:
+          // usa la mensualidad vigente del cliente, no una cuota histórica.
+          totals.expected[currency] += Number(item.payment_amount || 0);
           const monthlyPayments = item.monthly_payments?.filter(
             (candidate) => candidate.due_date?.slice(0, 7) === currentMonth,
           ) || [];
-          const payment = monthlyPayments.find((candidate) => candidate.status === "paid")
-            || monthlyPayments.find((candidate) => candidate.due_date === dueDate);
-          const expectedAmount = Number(payment?.amount ?? item.payment_amount ?? 0);
-          totals.expected[currency] += expectedAmount;
           monthlyPayments
             .filter((candidate) => candidate.status === "paid")
             .forEach((candidate) => {
