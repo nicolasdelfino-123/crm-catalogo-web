@@ -27,14 +27,14 @@ export function createAgendaPage(dependencies) {
       () => {
         const requestId = ++agendaRequestId.current;
         const calendarQuery = agendaDisplay === "calendar"
-          ? `view=calendar&scope=${view}&month=${calendarMonth}`
+          ? `view=calendar&scope=${view}&month=${calendarMonth}${agendaTypeFilter === "collections" ? "&collections=all" : ""}`
           : `view=${view}`;
         return api(`/actions?${calendarQuery}&status=${actionStatus}`).then((nextItems) => {
           if (requestId === agendaRequestId.current) setItems(nextItems);
           return nextItems;
         });
       },
-      [view, agendaDisplay, actionStatus, calendarMonth],
+      [view, agendaDisplay, actionStatus, calendarMonth, agendaTypeFilter],
     );
     useEffect(() => {
       load();

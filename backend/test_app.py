@@ -31,6 +31,27 @@ def test_cancelled_client_pending_items_are_hidden_from_dashboard_and_calendar(c
     assert not any(item.get("client_name") == "Cancelado con pendientes" for item in summary["details"]["overdue_actions"])
     overdue = client.get("/api/actions?view=calendar&scope=overdue&status=pending&month=" + date.today().strftime("%Y-%m")).get_json()["data"]
     assert not any(item.get("client_name") == "Cancelado con pendientes" for item in overdue)
+
+
+def test_calendar_collection_mode_includes_paid_and_pending_monthlies(client, app):
+    month_start = date.today().replace(day=1)
+    paid_due = month_start
+    pending_due = month_start + timedelta(days=min(10, calendar.monthrange(month_start.year, month_start.month)[1] - 1))
+    with app.app_context():
+        paid_client = Client(name="Cobro pagado", business_name="Pagado SA", signup_date=month_start - timedelta(days=60), country="Argentina", currency="ARS", status="active")
+        pending_client = Client(name="Cobro pendiente", business_name="Pendiente SA", signup_date=month_start - timedelta(days=60), country="Argentina", currency="ARS", status="active")
+        db.session.add_all([paid_client, pending_client])
+        db.session.flush()
+        db.session.add_all([
+            Payment(client=paid_client, amount=12000, currency="ARS", payment_type="monthly", due_date=paid_due, paid_at=datetime.now(), status="paid"),
+            Payment(client=pending_client, amount=18000, currency="ARS", payment_type="monthly", due_date=pending_due, status="pending"),
+        ])
+        db.session.commit()
+    month = month_start.strftime("%Y-%m")
+    items = client.get(f"/api/actions?view=calendar&scope=all&month={month}&status=pending&collections=all").get_json()["data"]
+    statuses = {item["client_name"]: item["status"] for item in items if item.get("action_type") == "collection_payment"}
+    assert statuses["Cobro pagado"] == "paid"
+    assert statuses["Cobro pendiente"] == "pending"
 from routes import advance_service_stage, sync_overdue_monthly_payments, sync_service_stages
 
 

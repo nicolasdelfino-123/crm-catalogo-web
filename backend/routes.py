@@ -721,6 +721,7 @@ def actions_generate(client_id):
 def actions_list():
     requested_view = request.args.get("view")
     requested_scope = request.args.get("scope", requested_view)
+    collection_mode = request.args.get("collections")
     existing_clients = Client.query.filter(
         Client.archived_at.is_(None), Client.status != "cancelled",
     ).all()
@@ -803,7 +804,7 @@ def actions_list():
         ).order_by(Payment.due_date.asc()).all()
         result.extend(payment_collection_item(payment) for payment in overdue_payments)
         result.sort(key=lambda item: (item["due_date"] or "9999-12-31", str(item["id"])))
-    if requested_view == "calendar" and request.args.get("status") == "pending" and request.args.get("month"):
+    if requested_view == "calendar" and request.args.get("status") == "pending" and request.args.get("month") and collection_mode != "all":
         projection_months = {request.args["month"]}
         if requested_scope in {"today", "week"}:
             projection_months = {date.today().strftime("%Y-%m")}
@@ -824,6 +825,39 @@ def actions_list():
                 )
             ]
         result.sort(key=lambda item: (item["due_date"] or "9999-12-31", str(item["id"])))
+    if requested_view == "calendar" and collection_mode == "all" and request.args.get("month"):
+        try:
+            month_start = date.fromisoformat(f'{request.args["month"]}-01')
+        except ValueError:
+            return error("Mes inválido", 422)
+        month_end = add_calendar_months(month_start, 1)
+        monthly_payments = Payment.query.join(Client).filter(
+            Client.archived_at.is_(None), Client.status != "cancelled",
+            Payment.payment_type == "monthly",
+            Payment.due_date >= month_start, Payment.due_date < month_end,
+        ).order_by(Payment.due_date.asc(), Client.name.asc()).all()
+        payment_items = []
+        for payment in monthly_payments:
+            item = payment_collection_item(payment)
+            item.update({
+                "status": payment.status,
+                "title": f"Cobro de {payment.client.name}",
+                "description": (
+                    "Mensualidad pagada." if payment.status == "paid"
+                    else "Mensualidad vencida." if payment.status == "overdue"
+                    else "Mensualidad pendiente de pago."
+                ),
+                "amount": float(payment.amount),
+                "currency": payment.currency,
+                "paid_at": iso(payment.paid_at),
+            })
+            payment_items.append(item)
+        projected_items = projected_collection_items(
+            existing_clients, month_start.year, month_start.month,
+        )
+        result.extend(payment_items)
+        result.extend(projected_items)
+        result.sort(key=lambda item: (item.get("due_date") or "9999-12-31", str(item["id"])))
     return ok(result)
 
 
