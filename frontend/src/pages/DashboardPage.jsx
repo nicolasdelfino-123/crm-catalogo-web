@@ -351,6 +351,7 @@ export function createDashboardPage(dependencies) {
     const [dateOrder, setDateOrder] = useState(metricKey === "active_clients" ? "desc" : "asc");
     const [activeStatusFilter, setActiveStatusFilter] = useState("active_no_signup");
     const [clientQuickSearch, setClientQuickSearch] = useState("");
+    const [paymentStatusFilter, setPaymentStatusFilter] = useState("all");
     const [pendingTypeFilter, setPendingTypeFilter] = useState("all");
     const [renewalWeekStart, setRenewalWeekStart] = useState(() => dateKey(startOfWeek(new Date())));
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -424,15 +425,27 @@ export function createDashboardPage(dependencies) {
         return true;
       })
       : statusFilteredItems;
+    const paymentFilteredItems = metricKey === "active_clients" && paymentStatusFilter !== "all"
+      ? filteredSourceItems.filter((item) => {
+        const referenceMonth = metricView === "calendar" ? calendarMonth : monthKey();
+        const dueDate = clientBillingDateInMonth(item, referenceMonth);
+        if (!dueDate) return false;
+        const payment = item.monthly_payments?.find(
+          (candidate) => candidate.due_date?.slice(0, 7) === referenceMonth
+            && candidate.status === "paid",
+        );
+        return paymentStatusFilter === "paid" ? Boolean(payment) : !payment;
+      })
+      : filteredSourceItems;
     const searchedSourceItems = metricKey === "active_clients"
       && metricView === "list"
       && clientQuickSearch.trim()
-      ? filteredSourceItems.filter((item) => {
+      ? paymentFilteredItems.filter((item) => {
         const query = clientQuickSearch.trim().toLocaleLowerCase("es");
         return [item.name, item.business_name, item.website_url]
           .some((value) => value?.toLocaleLowerCase("es").includes(query));
       })
-      : filteredSourceItems;
+      : paymentFilteredItems;
     const displayedItems = useMemo(() => {
       const hasDate = actionMetric || paymentMetric || [
         "active_clients",
@@ -759,7 +772,26 @@ export function createDashboardPage(dependencies) {
             <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
           </div>
           {metricKey === "active_clients" && (
-            <div className="dashboard-header-monthly-totals">{viewSwitch}{monthlyTotals}</div>
+            <div className="dashboard-header-monthly-totals">
+              <div className="dashboard-header-view-controls">
+                {viewSwitch}
+                <label className="dashboard-payment-filter">
+                  <span>Pagos</span>
+                  <select
+                    value={paymentStatusFilter}
+                    onChange={(event) => {
+                      setPaymentStatusFilter(event.target.value);
+                      setSelectedCalendarDate(null);
+                    }}
+                  >
+                    <option value="all">Todos</option>
+                    <option value="paid">Pagados</option>
+                    <option value="pending">Pendientes de pago</option>
+                  </select>
+                </label>
+              </div>
+              {monthlyTotals}
+            </div>
           )}
           <div className="dashboard-metric-list">
             {metricKey === "active_client_days" && (
