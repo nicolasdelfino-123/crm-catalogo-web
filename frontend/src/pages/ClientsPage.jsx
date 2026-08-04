@@ -308,7 +308,7 @@ export function createClientsPage(dependencies) {
         fields: [
           ["title", "Acción", "actionpreset"],
           ["due_date", "Fecha prevista", "date"],
-          ["priority", "Prioridad", "select"],
+          ["priority", "Urgente", "urgentcheck"],
           ["description", "Nota", "textarea"],
         ],
       },
@@ -352,7 +352,9 @@ export function createClientsPage(dependencies) {
         ? { status: "pending", due_date: defaultDueDate || "", paid_at: dateKey(), payment_type: "monthly" }
         : type === "extra_work"
           ? { status: "pending", due_date: dateKey(), paid_at: dateKey(), payment_type: "extra_work" }
-          : {},
+          : type === "action"
+            ? { priority: "medium" }
+            : {},
     );
     const [actionPreset, setActionPreset] = useState("");
     async function submit(e) {
@@ -400,6 +402,21 @@ export function createClientsPage(dependencies) {
                     />
                   )}
                 </>
+              ) : kind === "urgentcheck" ? (
+                <span className="urgent-action-check">
+                  <input
+                    type="checkbox"
+                    checked={form.priority === "urgent"}
+                    onChange={(event) => setForm({
+                      ...form,
+                      priority: event.target.checked ? "urgent" : "medium",
+                    })}
+                  />
+                  <span>
+                    <strong>Marcar como urgente</strong>
+                    <small>Mostrar también en Acciones urgentes del Resumen</small>
+                  </span>
+                </span>
               ) : kind === "select" ? (
                 <select
                   onChange={(e) => setForm({ ...form, [name]: e.target.value })}
