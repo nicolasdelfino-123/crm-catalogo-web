@@ -2,7 +2,43 @@ import pytest
 from datetime import date, datetime, timedelta
 from app import create_app
 from models import db, Client, Payment, User, ClientCredential
-from routes import advance_service_stage, sync_service_stages
+from routes import advance_service_stage, sync_overdue_monthly_payments, sync_service_stages
+
+
+def test_monthly_payment_is_created_as_pending_on_its_due_date(app):
+    today = date.today()
+    with app.app_context():
+        customer = Client(
+            name="Cobro de hoy", business_name="Hoy SA", signup_date=today - timedelta(days=31),
+            country="Argentina", currency="ARS", payment_amount=25000, status="active",
+        )
+        db.session.add(customer)
+        db.session.flush()
+        # Fuerza un alta cuyo primer aniversario mensual sea exactamente hoy.
+        customer.signup_date = date(today.year - (1 if today.month == 1 else 0), 12 if today.month == 1 else today.month - 1, min(today.day, 28))
+        expected_due_date = date(today.year, today.month, min(customer.signup_date.day, 28))
+        sync_overdue_monthly_payments([customer], expected_due_date)
+        payment = Payment.query.filter_by(client_id=customer.id, due_date=expected_due_date).one()
+        assert payment.status == "pending"
+
+
+def test_calendar_can_mark_projected_monthly_payment_as_paid(client, app):
+    today = date.today()
+    with app.app_context():
+        customer = Client(
+            name="Pago calendario", business_name="Calendario SA", signup_date=today,
+            country="Argentina", currency="ARS", payment_amount=18000, status="active",
+        )
+        db.session.add(customer)
+        db.session.commit()
+        customer_id = customer.id
+    response = client.post(f"/api/clients/{customer_id}/monthly-payments/{today.isoformat()}/pay")
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["status"] == "paid"
+    assert data["due_date"] == today.isoformat()
+    detail = client.get(f"/api/clients/{customer_id}").get_json()["data"]
+    assert any(payment["status"] == "paid" and payment["due_date"] == today.isoformat() for payment in detail["payments"])
 
 @pytest.fixture()
 def app():

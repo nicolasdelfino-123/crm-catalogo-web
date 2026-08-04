@@ -65,7 +65,7 @@ def billing_date_in_month(client, year, month):
 
 
 def sync_overdue_monthly_payments(clients, today=None):
-    """Materializa mensualidades vencidas y actualiza su estado visible."""
+    """Materializa mensualidades exigibles y actualiza su estado visible."""
     today = today or date.today()
     changed = []
     for client in clients:
@@ -82,7 +82,7 @@ def sync_overdue_monthly_payments(clients, today=None):
             if payment.payment_type == "monthly" and payment.due_date
         }
         due_date = add_calendar_months(client.signup_date, 1)
-        while due_date < today:
+        while due_date <= today:
             period = (due_date.year, due_date.month)
             if period not in existing_months:
                 payment = Payment(
@@ -93,8 +93,8 @@ def sync_overdue_monthly_payments(clients, today=None):
                     period_year=due_date.year,
                     period_month=due_date.month,
                     due_date=due_date,
-                    status="overdue",
-                    notes="Generado automáticamente al vencer la mensualidad.",
+                    status="pending" if due_date == today else "overdue",
+                    notes="Generado automáticamente al llegar la fecha de cobro.",
                 )
                 db.session.add(payment)
                 changed.append(payment)
@@ -911,6 +911,39 @@ def payments_create(client_id):
     except (ValueError, TypeError) as exc: db.session.rollback(); return error(str(exc), 422)
 
 
+@api.post("/clients/<int:client_id>/monthly-payments/<due_date>/pay")
+def monthly_payment_pay(client_id, due_date):
+    """Marca una mensualidad como pagada, creándola si aún era una proyección."""
+    client = Client.query.get_or_404(client_id)
+    try:
+        billing_date = date.fromisoformat(due_date)
+    except ValueError:
+        return error("La fecha de cobro debe tener el formato AAAA-MM-DD", 422)
+    if billing_date > date.today():
+        return error("No se puede cobrar una mensualidad futura", 422)
+    payment = Payment.query.filter(
+        Payment.client_id == client.id,
+        Payment.payment_type == "monthly",
+        Payment.due_date == billing_date,
+    ).order_by(Payment.id.desc()).first()
+    if payment is None:
+        payment = Payment(
+            client=client,
+            amount=client.payment_amount or 0,
+            currency=client.currency,
+            payment_type="monthly",
+            period_year=billing_date.year,
+            period_month=billing_date.month,
+            due_date=billing_date,
+        )
+        db.session.add(payment)
+    payment.status = "paid"
+    payment.paid_at = datetime.utcnow()
+    advance_renewal_after_payment(payment)
+    db.session.commit()
+    return ok(payment.to_dict(), "Mensualidad marcada como pagada")
+
+
 @api.patch("/payments/<int:payment_id>")
 def payments_update(payment_id):
     payment = Payment.query.get_or_404(payment_id); data = request.get_json() or {}
@@ -1253,6 +1286,16 @@ def dashboard():
             "days_active": days_active,
             "active_month": elapsed_months + 1 if client.signup_date else None,
             "traffic_light": client.traffic_light or "red",
+            "monthly_payments": [
+                {
+                    "id": payment.id,
+                    "due_date": iso(payment.due_date),
+                    "status": payment.status,
+                    "paid_at": iso(payment.paid_at),
+                }
+                for payment in client.payments
+                if payment.payment_type == "monthly" and payment.due_date
+            ],
         }
 
     def action_item(action):
