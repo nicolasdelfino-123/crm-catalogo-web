@@ -678,7 +678,7 @@ export function createDashboardPage(dependencies) {
         paid: { ARS: 0, USD: 0 },
       };
       sourceItems
-        .filter((item) => ["active", "at_risk"].includes(item.status) && item.signup_date)
+        .filter((item) => ["active", "at_risk", "no_signup"].includes(item.status))
         .forEach((item) => {
           const currency = item.currency || "ARS";
           if (!(currency in totals.expected)) return;
