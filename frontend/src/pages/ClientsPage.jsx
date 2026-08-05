@@ -1564,7 +1564,7 @@ export function createClientsPage(dependencies) {
   }
 
   function Clients() {
-    const [data, setData] = useState({ items: [], pagination: {}, renewal_totals: { ARS: 0, USD: 0 } });
+    const [data, setData] = useState({ items: [], pagination: {}, renewal_totals: { ARS: 0, USD: 0 }, renewal_clients: { ARS: [], USD: [] } });
     const [query, setQuery] = useState("");
     const [status, setStatus] = useState("");
     const [acquisition, setAcquisition] = useState("");
@@ -1575,6 +1575,8 @@ export function createClientsPage(dependencies) {
     const [selected, setSelected] = useState(null);
     const [form, setForm] = useState(null);
     const [clientToDelete, setClientToDelete] = useState(null);
+    const [renewalCurrency, setRenewalCurrency] = useState(null);
+    const [renewalQuery, setRenewalQuery] = useState("");
     const [toast, setToast] = useState("");
     const [updatingTrafficLight, setUpdatingTrafficLight] = useState(new Set());
     const [sort, setSort] = useState({ by: "billing_day", dir: "asc" });
@@ -1610,6 +1612,21 @@ export function createClientsPage(dependencies) {
       const id = setTimeout(load, 250);
       return () => clearTimeout(id);
     }, [load]);
+    useEffect(() => {
+      if (!renewalCurrency) return undefined;
+      document.body.classList.add("locked");
+      const closeOnEscape = (event) => {
+        if (event.key === "Escape") {
+          setRenewalCurrency(null);
+          setRenewalQuery("");
+        }
+      };
+      window.addEventListener("keydown", closeOnEscape);
+      return () => {
+        document.body.classList.remove("locked");
+        window.removeEventListener("keydown", closeOnEscape);
+      };
+    }, [renewalCurrency]);
     function toggleSort(by) {
       setSort((s) => ({
         by,
@@ -1656,6 +1673,18 @@ export function createClientsPage(dependencies) {
           return nextIds;
         });
       }
+    }
+    const renewalClientList = renewalCurrency
+      ? data.renewal_clients?.[renewalCurrency] || []
+      : [];
+    const normalizedRenewalQuery = renewalQuery.trim().toLocaleLowerCase("es");
+    const visibleRenewalClients = renewalClientList.filter((client) =>
+      !normalizedRenewalQuery || [client.name, client.business_name]
+        .some((value) => (value || "").toLocaleLowerCase("es").includes(normalizedRenewalQuery)),
+    );
+    function closeRenewalClients() {
+      setRenewalCurrency(null);
+      setRenewalQuery("");
     }
     return (
       <section className="page clients-page">
@@ -1765,14 +1794,16 @@ export function createClientsPage(dependencies) {
             </button>
           )}
           <div className={`client-renewal-totals${loading ? " loading-totals" : ""}`} aria-live="polite">
-            <div>
+            <button type="button" onClick={() => setRenewalCurrency("ARS")} disabled={loading}>
               <small>Mensualidades · Pesos</small>
               <strong>{fmtMoney(data.renewal_totals?.ARS || 0, "ARS")}</strong>
-            </div>
-            <div>
-              <small>Mensualidades · USD</small>
+              <span>{data.renewal_clients?.ARS?.length || 0} clientes · Ver detalle</span>
+            </button>
+            <button type="button" onClick={() => setRenewalCurrency("USD")} disabled={loading}>
+              <small>Mensualidades · Dólares</small>
               <strong>{fmtMoney(data.renewal_totals?.USD || 0, "USD")}</strong>
-            </div>
+              <span>{data.renewal_clients?.USD?.length || 0} clientes · Ver detalle</span>
+            </button>
           </div>
         </div>
         {loading ? (
@@ -1989,6 +2020,50 @@ export function createClientsPage(dependencies) {
             onClose={() => setClientToDelete(null)}
             onConfirm={deleteClient}
           />
+        )}
+        {renewalCurrency && (
+          <div className="modal-layer">
+            <section className="renewal-clients-modal" role="dialog" aria-modal="true" aria-labelledby="renewal-clients-title">
+              <div className="modal-head">
+                <div>
+                  <span className="eyebrow">Mensualidades en {renewalCurrency === "ARS" ? "pesos" : "dólares"}</span>
+                  <h2 id="renewal-clients-title">
+                    {renewalClientList.length} {renewalClientList.length === 1 ? "cliente" : "clientes"} · {fmtMoney(data.renewal_totals?.[renewalCurrency] || 0, renewalCurrency)}
+                  </h2>
+                </div>
+                <IconButton label="Cerrar" onClick={closeRenewalClients}><X /></IconButton>
+              </div>
+              <div className="renewal-clients-toolbar">
+                <label className="search">
+                  <Search />
+                  <input
+                    value={renewalQuery}
+                    onChange={(event) => setRenewalQuery(event.target.value)}
+                    placeholder="Buscar por cliente o negocio"
+                    autoFocus
+                  />
+                </label>
+                <strong>{visibleRenewalClients.length} de {renewalClientList.length}</strong>
+              </div>
+              <div className="renewal-clients-list">
+                {visibleRenewalClients.map((client) => (
+                  <button
+                    type="button"
+                    key={client.id}
+                    onClick={() => {
+                      closeRenewalClients();
+                      setSelected(client.id);
+                    }}
+                  >
+                    <span><strong>{client.name}</strong><small>{client.business_name || "Sin negocio registrado"}</small></span>
+                    <span><strong>{fmtMoney(client.payment_amount, client.currency)}</strong><small>{LABEL[client.status] || client.status}</small></span>
+                    <ChevronRight size={17} />
+                  </button>
+                ))}
+                {!visibleRenewalClients.length && <Empty />}
+              </div>
+            </section>
+          </div>
         )}
       </section>
     );

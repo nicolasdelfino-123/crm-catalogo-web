@@ -535,9 +535,14 @@ def test_client_list_renewal_totals_follow_filters_and_include_no_signup(client,
     filtered = client.get("/api/clients?search=Norte&status=active").get_json()["data"]
     assert filtered["pagination"]["total"] == 2
     assert filtered["renewal_totals"] == {"ARS": 30000.0, "USD": 250.0}
+    assert [item["name"] for item in filtered["renewal_clients"]["ARS"]] == ["Activo ARS"]
+    assert [item["name"] for item in filtered["renewal_clients"]["USD"]] == ["Riesgo USD"]
+    assert filtered["renewal_clients"]["ARS"][0]["payment_amount"] == 30000.0
 
     no_signup = client.get("/api/clients?status=no_signup").get_json()["data"]
     assert no_signup["renewal_totals"] == {"ARS": 99999.0, "USD": 0.0}
+    assert [item["name"] for item in no_signup["renewal_clients"]["ARS"]] == ["Sin alta"]
+    assert no_signup["renewal_clients"]["USD"] == []
 
 
 def test_actions_store_planned_and_implementation_dates_separately(client):
