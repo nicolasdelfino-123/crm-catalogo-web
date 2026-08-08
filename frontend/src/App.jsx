@@ -306,7 +306,7 @@ const { Agenda, AgendaNewAction, AgendaActionEditor } = agendaPages;
 const { Dashboard } = createDashboardPage({ api, downloadApiFile, LABEL, fmtDate, fmtMonth, monthKey, nextMonthKey, fmtMoney, dateKey, fromDateKey, addDays, startOfWeek, clientBillingDateInMonth, badge, useEscapeClose, IconButton, Loading, Empty, ClientForm, DetailModal, AgendaNewAction, AgendaActionEditor });
 const { WorkedHours } = createWorkedHoursPage({ api, fmtDate, fmtMonth, monthKey, dateKey, fromDateKey, addDays, startOfWeek, fmtHours, IconButton });
 const { Prospecting } = createProspectingPage({ api, acquisitionLabel, fmtDate, fmtMonth, dateKey, fromDateKey, addDays, startOfWeek, useEscapeClose, IconButton });
-const { Vps } = createVpsPage({ api, Loading, Empty });
+const { Vps } = createVpsPage({ api, IconButton });
 const { Expenses } = createExpensesPage({ api, fmtDate, fmtMoney, IconButton, Empty });
 const { Payments } = createPaymentsPage({ api, LABEL, fmtDate, fmtMoney, badge, useEscapeClose, IconButton, ClientForm, DetailModal, PaymentEditor });
 
