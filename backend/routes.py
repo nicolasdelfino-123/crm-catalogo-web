@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response, current_app
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Integer, case, cast, func, or_
-from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, VpsAssignment, ClientMetric, ClientNote, ClientCredential, MessageLog, WorkLog, ProspectingGoal, ProspectingLog, ProspectingOutcome, ActionTemplate, SellingDay
+from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, VpsAssignment, ClientMetric, ClientNote, ClientCredential, MessageLog, WorkLog, ProspectingGoal, ProspectingLog, ProspectingOutcome, ActionTemplate, SellingDay, MonthlySalesActivity
 
 api = Blueprint("api", __name__)
 
@@ -1726,6 +1726,42 @@ def set_selling_day(selling_date):
         db.session.delete(item)
     db.session.commit()
     return ok({"date": selling_date, "sold": payload["sold"]})
+
+
+@api.get("/dashboard/monthly-sales-activity")
+def monthly_sales_activity_detail():
+    month = request.args.get("month", date.today().strftime("%Y-%m"))
+    try:
+        month_start = date.fromisoformat(f"{month}-01")
+    except ValueError:
+        return error("El mes debe tener el formato AAAA-MM", 422)
+    activity = MonthlySalesActivity.query.filter_by(month_start=month_start).first()
+    if not activity:
+        return ok({"month": month, "messages_sent": 0, "exists": False})
+    result = activity.to_dict()
+    result["exists"] = True
+    return ok(result)
+
+
+@api.put("/dashboard/monthly-sales-activity/<month>")
+def update_monthly_sales_activity(month):
+    try:
+        month_start = date.fromisoformat(f"{month}-01")
+    except ValueError:
+        return error("El mes debe tener el formato AAAA-MM", 422)
+    payload = request.get_json(silent=True) or {}
+    messages_sent = payload.get("messages_sent")
+    if isinstance(messages_sent, bool) or not isinstance(messages_sent, int) or messages_sent < 0:
+        return error("La cantidad de mensajes debe ser un número entero igual o mayor que cero", 422)
+    activity = MonthlySalesActivity.query.filter_by(month_start=month_start).first()
+    if not activity:
+        activity = MonthlySalesActivity(month_start=month_start)
+        db.session.add(activity)
+    activity.messages_sent = messages_sent
+    db.session.commit()
+    result = activity.to_dict()
+    result["exists"] = True
+    return ok(result)
 
 
 @api.get("/action-templates")

@@ -359,3 +359,19 @@ class SellingDay(db.Model):
 
     def to_dict(self):
         return {"date": iso(self.selling_date)}
+
+
+class MonthlySalesActivity(db.Model):
+    """Datos manuales de actividad comercial agrupados por mes."""
+    id = db.Column(db.Integer, primary_key=True)
+    month_start = db.Column(db.Date, unique=True, nullable=False, index=True)
+    messages_sent = db.Column(db.Integer, nullable=False, default=0)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False,
+    )
+
+    def to_dict(self):
+        return {
+            "month": self.month_start.strftime("%Y-%m"),
+            "messages_sent": self.messages_sent,
+        }

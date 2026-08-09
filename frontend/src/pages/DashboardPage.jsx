@@ -488,12 +488,25 @@ export function createDashboardPage(dependencies) {
     const [payingCollection, setPayingCollection] = useState(null);
     const [sellingDays, setSellingDays] = useState([]);
     const [savingSellingDay, setSavingSellingDay] = useState(null);
+    const [messagesSent, setMessagesSent] = useState(0);
+    const [messagesInput, setMessagesInput] = useState("0");
+    const [messagesSaved, setMessagesSaved] = useState(false);
+    const [savingMessages, setSavingMessages] = useState(false);
     useEscapeClose(onClose);
     useEffect(() => {
       if (metricKey !== "sold_clients_month") return undefined;
       let active = true;
-      api(`/dashboard/selling-days?month=${selectedMonth}`)
-        .then((days) => { if (active) setSellingDays(days.map((item) => item.date)); })
+      Promise.all([
+        api(`/dashboard/selling-days?month=${selectedMonth}`),
+        api(`/dashboard/monthly-sales-activity?month=${selectedMonth}`),
+      ])
+        .then(([days, activity]) => {
+          if (!active) return;
+          setSellingDays(days.map((item) => item.date));
+          setMessagesSent(activity.messages_sent || 0);
+          setMessagesInput(String(activity.messages_sent || 0));
+          setMessagesSaved(Boolean(activity.exists ?? activity.messages_sent));
+        })
         .catch((error) => { if (active) window.alert(error.message); });
       return () => { active = false; };
     }, [metricKey, selectedMonth]);
@@ -777,6 +790,27 @@ export function createDashboardPage(dependencies) {
         setSavingSellingDay(null);
       }
     }
+    async function saveMessagesSent() {
+      const value = Number(messagesInput);
+      if (!Number.isInteger(value) || value < 0) {
+        window.alert("Ingresá una cantidad de mensajes igual o mayor que cero.");
+        return;
+      }
+      setSavingMessages(true);
+      try {
+        const activity = await api(`/dashboard/monthly-sales-activity/${selectedMonth}`, {
+          method: "PUT",
+          body: JSON.stringify({ messages_sent: value }),
+        });
+        setMessagesSent(activity.messages_sent);
+        setMessagesInput(String(activity.messages_sent));
+        setMessagesSaved(true);
+      } catch (error) {
+        window.alert(error.message);
+      } finally {
+        setSavingMessages(false);
+      }
+    }
     function renderMetricItem(item) {
       const clickableClientMetric = actionMetric
         ? Boolean(item.client_id || (item.standalone && !item.projected))
@@ -1043,7 +1077,7 @@ export function createDashboardPage(dependencies) {
                   <span>
                     {metricKey === "sold_clients_month" ? "Ver ventas del mes" : "Ver altas del mes"}
                     {metricKey === "sold_clients_month" && (
-                      <strong className="dashboard-selling-days-count"> — {sellingDays.length} {sellingDays.length === 1 ? "día vendido" : "días vendidos"}</strong>
+                      <strong className="dashboard-selling-days-count"> — {sellingDays.length} {sellingDays.length === 1 ? "día vendido" : "días vendidos"} - {messagesSent} mensajes enviados</strong>
                     )}
                   </span>
                   <input
@@ -1052,6 +1086,24 @@ export function createDashboardPage(dependencies) {
                     onChange={changeMonth}
                   />
                 </label>
+                {metricKey === "sold_clients_month" && (
+                  <div className="dashboard-messages-sent-editor">
+                    <label>
+                      Mensajes enviados
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={messagesInput}
+                        onChange={(event) => setMessagesInput(event.target.value)}
+                        aria-label="Cantidad de mensajes enviados en el mes"
+                      />
+                    </label>
+                    <button type="button" className="secondary small" disabled={savingMessages} onClick={saveMessagesSent}>
+                      {savingMessages ? "Guardando…" : messagesSaved ? "Editar" : "Agregar"}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
             {metricView === "list" && supportsCalendar && (

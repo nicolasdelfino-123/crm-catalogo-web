@@ -2,7 +2,7 @@ import calendar
 import pytest
 from datetime import date, datetime, timedelta
 from app import create_app
-from models import db, Client, ClientAction, Payment, User, ClientCredential, SellingDay
+from models import db, Client, ClientAction, Payment, User, ClientCredential, SellingDay, MonthlySalesActivity
 
 
 def test_selling_days_are_persistent_editable_and_filtered_by_month(client, app):
@@ -34,6 +34,42 @@ def test_selling_days_validate_month_date_and_boolean(client):
     assert client.put("/api/dashboard/selling-days/hoy", json={"sold": True}).status_code == 422
     assert client.put(
         "/api/dashboard/selling-days/2026-08-09", json={"sold": "yes"},
+    ).status_code == 422
+
+
+def test_monthly_messages_are_persistent_and_editable(client, app):
+    empty = client.get(
+        "/api/dashboard/monthly-sales-activity?month=2026-08",
+    ).get_json()["data"]
+    assert empty == {"month": "2026-08", "messages_sent": 0, "exists": False}
+
+    created = client.put(
+        "/api/dashboard/monthly-sales-activity/2026-08",
+        json={"messages_sent": 125},
+    ).get_json()["data"]
+    assert created == {"month": "2026-08", "messages_sent": 125, "exists": True}
+    edited = client.put(
+        "/api/dashboard/monthly-sales-activity/2026-08",
+        json={"messages_sent": 180},
+    ).get_json()["data"]
+    assert edited["messages_sent"] == 180
+    assert client.get(
+        "/api/dashboard/monthly-sales-activity?month=2026-09",
+    ).get_json()["data"]["messages_sent"] == 0
+    with app.app_context():
+        assert MonthlySalesActivity.query.count() == 1
+
+
+def test_monthly_messages_reject_invalid_values(client):
+    for value in (-1, 1.5, "10", True):
+        response = client.put(
+            "/api/dashboard/monthly-sales-activity/2026-08",
+            json={"messages_sent": value},
+        )
+        assert response.status_code == 422
+    assert client.put(
+        "/api/dashboard/monthly-sales-activity/agosto",
+        json={"messages_sent": 10},
     ).status_code == 422
 
 
