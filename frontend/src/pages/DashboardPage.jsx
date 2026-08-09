@@ -1075,10 +1075,11 @@ export function createDashboardPage(dependencies) {
               <div className="dashboard-month-filter">
                 <label>
                   <span>
-                    {metricKey === "sold_clients_month" ? "Ver ventas del mes" : "Ver altas del mes"}
-                    {metricKey === "sold_clients_month" && (
-                      <strong className="dashboard-selling-days-count"> — {sellingDays.length} {sellingDays.length === 1 ? "día vendido" : "días vendidos"} - {messagesSent} mensajes enviados</strong>
-                    )}
+                    {metricKey === "sold_clients_month" ? (
+                      <strong className="dashboard-selling-days-count">
+                        {displayedItems.length} {displayedItems.length === 1 ? "venta" : "ventas"} en el mes - {sellingDays.length} {sellingDays.length === 1 ? "día vendido" : "días vendidos"} - {messagesSent} mensajes enviados
+                      </strong>
+                    ) : "Ver altas del mes"}
                   </span>
                   <input
                     type="month"
