@@ -257,9 +257,9 @@ function useEscapeClose(onClose, enabled = true) {
     return () => window.removeEventListener("keydown", close);
   }, [enabled, onClose]);
 }
-function IconButton({ label, children, ...props }) {
+function IconButton({ label, children, className = "", ...props }) {
   return (
-    <button className="icon-btn" aria-label={label} title={label} {...props}>
+    <button className={`icon-btn ${className}`.trim()} aria-label={label} title={label} {...props}>
       {children}
     </button>
   );

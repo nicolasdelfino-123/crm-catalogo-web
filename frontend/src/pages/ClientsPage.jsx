@@ -1,8 +1,45 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CalendarDays, WalletCards, Server, Plus, Search, SlidersHorizontal, Download, X, ChevronRight, AlertTriangle, CheckCircle2, Clock3, ArrowUpDown, ExternalLink, MapPin, Instagram, Mail, Phone, Edit3, Check, RotateCcw, Pin, Save, ChartNoAxesColumnIncreasing, Trash2, Eye, EyeOff, KeyRound, Copy, FileText } from "lucide-react";
 
 export function createClientsPage(dependencies) {
   const { api, downloadApiFile, LABEL, ACQUISITION_OPTIONS, ACTION_PRESETS, acquisitionLabel, instagramUrl, externalUrl, fmtDate, billingDay, fmtMoney, addCalendarMonth, stageForDates, stageLabel, badge, dateKey, useEscapeClose, IconButton, Toast, Loading, Empty } = dependencies;
+  const RICH_TEXT_PREFIX = "__RICH_TEXT__";
+
+  function plainTextToHtml(value) {
+    const element = document.createElement("div");
+    element.textContent = value || "";
+    return element.innerHTML.replace(/\n/g, "<br>");
+  }
+
+  function sanitizeSalesProcessHtml(value) {
+    const source = document.createElement("template");
+    const result = document.createElement("div");
+    source.innerHTML = value || "";
+    function appendSafe(node, target) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        target.appendChild(document.createTextNode(node.textContent));
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = node.tagName.toLowerCase();
+      if (tag === "br") {
+        target.appendChild(document.createElement("br"));
+        return;
+      }
+      const wrapper = ["b", "strong"].includes(tag) ? document.createElement("strong") : target;
+      [...node.childNodes].forEach((child) => appendSafe(child, wrapper));
+      if (wrapper !== target) target.appendChild(wrapper);
+      if (tag === "div" || tag === "p") target.appendChild(document.createElement("br"));
+    }
+    [...source.content.childNodes].forEach((node) => appendSafe(node, result));
+    return result.innerHTML;
+  }
+
+  function decodeSalesProcess(value) {
+    return value?.startsWith(RICH_TEXT_PREFIX)
+      ? sanitizeSalesProcessHtml(value.slice(RICH_TEXT_PREFIX.length))
+      : plainTextToHtml(value);
+  }
 
   function ClientForm({ client, onClose, onSaved }) {
     const initial = client || {
@@ -822,17 +859,27 @@ export function createClientsPage(dependencies) {
   }
 
   function ClientSalesProcess({ clientId }) {
-    const [content, setContent] = useState("");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [editing, setEditing] = useState(false);
+    const [bold, setBold] = useState(false);
     const [message, setMessage] = useState("");
+    const editorRef = useRef(null);
+    const contentRef = useRef("");
     useEffect(() => {
       api(`/clients/${clientId}/sales-process`)
-        .then((data) => setContent(data.content || ""))
+        .then((data) => {
+          const loadedContent = decodeSalesProcess(data.content || "");
+          contentRef.current = loadedContent;
+        })
         .catch((error) => setMessage(error.message))
         .finally(() => setLoading(false));
     }, [clientId]);
+    useEffect(() => {
+      if (!loading && editorRef.current) {
+        editorRef.current.innerHTML = sanitizeSalesProcessHtml(contentRef.current);
+      }
+    }, [clientId, loading]);
     async function submit(event) {
       event.preventDefault();
       setSaving(true);
@@ -840,16 +887,64 @@ export function createClientsPage(dependencies) {
       try {
         const saved = await api(`/clients/${clientId}/sales-process`, {
           method: "PUT",
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({ content: `${RICH_TEXT_PREFIX}${sanitizeSalesProcessHtml(contentRef.current)}` }),
         });
-        setContent(saved.content || "");
+        const savedContent = decodeSalesProcess(saved.content || "");
+        contentRef.current = savedContent;
         setEditing(false);
+        setBold(false);
         setMessage("Proceso de venta guardado correctamente.");
       } catch (error) {
         setMessage(error.message);
       } finally {
         setSaving(false);
       }
+    }
+    function toggleBold() {
+      const nextBold = !bold;
+      editorRef.current?.focus();
+      if (document.queryCommandState("bold") !== nextBold) {
+        document.execCommand("bold", false);
+      }
+      setBold(nextBold);
+    }
+    function insertTextAtCursor(insertedText, useBold) {
+      const editor = editorRef.current;
+      const selection = window.getSelection();
+      if (!editor || !selection) return;
+      let range;
+      if (selection.rangeCount && editor.contains(selection.anchorNode)) {
+        range = selection.getRangeAt(0);
+      } else {
+        range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+      }
+      range.deleteContents();
+      const fragment = document.createDocumentFragment();
+      const wrapper = useBold ? document.createElement("strong") : fragment;
+      insertedText.split("\n").forEach((line, index) => {
+        if (index) wrapper.appendChild(document.createElement("br"));
+        wrapper.appendChild(document.createTextNode(line));
+      });
+      if (useBold) fragment.appendChild(wrapper);
+      const lastNode = fragment.lastChild;
+      if (!lastNode) return;
+      range.insertNode(fragment);
+      range.setStartAfter(lastNode);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      contentRef.current = editor.innerHTML;
+    }
+    function pastePlainText(event) {
+      event.preventDefault();
+      insertTextAtCursor(event.clipboardData.getData("text/plain"), bold);
+    }
+    function handleBeforeInput(event) {
+      if (!bold || event.nativeEvent.inputType !== "insertText" || !event.nativeEvent.data) return;
+      event.preventDefault();
+      insertTextAtCursor(event.nativeEvent.data, true);
     }
     if (loading) return <Loading />;
     return (
@@ -859,13 +954,23 @@ export function createClientsPage(dependencies) {
           <div><h3>Proceso de venta</h3><p>Registrá qué funcionó, las objeciones y cómo se concretó la venta.</p></div>
         </div>
         <form onSubmit={submit}>
-          <label htmlFor={`sales-process-${clientId}`}>Cómo fue la venta</label>
-          <textarea
+          <div className="sales-process-toolbar">
+            <label id={`sales-process-label-${clientId}`}>Cómo fue la venta</label>
+            <IconButton type="button" label={bold ? "Desactivar negrita" : "Activar negrita"} onMouseDown={(event) => event.preventDefault()} onClick={toggleBold} disabled={!editing} className={bold ? "active" : ""}><strong>B</strong></IconButton>
+          </div>
+          <div
+            ref={editorRef}
             id={`sales-process-${clientId}`}
-            value={content}
-            onChange={(event) => setContent(event.target.value)}
-            placeholder="Pegá o escribí acá el proceso de venta de este cliente..."
-            readOnly={!editing}
+            className="sales-process-editor"
+            contentEditable={editing}
+            suppressContentEditableWarning
+            role="textbox"
+            aria-multiline="true"
+            aria-labelledby={`sales-process-label-${clientId}`}
+            data-placeholder="Pegá o escribí acá el proceso de venta de este cliente..."
+            onInput={(event) => { contentRef.current = event.currentTarget.innerHTML; }}
+            onBeforeInput={handleBeforeInput}
+            onPaste={pastePlainText}
           />
           {message && <p className="credential-message" role="status">{message}</p>}
           <div className="form-actions">
