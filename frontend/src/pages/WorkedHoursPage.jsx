@@ -2,7 +2,31 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarDays, Plus, X, ChevronLeft, ChevronRight, Clock3, Edit3, Save, ChartNoAxesColumnIncreasing, Trash2 } from "lucide-react";
 
 export function createWorkedHoursPage(dependencies) {
-  const { api, fmtDate, fmtMonth, monthKey, dateKey, fromDateKey, addDays, startOfWeek, fmtHours, IconButton } = dependencies;
+  const { api, fmtDate, fmtMonth, monthKey, dateKey, fromDateKey, addDays, startOfWeek, IconButton } = dependencies;
+
+  function durationParts(decimalHours = 0) {
+    const totalMinutes = Math.round(Number(decimalHours || 0) * 60);
+    return { hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 };
+  }
+
+  function durationValue(hours, minutes) {
+    return Number(hours || 0) + Number(minutes || 0) / 60;
+  }
+
+  function fmtDuration(decimalHours = 0) {
+    const { hours, minutes } = durationParts(decimalHours);
+    if (!hours && !minutes) return "0 min";
+    return [hours ? `${hours} h` : "", minutes ? `${minutes} min` : ""].filter(Boolean).join(" ");
+  }
+
+  function DurationFields({ hours, minutes, onChange }) {
+    return (
+      <div className="duration-fields">
+        <label>Horas<input type="number" min="0" max="24" step="1" value={hours} onChange={(event) => onChange("hours", event.target.value)} placeholder="0" required /></label>
+        <label>Minutos<input type="number" min="0" max="59" step="1" value={minutes} onChange={(event) => onChange("minutes", event.target.value)} placeholder="0" required /></label>
+      </div>
+    );
+  }
 
   function WorkedHours() {
     const today = dateKey();
@@ -10,7 +34,7 @@ export function createWorkedHoursPage(dependencies) {
     const [view, setView] = useState("calendar");
     const [cursor, setCursor] = useState(fromDateKey(today));
     const [selectedDate, setSelectedDate] = useState(today);
-    const [form, setForm] = useState({ work_date: today, hours: "", notes: "" });
+    const [form, setForm] = useState({ work_date: today, hours: "0", minutes: "0", notes: "" });
     const [editing, setEditing] = useState(null);
     const [saving, setSaving] = useState(false);
     const load = useCallback(() => api("/work-logs").then(setItems), [setItems]);
@@ -35,22 +59,24 @@ export function createWorkedHoursPage(dependencies) {
     async function submit(event) {
       event.preventDefault(); setSaving(true);
       try {
-        await api("/work-logs", { method: "POST", body: JSON.stringify(form) });
+        const hours = durationValue(form.hours, form.minutes);
+        await api("/work-logs", { method: "POST", body: JSON.stringify({ work_date: form.work_date, hours, notes: form.notes }) });
         const savedDate = fromDateKey(form.work_date);
         setCursor(savedDate); setSelectedDate(form.work_date);
-        setForm({ ...form, hours: "", notes: "" });
+        setForm({ ...form, hours: "0", minutes: "0", notes: "" });
         await load();
       } finally { setSaving(false); }
     }
     async function remove(item) {
-      if (!window.confirm(`¿Eliminar esta carga de ${fmtHours(item.hours)}?`)) return;
+      if (!window.confirm(`¿Eliminar esta carga de ${fmtDuration(item.hours)}?`)) return;
       await api(`/work-logs/${item.id}`, { method: "DELETE" });
       await load();
     }
     async function saveEdit(event) {
       event.preventDefault(); setSaving(true);
       try {
-        await api(`/work-logs/${editing.id}`, { method: "PATCH", body: JSON.stringify(editing) });
+        const hours = durationValue(editing.hours, editing.minutes);
+        await api(`/work-logs/${editing.id}`, { method: "PATCH", body: JSON.stringify({ work_date: editing.work_date, hours, notes: editing.notes }) });
         const savedDate = fromDateKey(editing.work_date);
         setCursor(savedDate); setSelectedDate(editing.work_date);
         setForm((current) => ({ ...current, work_date: editing.work_date }));
@@ -81,8 +107,8 @@ export function createWorkedHoursPage(dependencies) {
           </div>
         </div>
         <div className="hours-summary">
-          <article><span><Clock3 /></span><div><small>Hoy</small><strong>{fmtHours(totalsByDay[today])}</strong></div></article>
-          <article><span><CalendarDays /></span><div><small>Semana visible</small><strong>{fmtHours(weekTotal)}</strong></div></article>
+          <article><span><Clock3 /></span><div><small>Hoy</small><strong>{fmtDuration(totalsByDay[today])}</strong></div></article>
+          <article><span><CalendarDays /></span><div><small>Semana visible</small><strong>{fmtDuration(weekTotal)}</strong></div></article>
           <article className="hours-month-filter">
             <span><ChartNoAxesColumnIncreasing /></span>
             <label>
@@ -98,14 +124,14 @@ export function createWorkedHoursPage(dependencies) {
                   setForm((current) => ({ ...current, work_date: dateKey(nextDate) }));
                 }}
               />
-              <strong>{fmtHours(monthTotal)}</strong>
+              <strong>{fmtDuration(monthTotal)}</strong>
             </label>
           </article>
         </div>
         <form className="hours-form" onSubmit={submit}>
           <div><span className="eyebrow">Nueva carga</span><h3>Agregar horas</h3><p>Si volvés a cargar el mismo día, las horas se suman.</p></div>
           <label>Fecha<input type="date" value={form.work_date} onChange={(event) => setForm({ ...form, work_date: event.target.value })} required /></label>
-          <label>Horas<input type="number" min="0.25" max="24" step="0.25" value={form.hours} onChange={(event) => setForm({ ...form, hours: event.target.value })} placeholder="Ej.: 4" required /></label>
+          <DurationFields hours={form.hours} minutes={form.minutes} onChange={(field, value) => setForm({ ...form, [field]: value })} />
           <label>Nota opcional<input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="¿En qué trabajaste?" /></label>
           <button className="primary" disabled={saving}><Plus size={17} />{saving ? "Guardando..." : "Sumar horas"}</button>
         </form>
@@ -124,7 +150,7 @@ export function createWorkedHoursPage(dependencies) {
                   const key = dateKey(day);
                   return <button key={key} className={`${day.getMonth() !== cursor.getMonth() ? "outside" : ""} ${key === today ? "today" : ""} ${key === selectedDate ? "selected" : ""}`} onClick={() => chooseDay(day)}>
                     <time>{day.getDate()}</time>
-                    {totalsByDay[key] > 0 && <strong>{fmtHours(totalsByDay[key])}</strong>}
+                    {totalsByDay[key] > 0 && <strong>{fmtDuration(totalsByDay[key])}</strong>}
                   </button>;
                 })}
               </div>
@@ -138,7 +164,7 @@ export function createWorkedHoursPage(dependencies) {
                 return <button key={key} className={`${key === today ? "today" : ""} ${key === selectedDate ? "selected" : ""}`} onClick={() => chooseDay(day)}>
                   <div><span>{new Intl.DateTimeFormat("es-AR", { weekday: "long" }).format(day)}</span><time>{day.getDate()}</time></div>
                   <div className="hours-bar"><i style={{ width: `${percentage}%` }} /></div>
-                  <strong>{fmtHours(hours)}</strong>
+                  <strong>{fmtDuration(hours)}</strong>
                 </button>;
               })}
             </div>
@@ -148,16 +174,16 @@ export function createWorkedHoursPage(dependencies) {
               <small>{view === "calendar" ? `Total de ${fmtMonth(selectedMonth)}` : "Total de la semana"}</small>
               <span>{view === "calendar" ? "Suma de todos los días del mes" : `${fmtDate(dateKey(weekStart))} al ${fmtDate(dateKey(weekDays[6]))}`}</span>
             </div>
-            <strong>{fmtHours(view === "calendar" ? monthTotal : weekTotal)}</strong>
+            <strong>{fmtDuration(view === "calendar" ? monthTotal : weekTotal)}</strong>
           </div>
         </div>
         <div className="hours-detail">
-          <div><span className="eyebrow">Detalle del día</span><h3>{fmtDate(selectedDate)} · {fmtHours(totalsByDay[selectedDate])}</h3></div>
+          <div><span className="eyebrow">Detalle del día</span><h3>{fmtDate(selectedDate)} · {fmtDuration(totalsByDay[selectedDate])}</h3></div>
           {selectedEntries.length ? <div className="hours-entries">{selectedEntries.map((item) => (
             <article key={item.id}>
-              <div><strong>+ {fmtHours(item.hours)}</strong><span>{item.notes || "Sin nota"}</span></div>
+              <div><strong>+ {fmtDuration(item.hours)}</strong><span>{item.notes || "Sin nota"}</span></div>
               <div className="hours-entry-actions">
-                <IconButton label="Editar carga" onClick={() => setEditing({ ...item })}><Edit3 /></IconButton>
+                <IconButton label="Editar carga" onClick={() => setEditing({ ...item, ...durationParts(item.hours) })}><Edit3 /></IconButton>
                 <IconButton label="Eliminar carga" onClick={() => remove(item)}><Trash2 /></IconButton>
               </div>
             </article>
@@ -173,7 +199,7 @@ export function createWorkedHoursPage(dependencies) {
               <form onSubmit={saveEdit}>
                 <div className="form-grid">
                   <label>Fecha<input type="date" value={editing.work_date} onChange={(event) => setEditing({ ...editing, work_date: event.target.value })} required /></label>
-                  <label>Horas<input type="number" min="0.25" max="24" step="0.25" value={editing.hours} onChange={(event) => setEditing({ ...editing, hours: event.target.value })} required /></label>
+                  <DurationFields hours={editing.hours} minutes={editing.minutes} onChange={(field, value) => setEditing({ ...editing, [field]: value })} />
                   <label className="span-2">Nota opcional<input value={editing.notes || ""} onChange={(event) => setEditing({ ...editing, notes: event.target.value })} placeholder="¿En qué trabajaste?" /></label>
                 </div>
                 <div className="form-actions">
