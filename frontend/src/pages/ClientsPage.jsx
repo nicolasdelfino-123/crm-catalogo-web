@@ -1489,6 +1489,7 @@ export function createClientsPage(dependencies) {
   }
   function Summary({ client, onUpdate, onEdit }) {
     const contact = [
+      ["Fecha de venta", fmtDate(client.sale_date), CalendarDays],
       [
         "Ubicación",
         `${client.city ? client.city + ", " : ""}${client.country}`,
