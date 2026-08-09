@@ -54,7 +54,7 @@ export function createVpsPage(dependencies) {
         <form className="vps-form" onSubmit={submit}>
           <div><span className="eyebrow">Nueva asignación</span><h3>Agregar a un VPS</h3></div>
           <label>VPS<select value={form.vps_name} onChange={(event) => setForm({ ...form, vps_name: event.target.value })}><option value="vape">VPS Vape</option><option value="shatha">VPS Shatha</option></select></label>
-          <label>Cliente o aplicación<select value={form.selection} onChange={(event) => setForm({ ...form, selection: event.target.value, custom_name: "" })} required><option value="">Elegí una opción</option>{clients.filter((client) => !assignedClientIds.has(client.id)).map((client) => <option value={`client:${client.id}`} key={client.id}>{client.name} · {client.business_name}</option>)}<option value="custom">Nombre personalizado…</option></select></label>
+          <label>Cliente o aplicación<select value={form.selection} onChange={(event) => setForm({ ...form, selection: event.target.value, custom_name: "" })} required><option value="">Elegí una opción</option>{clients.filter((client) => client.status !== "cancelled" && !assignedClientIds.has(client.id)).map((client) => <option value={`client:${client.id}`} key={client.id}>{client.name} · {client.business_name}</option>)}<option value="custom">Nombre personalizado…</option></select></label>
           {form.selection === "custom" && <label>Nombre personalizado<input value={form.custom_name} onChange={(event) => setForm({ ...form, custom_name: event.target.value })} placeholder="Nombre de la aplicación" required autoFocus /></label>}
           <button className="primary" disabled={saving}><Plus size={17} />{saving ? "Agregando…" : "Agregar"}</button>
         </form>

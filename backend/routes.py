@@ -439,6 +439,8 @@ def clients_update(client_id):
         data = request.get_json() or {}
         previous_counts = (client.followers_count or 0, client.publications_count or 0)
         apply_client(client, data, partial=True)
+        if client.status == "cancelled" and client.vps_assignment:
+            db.session.delete(client.vps_assignment)
         current_counts = (client.followers_count or 0, client.publications_count or 0)
         if current_counts != previous_counts:
             record_client_metric(client)
@@ -1212,6 +1214,13 @@ VPS_NAMES = {"vape", "shatha"}
 
 @api.get("/vps")
 def vps_list():
+    cancelled_assignments = VpsAssignment.query.join(Client).filter(
+        Client.status == "cancelled"
+    ).all()
+    for assignment in cancelled_assignments:
+        db.session.delete(assignment)
+    if cancelled_assignments:
+        db.session.commit()
     items = VpsAssignment.query.order_by(VpsAssignment.vps_name, VpsAssignment.id).all()
     return ok({
         "items": [item.to_dict() for item in items],
@@ -1229,6 +1238,8 @@ def vps_create():
     custom_name = (data.get("custom_name") or "").strip()
     if client_id:
         client = Client.query.filter_by(id=client_id, archived_at=None).first_or_404()
+        if client.status == "cancelled":
+            return error("No podés asignar un cliente cancelado a un VPS", 422)
         if VpsAssignment.query.filter_by(client_id=client.id).first():
             return error("Ese cliente ya está asignado a un VPS", 422)
         assignment = VpsAssignment(vps_name=vps_name, client=client)

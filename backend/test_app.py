@@ -457,6 +457,31 @@ def test_vps_assignments_support_clients_and_custom_apps(client):
     assert client.get(f'/api/clients/{customer["id"]}').get_json()["data"]["vps_name"] is None
 
 
+def test_cancelled_clients_cannot_remain_or_be_assigned_to_vps(client):
+    active = client.post("/api/clients", json={
+        "name": "Cliente VPS activo", "business_name": "VPS activo",
+        "sale_date": "2026-07-01", "signup_date": "2026-07-01",
+        "country": "Argentina", "currency": "ARS",
+    }).get_json()["data"]
+    cancelled = client.post("/api/clients", json={
+        "name": "Cliente VPS cancelado", "business_name": "VPS cancelado",
+        "sale_date": "2026-07-01", "signup_date": "2026-07-01",
+        "country": "Argentina", "currency": "ARS", "status": "cancelled",
+    }).get_json()["data"]
+
+    assert client.post("/api/vps", json={
+        "vps_name": "vape", "client_id": cancelled["id"],
+    }).status_code == 422
+    assert client.post("/api/vps", json={
+        "vps_name": "vape", "client_id": active["id"],
+    }).status_code == 201
+
+    updated = client.patch(f'/api/clients/{active["id"]}', json={"status": "cancelled"})
+    assert updated.status_code == 200
+    assert updated.get_json()["data"]["vps_name"] is None
+    assert client.get("/api/vps").get_json()["data"]["items"] == []
+
+
 def test_login_and_protected_api():
     secured_app = create_app({
         "TESTING": True,
