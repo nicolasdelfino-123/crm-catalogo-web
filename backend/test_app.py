@@ -704,6 +704,26 @@ def test_client_credentials_are_encrypted_and_loaded_separately(client, app):
     assert client.get(f"/api/clients/{client_id}/credentials").get_json()["data"]["has_credentials"] is False
 
 
+def test_client_sales_process_can_be_saved_loaded_and_cleared(client):
+    created = client.post("/api/clients", json={
+        "name": "Cliente Venta", "business_name": "Marca Venta",
+        "sale_date": "2026-07-01", "signup_date": "2026-07-01",
+        "country": "Argentina", "currency": "ARS",
+    }).get_json()["data"]
+    endpoint = f"/api/clients/{created['id']}/sales-process"
+
+    assert client.get(endpoint).get_json()["data"]["content"] == ""
+
+    content = "Llegó por recomendación.\nFuncionó mostrarle casos reales.\nObjeción: precio."
+    saved = client.put(endpoint, json={"content": content})
+    assert saved.status_code == 200
+    assert saved.get_json()["data"]["content"] == content
+    assert client.get(endpoint).get_json()["data"]["content"] == content
+
+    assert client.put(endpoint, json={"content": ""}).status_code == 200
+    assert client.get(endpoint).get_json()["data"]["content"] == ""
+
+
 def test_acquisition_summary_includes_client_details(client):
     client.post("/api/clients", json={
         "name": "Cliente Instagram", "business_name": "Marca Instagram",

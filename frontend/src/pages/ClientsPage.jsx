@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { CalendarDays, WalletCards, Server, Plus, Search, SlidersHorizontal, Download, X, ChevronRight, AlertTriangle, CheckCircle2, Clock3, ArrowUpDown, ExternalLink, MapPin, Instagram, Mail, Phone, Edit3, Check, RotateCcw, Pin, Save, ChartNoAxesColumnIncreasing, Trash2, Eye, EyeOff, KeyRound, Copy } from "lucide-react";
+import { CalendarDays, WalletCards, Server, Plus, Search, SlidersHorizontal, Download, X, ChevronRight, AlertTriangle, CheckCircle2, Clock3, ArrowUpDown, ExternalLink, MapPin, Instagram, Mail, Phone, Edit3, Check, RotateCcw, Pin, Save, ChartNoAxesColumnIncreasing, Trash2, Eye, EyeOff, KeyRound, Copy, FileText } from "lucide-react";
 
 export function createClientsPage(dependencies) {
   const { api, downloadApiFile, LABEL, ACQUISITION_OPTIONS, ACTION_PRESETS, acquisitionLabel, instagramUrl, externalUrl, fmtDate, billingDay, fmtMoney, addCalendarMonth, stageForDates, stageLabel, badge, dateKey, useEscapeClose, IconButton, Toast, Loading, Empty } = dependencies;
@@ -821,6 +821,62 @@ export function createClientsPage(dependencies) {
     );
   }
 
+  function ClientSalesProcess({ clientId }) {
+    const [content, setContent] = useState("");
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [editing, setEditing] = useState(false);
+    const [message, setMessage] = useState("");
+    useEffect(() => {
+      api(`/clients/${clientId}/sales-process`)
+        .then((data) => setContent(data.content || ""))
+        .catch((error) => setMessage(error.message))
+        .finally(() => setLoading(false));
+    }, [clientId]);
+    async function submit(event) {
+      event.preventDefault();
+      setSaving(true);
+      setMessage("");
+      try {
+        const saved = await api(`/clients/${clientId}/sales-process`, {
+          method: "PUT",
+          body: JSON.stringify({ content }),
+        });
+        setContent(saved.content || "");
+        setEditing(false);
+        setMessage("Proceso de venta guardado correctamente.");
+      } catch (error) {
+        setMessage(error.message);
+      } finally {
+        setSaving(false);
+      }
+    }
+    if (loading) return <Loading />;
+    return (
+      <section className="sales-process-card">
+        <div className="sales-process-heading">
+          <span><FileText size={20} /></span>
+          <div><h3>Proceso de venta</h3><p>Registrá qué funcionó, las objeciones y cómo se concretó la venta.</p></div>
+        </div>
+        <form onSubmit={submit}>
+          <label htmlFor={`sales-process-${clientId}`}>Cómo fue la venta</label>
+          <textarea
+            id={`sales-process-${clientId}`}
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            placeholder="Pegá o escribí acá el proceso de venta de este cliente..."
+            readOnly={!editing}
+          />
+          {message && <p className="credential-message" role="status">{message}</p>}
+          <div className="form-actions">
+            <button type="button" className="secondary" onClick={() => { setEditing(true); setMessage(""); }} disabled={editing || saving}><Edit3 size={16} />Editar</button>
+            <button className="primary" disabled={!editing || saving}><Save size={16} />{saving ? "Guardando..." : "Guardar proceso"}</button>
+          </div>
+        </form>
+      </section>
+    );
+  }
+
   function DetailModal({ clientId, onClose, onRefresh, onEdit, initialTab = "summary", initialActionId = null }) {
     const [client, setClient] = useState(null);
     const [tab, setTab] = useState(initialTab);
@@ -938,6 +994,7 @@ export function createClientsPage(dependencies) {
       ["metrics", "Métricas"],
       ["notes", "Notas"],
       ["credentials", "Usuario y contraseña"],
+      ["sales-process", "Proceso de venta"],
     ];
     return (
       <div className="modal-layer">
@@ -1308,6 +1365,7 @@ export function createClientsPage(dependencies) {
               </>
             )}
             {tab === "credentials" && <ClientCredentials clientId={client.id} />}
+            {tab === "sales-process" && <ClientSalesProcess clientId={client.id} />}
           </div>
         </article>
       </div>

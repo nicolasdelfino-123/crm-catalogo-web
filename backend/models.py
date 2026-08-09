@@ -63,6 +63,7 @@ class Client(db.Model):
     followers_count = db.Column(db.Integer, default=0)
     publications_count = db.Column(db.Integer, default=0)
     notes_summary = db.Column(db.Text)
+    sales_process = db.Column(db.Text)
     archived_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

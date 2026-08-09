@@ -495,6 +495,21 @@ def credentials_delete(client_id):
     return ok(None, "Credenciales eliminadas")
 
 
+@api.get("/clients/<int:client_id>/sales-process")
+def sales_process_get(client_id):
+    client = Client.query.get_or_404(client_id)
+    return ok({"content": client.sales_process or ""})
+
+
+@api.put("/clients/<int:client_id>/sales-process")
+def sales_process_save(client_id):
+    client = Client.query.get_or_404(client_id)
+    data = request.get_json(silent=True) or {}
+    client.sales_process = str(data.get("content") or "")
+    db.session.commit()
+    return ok({"content": client.sales_process}, "Proceso de venta guardado")
+
+
 @api.get("/messages")
 def messages_list():
     items = MessageLog.query.order_by(MessageLog.sent_date.desc(), MessageLog.id.desc()).limit(500).all()
