@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response, current_app
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Integer, case, cast, func, or_
-from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, VpsAssignment, ClientMetric, ClientNote, ClientCredential, MessageLog, WorkLog, ProspectingGoal, ProspectingLog, ProspectingOutcome, ActionTemplate
+from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, VpsAssignment, ClientMetric, ClientNote, ClientCredential, MessageLog, WorkLog, ProspectingGoal, ProspectingLog, ProspectingOutcome, ActionTemplate, SellingDay
 
 api = Blueprint("api", __name__)
 
@@ -1692,6 +1692,40 @@ def sold_clients_by_month():
         }
         for client in clients
     ])
+
+
+@api.get("/dashboard/selling-days")
+def selling_days_by_month():
+    month = request.args.get("month", date.today().strftime("%Y-%m"))
+    try:
+        month_start = date.fromisoformat(f"{month}-01")
+    except ValueError:
+        return error("El mes debe tener el formato AAAA-MM", 422)
+    month_end = add_calendar_months(month_start, 1)
+    days = SellingDay.query.filter(
+        SellingDay.selling_date >= month_start,
+        SellingDay.selling_date < month_end,
+    ).order_by(SellingDay.selling_date).all()
+    return ok([item.to_dict() for item in days])
+
+
+@api.put("/dashboard/selling-days/<selling_date>")
+def set_selling_day(selling_date):
+    try:
+        target_date = date.fromisoformat(selling_date)
+    except ValueError:
+        return error("La fecha debe tener el formato AAAA-MM-DD", 422)
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload.get("sold"), bool):
+        return error("El campo sold debe ser verdadero o falso", 422)
+    item = SellingDay.query.filter_by(selling_date=target_date).first()
+    if payload["sold"] and not item:
+        item = SellingDay(selling_date=target_date)
+        db.session.add(item)
+    elif not payload["sold"] and item:
+        db.session.delete(item)
+    db.session.commit()
+    return ok({"date": selling_date, "sold": payload["sold"]})
 
 
 @api.get("/action-templates")

@@ -486,7 +486,17 @@ export function createDashboardPage(dependencies) {
     const [renewalItems, setRenewalItems] = useState(null);
     const [loadingMonth, setLoadingMonth] = useState(false);
     const [payingCollection, setPayingCollection] = useState(null);
+    const [sellingDays, setSellingDays] = useState([]);
+    const [savingSellingDay, setSavingSellingDay] = useState(null);
     useEscapeClose(onClose);
+    useEffect(() => {
+      if (metricKey !== "sold_clients_month") return undefined;
+      let active = true;
+      api(`/dashboard/selling-days?month=${selectedMonth}`)
+        .then((days) => { if (active) setSellingDays(days.map((item) => item.date)); })
+        .catch((error) => { if (active) window.alert(error.message); });
+      return () => { active = false; };
+    }, [metricKey, selectedMonth]);
     async function changeMonth(event) {
       const month = event.target.value;
       setSelectedMonth(month);
@@ -747,6 +757,24 @@ export function createDashboardPage(dependencies) {
         window.alert(error.message);
       } finally {
         setPayingCollection(null);
+      }
+    }
+    async function toggleSellingDay(day) {
+      if (metricKey !== "sold_clients_month" || !day.currentMonth || savingSellingDay) return;
+      const sold = !sellingDays.includes(day.iso);
+      setSavingSellingDay(day.iso);
+      try {
+        await api(`/dashboard/selling-days/${day.iso}`, {
+          method: "PUT",
+          body: JSON.stringify({ sold }),
+        });
+        setSellingDays((current) => sold
+          ? [...new Set([...current, day.iso])].sort()
+          : current.filter((item) => item !== day.iso));
+      } catch (error) {
+        window.alert(error.message);
+      } finally {
+        setSavingSellingDay(null);
       }
     }
     function renderMetricItem(item) {
@@ -1012,7 +1040,12 @@ export function createDashboardPage(dependencies) {
             {monthlyClientMetric && (
               <div className="dashboard-month-filter">
                 <label>
-                  {metricKey === "sold_clients_month" ? "Ver ventas del mes" : "Ver altas del mes"}
+                  <span>
+                    {metricKey === "sold_clients_month" ? "Ver ventas del mes" : "Ver altas del mes"}
+                    {metricKey === "sold_clients_month" && (
+                      <strong className="dashboard-selling-days-count"> — {sellingDays.length} {sellingDays.length === 1 ? "día vendido" : "días vendidos"}</strong>
+                    )}
+                  </span>
                   <input
                     type="month"
                     value={selectedMonth}
@@ -1077,9 +1110,13 @@ export function createDashboardPage(dependencies) {
                     <button
                       type="button"
                       key={day.iso}
-                      className={`${day.currentMonth ? "" : "outside"} ${day.iso === todayIso ? "today" : ""} ${selectedCalendarDate === day.iso ? "selected" : ""}`}
-                      onClick={() => setSelectedCalendarDate(day.iso)}
-                      aria-label={`${day.iso}: ${day.count} ${calendarItemLabel[1]}`}
+                      className={`${day.currentMonth ? "" : "outside"} ${day.iso === todayIso ? "today" : ""} ${selectedCalendarDate === day.iso ? "selected" : ""} ${metricKey === "sold_clients_month" && sellingDays.includes(day.iso) ? "selling-day" : ""} ${savingSellingDay === day.iso ? "saving" : ""}`}
+                      onClick={(event) => {
+                        setSelectedCalendarDate(day.iso);
+                        if (event.detail === 3) toggleSellingDay(day);
+                      }}
+                      aria-label={`${day.iso}: ${day.count} ${calendarItemLabel[1]}${sellingDays.includes(day.iso) ? ", día vendido" : ""}`}
+                      title={metricKey === "sold_clients_month" && day.currentMonth ? "Triple clic para marcar o desmarcar como día vendido" : undefined}
                     >
                       <time>{day.day}</time>
                       {metricKey === "active_clients" && day.riskCount > 0 && (

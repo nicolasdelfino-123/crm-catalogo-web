@@ -2,7 +2,39 @@ import calendar
 import pytest
 from datetime import date, datetime, timedelta
 from app import create_app
-from models import db, Client, ClientAction, Payment, User, ClientCredential
+from models import db, Client, ClientAction, Payment, User, ClientCredential, SellingDay
+
+
+def test_selling_days_are_persistent_editable_and_filtered_by_month(client, app):
+    assert client.get("/api/dashboard/selling-days?month=2026-08").get_json()["data"] == []
+
+    marked = client.put(
+        "/api/dashboard/selling-days/2026-08-09", json={"sold": True},
+    )
+    assert marked.status_code == 200
+    # Repetir la misma operación es idempotente y no duplica el día.
+    assert client.put(
+        "/api/dashboard/selling-days/2026-08-09", json={"sold": True},
+    ).status_code == 200
+    august = client.get("/api/dashboard/selling-days?month=2026-08").get_json()["data"]
+    assert august == [{"date": "2026-08-09"}]
+    assert client.get("/api/dashboard/selling-days?month=2026-09").get_json()["data"] == []
+    with app.app_context():
+        assert SellingDay.query.count() == 1
+
+    unmarked = client.put(
+        "/api/dashboard/selling-days/2026-08-09", json={"sold": False},
+    )
+    assert unmarked.status_code == 200
+    assert client.get("/api/dashboard/selling-days?month=2026-08").get_json()["data"] == []
+
+
+def test_selling_days_validate_month_date_and_boolean(client):
+    assert client.get("/api/dashboard/selling-days?month=agosto").status_code == 422
+    assert client.put("/api/dashboard/selling-days/hoy", json={"sold": True}).status_code == 422
+    assert client.put(
+        "/api/dashboard/selling-days/2026-08-09", json={"sold": "yes"},
+    ).status_code == 422
 
 
 def test_cancelled_client_pending_items_are_hidden_from_dashboard_and_calendar(client, app):

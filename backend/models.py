@@ -349,3 +349,13 @@ class ActionTemplate(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     sort_order = db.Column(db.Integer, default=0)
     def to_dict(self): return {"id": self.id, "key": self.key, "title": self.title, "day_offset": self.day_offset, "priority": self.priority, "action_type": self.action_type, "is_active": self.is_active}
+
+
+class SellingDay(db.Model):
+    """Día en el que se intentó vender, independiente de las ventas cerradas."""
+    id = db.Column(db.Integer, primary_key=True)
+    selling_date = db.Column(db.Date, unique=True, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def to_dict(self):
+        return {"date": iso(self.selling_date)}
