@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Users, CalendarDays, WalletCards, ReceiptText, Plus, Search, Download, X, ChevronLeft, ChevronRight, AlertTriangle, Check, Clock3, ArrowUpDown, TrendingUp, Timer, List } from "lucide-react";
+import { Users, CalendarDays, WalletCards, ReceiptText, Plus, Search, Download, X, ChevronLeft, ChevronRight, AlertTriangle, Check, Clock3, ArrowUpDown, TrendingUp, Timer, List, Columns3, GripVertical } from "lucide-react";
 
 export function createDashboardPage(dependencies) {
   const { api, downloadApiFile, LABEL, fmtDate, fmtMonth, monthKey, nextMonthKey, fmtMoney, dateKey, fromDateKey, addDays, startOfWeek, clientBillingDateInMonth, badge, useEscapeClose, IconButton, Loading, Empty, ClientForm, DetailModal, AgendaNewAction, AgendaActionEditor } = dependencies;
@@ -492,6 +492,12 @@ export function createDashboardPage(dependencies) {
     const [messagesInput, setMessagesInput] = useState("0");
     const [messagesSaved, setMessagesSaved] = useState(false);
     const [savingMessages, setSavingMessages] = useState(false);
+    const [kanbanItems, setKanbanItems] = useState(items);
+    const [draggedActionId, setDraggedActionId] = useState(null);
+    const [kanbanDropTarget, setKanbanDropTarget] = useState(null);
+    const [kanbanDropIndex, setKanbanDropIndex] = useState(null);
+    const [savingKanbanAction, setSavingKanbanAction] = useState(null);
+    useEffect(() => setKanbanItems(items), [items]);
     useEscapeClose(onClose);
     useEffect(() => {
       if (metricKey !== "sold_clients_month") return undefined;
@@ -528,7 +534,9 @@ export function createDashboardPage(dependencies) {
         setLoadingMonth(false);
       }
     }
-    const sourceItems = monthlyClientMetric
+    const sourceItems = metricKey === "urgent_actions" && metricView === "kanban"
+      ? kanbanItems
+      : monthlyClientMetric
       ? monthlyItems
       : metricKey === "renewals_week"
         ? renewalItems || items
@@ -591,6 +599,12 @@ export function createDashboardPage(dependencies) {
       })
       : paymentFilteredItems;
     const displayedItems = useMemo(() => {
+      if (metricKey === "urgent_actions" && metricView === "kanban") {
+        return [...searchedSourceItems].sort((first, second) => (
+          (first.kanban_order || 0) - (second.kanban_order || 0)
+          || first.id.toString().localeCompare(second.id.toString())
+        ));
+      }
       const hasDate = actionMetric || paymentMetric || [
         "active_clients",
         "active_client_days",
@@ -618,7 +632,7 @@ export function createDashboardPage(dependencies) {
         const comparison = firstDate.localeCompare(secondDate);
         return (dateOrder === "asc" ? comparison : -comparison) || first.id - second.id;
       });
-    }, [searchedSourceItems, metricKey, dateOrder, actionMetric, paymentMetric]);
+    }, [searchedSourceItems, metricKey, metricView, dateOrder, actionMetric, paymentMetric]);
     const calendarDateField = metricKey === "active_clients"
       ? "next_renewal_date"
       : metricKey === "renewals_week"
@@ -811,6 +825,49 @@ export function createDashboardPage(dependencies) {
         setSavingMessages(false);
       }
     }
+    async function moveKanbanAction(action, status, targetIndex) {
+      if (!action || savingKanbanAction) return;
+      const previousItems = kanbanItems;
+      const originalColumn = kanbanItems.filter((item) => item.status === action.status);
+      const originalIndex = originalColumn.findIndex((item) => item.id === action.id);
+      const withoutMoved = kanbanItems.filter((item) => item.id !== action.id);
+      const targetItems = withoutMoved.filter((item) => item.status === status);
+      const adjustedTargetIndex = action.status === status
+        && originalIndex >= 0
+        && targetIndex > originalIndex
+        ? targetIndex - 1
+        : targetIndex;
+      const insertionIndex = Math.max(0, Math.min(adjustedTargetIndex ?? targetItems.length, targetItems.length));
+      targetItems.splice(insertionIndex, 0, { ...action, status });
+      const nextItems = ["pending", "in_progress"].flatMap((columnStatus) => {
+        const columnItems = columnStatus === status
+          ? targetItems
+          : withoutMoved.filter((item) => item.status === columnStatus);
+        return columnItems.map((item, index) => ({ ...item, kanban_order: index }));
+      });
+      setSavingKanbanAction(action.id);
+      setKanbanItems(nextItems);
+      try {
+        await api("/actions/kanban-order", {
+          method: "PUT",
+          body: JSON.stringify({ items: nextItems.map((item) => ({
+            id: item.id,
+            standalone: Boolean(item.standalone),
+            status: item.status,
+            kanban_order: item.kanban_order,
+          })) }),
+        });
+        await onRefresh();
+      } catch (error) {
+        setKanbanItems(previousItems);
+        window.alert(error.message);
+      } finally {
+        setSavingKanbanAction(null);
+        setDraggedActionId(null);
+        setKanbanDropTarget(null);
+        setKanbanDropIndex(null);
+      }
+    }
     function renderMetricItem(item) {
       const clickableClientMetric = actionMetric
         ? Boolean(item.client_id || (item.standalone && !item.projected))
@@ -947,7 +1004,7 @@ export function createDashboardPage(dependencies) {
       <>
         <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
           <section
-            className={`dashboard-metric-modal ${metricKey === "active_clients" ? "active-clients-modal" : ""}`}
+            className={`dashboard-metric-modal ${metricKey === "active_clients" ? "active-clients-modal" : ""} ${metricKey === "urgent_actions" && metricView === "kanban" ? "urgent-kanban-modal" : ""}`}
             role="dialog"
             aria-modal="true"
             aria-label={title}
@@ -1015,6 +1072,17 @@ export function createDashboardPage(dependencies) {
                   <CalendarDays size={16} />
                   Calendario
                 </button>
+                {metricKey === "urgent_actions" && (
+                  <button
+                    type="button"
+                    className={metricView === "kanban" ? "active" : ""}
+                    onClick={() => setMetricView("kanban")}
+                    aria-pressed={metricView === "kanban"}
+                  >
+                    <Columns3 size={16} />
+                    Kanban
+                  </button>
+                )}
               </div>
             )}
             {metricKey === "active_clients" && metricView === "list" && (
@@ -1148,6 +1216,76 @@ export function createDashboardPage(dependencies) {
               </div>
             )}
             {!loadingMonth && metricView === "list" && displayedItems.map(renderMetricItem)}
+            {!loadingMonth && metricKey === "urgent_actions" && metricView === "kanban" && (
+              <div className="dashboard-kanban" aria-label="Tablero de acciones urgentes">
+                {[["pending", "Pendientes"], ["in_progress", "En progreso"]].map(([status, label]) => {
+                  const columnItems = displayedItems.filter((item) => item.status === status);
+                  return (
+                    <section
+                      key={status}
+                      className={`dashboard-kanban-column ${kanbanDropTarget === status ? "drop-target" : ""}`}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setKanbanDropTarget(status);
+                        setKanbanDropIndex(columnItems.length);
+                      }}
+                      onDragLeave={(event) => {
+                        if (!event.currentTarget.contains(event.relatedTarget)) setKanbanDropTarget(null);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const action = kanbanItems.find((item) => String(item.id) === String(draggedActionId));
+                        moveKanbanAction(action, status, kanbanDropIndex);
+                      }}
+                    >
+                      <header><strong>{label}</strong><span>{columnItems.length}</span></header>
+                      <div className="dashboard-kanban-cards">
+                        {columnItems.map((item, index) => (
+                          <article
+                            key={item.id}
+                            className={`dashboard-kanban-card ${savingKanbanAction === item.id ? "saving" : ""} ${kanbanDropTarget === status && kanbanDropIndex === index ? "insert-before" : ""}`}
+                            draggable={!savingKanbanAction}
+                            onDragStart={(event) => {
+                              setDraggedActionId(item.id);
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData("text/plain", String(item.id));
+                            }}
+                            onDragOver={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setKanbanDropTarget(status);
+                              setKanbanDropIndex(index);
+                            }}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const draggedAction = kanbanItems.find((candidate) => String(candidate.id) === String(draggedActionId));
+                              moveKanbanAction(draggedAction, status, index);
+                            }}
+                            onDragEnd={() => { setDraggedActionId(null); setKanbanDropTarget(null); setKanbanDropIndex(null); }}
+                            onClick={() => {
+                              if (item.standalone && !item.projected) setSelectedStandaloneAction(item);
+                              else if (item.client_id) {
+                                setSelectedActionId(!item.projected ? item.id : null);
+                                setSelectedActionClient(item.client_id);
+                              }
+                            }}
+                          >
+                            <div className="dashboard-kanban-card-head">
+                              <GripVertical size={16} aria-hidden="true" />
+                              <strong>{item.title}</strong>
+                            </div>
+                            <span>{item.client_name}{item.business_name ? ` · ${item.business_name}` : ""}</span>
+                            <footer><time>{item.due_date ? fmtDate(item.due_date) : "Sin fecha"}</time>{badge(item.status)}</footer>
+                          </article>
+                        ))}
+                        {!columnItems.length && <p>Arrastrá una acción hasta acá.</p>}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            )}
             {!loadingMonth && supportsCalendar && metricView === "calendar" && (
               <div className="dashboard-actions-calendar">
                 <div className="calendar-head">

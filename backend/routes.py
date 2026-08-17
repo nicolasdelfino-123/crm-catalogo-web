@@ -1429,6 +1429,7 @@ def dashboard():
     def action_item(action):
         return {
             "id": action.id, "title": action.title, "status": action.status,
+            "kanban_order": action.kanban_order,
             "due_date": action.due_date.isoformat() if action.due_date else None,
             "client_id": action.client.id, "client_name": action.client.name,
             "business_name": action.client.business_name,
@@ -1481,6 +1482,22 @@ def dashboard():
         },
     }
     return ok(data)
+
+
+@api.put("/actions/kanban-order")
+def actions_kanban_order():
+    items = (request.get_json() or {}).get("items", [])
+    for position, item in enumerate(items):
+        if item.get("standalone"):
+            action = StandaloneAction.query.get_or_404(int(str(item["id"]).replace("standalone-", "")))
+        else:
+            action = ClientAction.query.get_or_404(int(item["id"]))
+        action.status = item["status"]
+        action.kanban_order = int(item.get("kanban_order", position))
+        if action.status != "completed":
+            action.completed_at = None
+    db.session.commit()
+    return ok(message="Orden del tablero actualizado")
 
 
 @api.get("/dashboard/renewals")

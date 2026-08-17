@@ -141,6 +141,7 @@ class ClientAction(db.Model):
     implementation_date = db.Column(db.Date)
     completed_at = db.Column(db.DateTime)
     result_notes = db.Column(db.Text)
+    kanban_order = db.Column(db.Integer, default=0, nullable=False)
     template_key = db.Column(db.String(80))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     __table_args__ = (UniqueConstraint("client_id", "template_key", name="uq_client_template"),)
@@ -166,6 +167,7 @@ class StandaloneAction(db.Model):
     due_date = db.Column(db.Date, index=True)
     implementation_date = db.Column(db.Date)
     completed_at = db.Column(db.DateTime)
+    kanban_order = db.Column(db.Integer, default=0, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -174,6 +176,7 @@ class StandaloneAction(db.Model):
             "action_type": "standalone", "status": self.status, "priority": self.priority,
             "due_date": iso(self.due_date), "implementation_date": iso(self.implementation_date),
             "completed_at": iso(self.completed_at),
+            "kanban_order": self.kanban_order,
             "result_notes": None, "client_name": self.context_name,
             "business_name": "Acción personalizada", "standalone": True,
         }
