@@ -4,6 +4,7 @@ import calendar
 import base64
 import hashlib
 import zipfile
+import unicodedata
 from xml.sax.saxutils import escape
 from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response, current_app
@@ -36,6 +37,24 @@ def ok(data=None, message=None, status=200):
 
 def error(message, status=400, fields=None):
     return jsonify({"success": False, "error": {"code": "VALIDATION_ERROR", "message": message, "fields": fields or {}}}), status
+
+
+def accent_insensitive(column):
+    """Normaliza acentos comunes con funciones disponibles en SQLite y PostgreSQL."""
+    expression = column
+    for accented, plain in (
+        ("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"),
+        ("ü", "u"), ("ñ", "n"), ("ç", "c"),
+        ("Á", "a"), ("É", "e"), ("Í", "i"), ("Ó", "o"), ("Ú", "u"),
+        ("Ü", "u"), ("Ñ", "n"), ("Ç", "c"),
+    ):
+        expression = func.replace(expression, accented, plain)
+    return func.lower(expression)
+
+
+def normalize_search(value):
+    decomposed = unicodedata.normalize("NFKD", value)
+    return "".join(character for character in decomposed if not unicodedata.combining(character)).lower()
 
 
 def parse_date(value):
@@ -324,14 +343,15 @@ def clients_list():
         db.session.commit()
     search = request.args.get("search", "").strip()
     if search:
-        term = f"%{search}%"
+        term = f"%{normalize_search(search)}%"
         query = query.filter(or_(
-            Client.name.ilike(term),
-            Client.business_name.ilike(term),
-            Client.instagram_username.ilike(term),
-            Client.email.ilike(term),
-            Client.city.ilike(term),
-            Client.country.ilike(term),
+            accent_insensitive(Client.name).like(term),
+            accent_insensitive(Client.business_name).like(term),
+            accent_insensitive(Client.instagram_username).like(term),
+            accent_insensitive(Client.email).like(term),
+            accent_insensitive(Client.phone).like(term),
+            accent_insensitive(Client.city).like(term),
+            accent_insensitive(Client.country).like(term),
         ))
     requested_status = request.args.get("status")
     if requested_status == "active_no_signup":

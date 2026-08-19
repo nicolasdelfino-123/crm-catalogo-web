@@ -1883,7 +1883,7 @@ export function createClientsPage(dependencies) {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar cliente, negocio, Instagram o ubicación"
+              placeholder="Buscar cliente, negocio, teléfono, ciudad o Instagram"
             />
           </label>
           <label className="filter">

@@ -612,6 +612,32 @@ def test_create_and_list_client(client):
     assert payment.get_json()["data"]["due_date"] == "2026-08-01"
 
 
+def test_client_search_includes_phone_and_city(client, app):
+    with app.app_context():
+        db.session.add_all([
+            Client(
+                name="Cliente teléfono", business_name="Marca Uno",
+                phone="+54 351 555-0198", city="Córdoba",
+                country="Argentina", currency="ARS",
+            ),
+            Client(
+                name="Cliente ciudad", business_name="Marca Dos",
+                phone="+54 11 4444-0200", city="Rosario",
+                country="Argentina", currency="ARS",
+            ),
+        ])
+        db.session.commit()
+
+    by_phone = client.get("/api/clients?search=555-0198").get_json()["data"]
+    assert [item["name"] for item in by_phone["items"]] == ["Cliente teléfono"]
+
+    by_city_without_accent = client.get("/api/clients?search=Cordoba").get_json()["data"]
+    assert [item["name"] for item in by_city_without_accent["items"]] == ["Cliente teléfono"]
+
+    by_city = client.get("/api/clients?search=Rosário").get_json()["data"]
+    assert [item["name"] for item in by_city["items"]] == ["Cliente ciudad"]
+
+
 def test_client_list_renewal_totals_follow_filters_and_include_no_signup(client, app):
     with app.app_context():
         db.session.add_all([
