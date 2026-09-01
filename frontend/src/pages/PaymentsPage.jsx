@@ -131,7 +131,17 @@ export function createPaymentsPage(dependencies) {
           ? payment.paid_at
           : payment.due_date || payment.paid_at
       );
-      return assignedDate ? assignedDate.slice(0, 7) : "undated";
+      if (!assignedDate) return "undated";
+      const match = String(assignedDate).match(/^(\d{4})-(\d{1,2})/);
+      return match ? `${match[1]}-${match[2].padStart(2, "0")}` : "undated";
+    };
+    const paymentMonthLabel = (month, count) => {
+      if (month === "undated") return `Sin fecha (${count})`;
+      const [year, monthNumber] = month.split("-");
+      const monthName = new Intl.DateTimeFormat("es-AR", {
+        month: "long", timeZone: "UTC",
+      }).format(new Date(`${year}-${monthNumber}-01T00:00:00Z`));
+      return `${monthNumber}/${year} · ${monthName} (${count})`;
     };
     const summaryPaymentMonths = useMemo(() => {
       if (!summaryDetail || summaryDetail.kind !== "payments") return [];
@@ -401,9 +411,7 @@ export function createPaymentsPage(dependencies) {
                       <option value="all">Todos los meses ({summaryDetail.items.length} pagos)</option>
                       {summaryPaymentMonths.map(([month, count]) => (
                         <option value={month} key={month}>
-                          {month === "undated"
-                            ? `Sin fecha (${count})`
-                            : `${new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`))} (${count})`}
+                          {paymentMonthLabel(month, count)}
                         </option>
                       ))}
                     </select>
