@@ -6,6 +6,7 @@ export function createPaymentsPage(dependencies) {
 
   function Payments() {
     const [items, setItems] = useState([]);
+    const [completedItems, setCompletedItems] = useState([]);
     const [forecast, setForecast] = useState({ items: [], totals: {} });
     const [editing, setEditing] = useState(null);
     const [summaryDetail, setSummaryDetail] = useState(null);
@@ -24,8 +25,11 @@ export function createPaymentsPage(dependencies) {
     }, Boolean(editing || summaryDetail));
     const load = useCallback(() => Promise.all([
       api("/payments"), api("/payments/monthly-forecast"),
-    ]).then(([payments, monthlyForecast]) => {
-      setItems(payments); setForecast(monthlyForecast);
+      api("/dashboard/income?month=all&payment_type=all"),
+    ]).then(([payments, monthlyForecast, completedPayments]) => {
+      setItems(payments);
+      setForecast(monthlyForecast);
+      setCompletedItems(completedPayments.items || []);
     }), []);
     useEffect(() => {
       load();
@@ -40,42 +44,42 @@ export function createPaymentsPage(dependencies) {
       [items],
     );
     const paidTotals = useMemo(
-      () => items.filter((payment) => payment.status === "paid").reduce((result, payment) => ({
+      () => completedItems.reduce((result, payment) => ({
         ...result,
         [payment.currency]: (result[payment.currency] || 0) + payment.amount,
       }), {}),
-      [items],
+      [completedItems],
     );
     const monthlyPaidTotals = useMemo(
-      () => items
-        .filter((payment) => payment.status === "paid" && payment.payment_type === "monthly")
+      () => completedItems
+        .filter((payment) => payment.payment_type === "monthly")
         .reduce((result, payment) => ({
           ...result,
           [payment.currency]: (result[payment.currency] || 0) + payment.amount,
         }), {}),
-      [items],
+      [completedItems],
     );
     const extraWorkPaidTotals = useMemo(
-      () => items
-        .filter((payment) => payment.status === "paid" && payment.payment_type === "extra_work")
+      () => completedItems
+        .filter((payment) => payment.payment_type === "extra_work")
         .reduce((result, payment) => ({
           ...result,
           [payment.currency]: (result[payment.currency] || 0) + payment.amount,
         }), {}),
-      [items],
+      [completedItems],
     );
     const depositPaidTotals = useMemo(
-      () => items
-        .filter((payment) => payment.status === "paid" && payment.payment_type === "deposit")
+      () => completedItems
+        .filter((payment) => payment.payment_type === "deposit")
         .reduce((result, payment) => ({
           ...result,
           [payment.currency]: (result[payment.currency] || 0) + payment.amount,
         }), {}),
-      [items],
+      [completedItems],
     );
     const paymentCurrencies = useMemo(
-      () => [...new Set(items.map((payment) => payment.currency))].sort(),
-      [items],
+      () => [...new Set([...items, ...completedItems].map((payment) => payment.currency))].sort(),
+      [items, completedItems],
     );
     const sortedItems = useMemo(() => {
       const normalizedQuery = clientQuery.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
@@ -122,9 +126,11 @@ export function createPaymentsPage(dependencies) {
       });
     }, [items, clientQuery, clientNameOrder, dueDateOrder, statusOrder]);
     const paymentSummaryMonth = (payment) => {
-      const assignedDate = payment.payment_type === "deposit" && payment.paid_at
-        ? payment.paid_at
-        : payment.due_date || payment.paid_at;
+      const assignedDate = payment.display_date || (
+        payment.payment_type === "deposit" && payment.paid_at
+          ? payment.paid_at
+          : payment.due_date || payment.paid_at
+      );
       return assignedDate ? assignedDate.slice(0, 7) : "undated";
     };
     const summaryPaymentMonths = useMemo(() => {
@@ -195,10 +201,10 @@ export function createPaymentsPage(dependencies) {
       await api(`/payments/${payment.id}`, { method: "DELETE" });
       load();
     }
-    function showSummary(title, predicate) {
+    function showSummary(title, predicate, sourceItems = items) {
       setSummaryClientQuery("");
       setSummaryPaymentMonth("all");
-      setSummaryDetail({ title, items: items.filter(predicate), kind: "payments" });
+      setSummaryDetail({ title, items: sourceItems.filter(predicate), kind: "payments" });
     }
     function showForecast(currency) {
       setSummaryClientQuery("");
@@ -223,7 +229,7 @@ export function createPaymentsPage(dependencies) {
             <p>Mensualidades, señas y trabajos extra por cliente.</p>
           </div>
         </div>
-        <button type="button" className="global-paid-total payment-summary-trigger" onClick={() => showSummary("Todos los pagos completados", (payment) => payment.status === "paid")}>
+        <button type="button" className="global-paid-total payment-summary-trigger" onClick={() => showSummary("Todos los pagos completados", () => true, completedItems)}>
           <div><span className="eyebrow">Total general realizado</span><h3>Todos los pagos completados</h3></div>
           <div>{Object.entries(paidTotals).map(([currency, total]) => <strong key={currency}>{fmtMoney(total, currency)}</strong>)}{!Object.keys(paidTotals).length && <span>Sin pagos completados</span>}</div>
         </button>
@@ -235,25 +241,25 @@ export function createPaymentsPage(dependencies) {
             </button>
           ))}
           {paymentCurrencies.map((currency) => (
-            <button type="button" className="payment-summary-trigger" key={`monthly-paid-${currency}`} onClick={() => showSummary(`Mensualidades pagadas · ${currency}`, (payment) => payment.currency === currency && payment.status === "paid" && payment.payment_type === "monthly")}>
+            <button type="button" className="payment-summary-trigger" key={`monthly-paid-${currency}`} onClick={() => showSummary(`Mensualidades pagadas · ${currency}`, (payment) => payment.currency === currency && payment.payment_type === "monthly", completedItems)}>
               <small>Pagos Mensualidades · {currency}</small>
               <strong>{fmtMoney(monthlyPaidTotals[currency] || 0, currency)}</strong>
             </button>
           ))}
           {paymentCurrencies.map((currency) => (
-            <button type="button" className="payment-summary-trigger" key={`deposit-paid-${currency}`} onClick={() => showSummary(`Señas pagadas · ${currency}`, (payment) => payment.currency === currency && payment.status === "paid" && payment.payment_type === "deposit")}>
+            <button type="button" className="payment-summary-trigger" key={`deposit-paid-${currency}`} onClick={() => showSummary(`Señas pagadas · ${currency}`, (payment) => payment.currency === currency && payment.payment_type === "deposit", completedItems)}>
               <small>Pagos Señas · {currency}</small>
               <strong>{fmtMoney(depositPaidTotals[currency] || 0, currency)}</strong>
             </button>
           ))}
           {paymentCurrencies.map((currency) => (
-            <button type="button" className="payment-summary-trigger" key={`extra-work-paid-${currency}`} onClick={() => showSummary(`Trabajos extra pagados · ${currency}`, (payment) => payment.currency === currency && payment.status === "paid" && payment.payment_type === "extra_work")}>
+            <button type="button" className="payment-summary-trigger" key={`extra-work-paid-${currency}`} onClick={() => showSummary(`Trabajos extra pagados · ${currency}`, (payment) => payment.currency === currency && payment.payment_type === "extra_work", completedItems)}>
               <small>Pagos Trabajos extra · {currency}</small>
               <strong>{fmtMoney(extraWorkPaidTotals[currency] || 0, currency)}</strong>
             </button>
           ))}
           {paymentCurrencies.map((currency) => (
-            <button type="button" className="payment-summary-trigger" key={`total-paid-${currency}`} onClick={() => showSummary(`Todos los pagos completados · ${currency}`, (payment) => payment.currency === currency && payment.status === "paid")}>
+            <button type="button" className="payment-summary-trigger" key={`total-paid-${currency}`} onClick={() => showSummary(`Todos los pagos completados · ${currency}`, (payment) => payment.currency === currency, completedItems)}>
               <small>Pagos Totales · {currency}</small>
               <strong>{fmtMoney(
                 paidTotals[currency] || 0,
