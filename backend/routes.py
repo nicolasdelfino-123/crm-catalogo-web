@@ -1549,6 +1549,20 @@ def renewals_by_week():
 
 @api.get("/dashboard/income")
 def dashboard_income():
+    def income_date(payment):
+        """Return the month used by the income breakdown for every paid record.
+
+        Every completed payment belongs to its actual collection month. The due
+        date is only a fallback for legacy/imported records without ``paid_at``;
+        ``created_at`` keeps even a fully undated record from vanishing from every
+        monthly total.
+        """
+        if payment.paid_at:
+            return payment.paid_at.date()
+        if payment.due_date:
+            return payment.due_date
+        return payment.created_at.date() if payment.created_at else None
+
     month = request.args.get("month", date.today().strftime("%Y-%m"))
     payment_type = request.args.get("payment_type", "all")
     if payment_type not in {"all", "monthly", "extra_work", "monthly_forecast"}:
@@ -1566,13 +1580,9 @@ def dashboard_income():
         for client in billable_clients:
             totals[client.currency] = totals.get(client.currency, 0) + float(client.payment_amount or 0)
         available_months = sorted({
-            (
-                payment.paid_at.date()
-                if payment.payment_type == "deposit" and payment.paid_at
-                else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
-            ).strftime("%Y-%m")
+            income_date(payment).strftime("%Y-%m")
             for payment in Payment.query.filter(Payment.status == "paid").all()
-            if payment.due_date or payment.paid_at
+            if income_date(payment)
         }, reverse=True)
         return ok({
             "month": month,
@@ -1606,20 +1616,12 @@ def dashboard_income():
     paid_payments = query.all()
     matching_payments = []
     available_months = sorted({
-        (
-            payment.paid_at.date()
-            if payment.payment_type == "deposit" and payment.paid_at
-            else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
-        ).strftime("%Y-%m")
+        income_date(payment).strftime("%Y-%m")
         for payment in Payment.query.filter(Payment.status == "paid").all()
-        if payment.due_date or payment.paid_at
+        if income_date(payment)
     }, reverse=True)
     for payment in paid_payments:
-        payment_date = (
-            payment.paid_at.date()
-            if payment.payment_type == "deposit" and payment.paid_at
-            else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
-        )
+        payment_date = income_date(payment)
         if month_start and (not payment_date or not month_start <= payment_date < month_end):
             continue
         totals[payment.currency] = totals.get(payment.currency, 0) + float(payment.amount)
