@@ -10,6 +10,7 @@ export function createPaymentsPage(dependencies) {
     const [editing, setEditing] = useState(null);
     const [summaryDetail, setSummaryDetail] = useState(null);
     const [summaryClientQuery, setSummaryClientQuery] = useState("");
+    const [summaryPaymentMonth, setSummaryPaymentMonth] = useState("all");
     const [forecastStatusFilter, setForecastStatusFilter] = useState("active");
     const [selectedClient, setSelectedClient] = useState(null);
     const [clientForm, setClientForm] = useState(null);
@@ -120,9 +121,27 @@ export function createPaymentsPage(dependencies) {
         return (dueDateOrder === "asc" ? dateOrder : -dateOrder) || byClient(first, second);
       });
     }, [items, clientQuery, clientNameOrder, dueDateOrder, statusOrder]);
+    const paymentSummaryMonth = (payment) => {
+      const assignedDate = payment.payment_type === "deposit" && payment.paid_at
+        ? payment.paid_at
+        : payment.due_date || payment.paid_at;
+      return assignedDate ? assignedDate.slice(0, 7) : "undated";
+    };
+    const summaryPaymentMonths = useMemo(() => {
+      if (!summaryDetail || summaryDetail.kind !== "payments") return [];
+      const counts = summaryDetail.items.reduce((result, payment) => {
+        const month = paymentSummaryMonth(payment);
+        result[month] = (result[month] || 0) + 1;
+        return result;
+      }, {});
+      return Object.entries(counts).sort(([first], [second]) => second.localeCompare(first));
+    }, [summaryDetail]);
     const summaryVisibleItems = useMemo(() => {
-      if (!summaryDetail || summaryDetail.kind !== "forecast") {
-        return summaryDetail?.items || [];
+      if (!summaryDetail) return [];
+      if (summaryDetail.kind === "payments") {
+        return summaryPaymentMonth === "all"
+          ? summaryDetail.items
+          : summaryDetail.items.filter((payment) => paymentSummaryMonth(payment) === summaryPaymentMonth);
       }
       const statusItems = summaryDetail.items.filter((client) =>
         forecastStatusFilter === "active_no_signup"
@@ -141,7 +160,14 @@ export function createPaymentsPage(dependencies) {
           .toLocaleLowerCase("es")
           .includes(query),
       );
-    }, [summaryDetail, summaryClientQuery, forecastStatusFilter]);
+    }, [summaryDetail, summaryClientQuery, forecastStatusFilter, summaryPaymentMonth]);
+    const summaryPaymentTotals = useMemo(() => {
+      if (!summaryDetail || summaryDetail.kind !== "payments") return {};
+      return summaryVisibleItems.reduce((result, payment) => ({
+        ...result,
+        [payment.currency]: (result[payment.currency] || 0) + payment.amount,
+      }), {});
+    }, [summaryDetail, summaryVisibleItems]);
     const summaryForecastTotal = useMemo(() => {
       if (!summaryDetail || summaryDetail.kind !== "forecast") return 0;
       return summaryDetail.items
@@ -171,6 +197,7 @@ export function createPaymentsPage(dependencies) {
     }
     function showSummary(title, predicate) {
       setSummaryClientQuery("");
+      setSummaryPaymentMonth("all");
       setSummaryDetail({ title, items: items.filter(predicate), kind: "payments" });
     }
     function showForecast(currency) {
@@ -360,6 +387,28 @@ export function createPaymentsPage(dependencies) {
           <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && setSummaryDetail(null)}>
             <div className="payment-summary-modal">
               <div className="modal-head"><div><span className="eyebrow">Desglose del total</span><h2>{summaryDetail.title}{summaryDetail.kind === "forecast" && ` · Total ${fmtMoney(summaryForecastTotal, summaryDetail.currency)}`}</h2></div><IconButton label="Cerrar" onClick={() => setSummaryDetail(null)}><X /></IconButton></div>
+              {summaryDetail.kind === "payments" && (
+                <div className="payment-summary-filter-bar">
+                  <label>
+                    Mes del Resumen
+                    <select value={summaryPaymentMonth} onChange={(event) => setSummaryPaymentMonth(event.target.value)}>
+                      <option value="all">Todos los meses ({summaryDetail.items.length} pagos)</option>
+                      {summaryPaymentMonths.map(([month, count]) => (
+                        <option value={month} key={month}>
+                          {month === "undated"
+                            ? `Sin fecha (${count})`
+                            : `${new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`))} (${count})`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="payment-summary-filter-totals">
+                    {Object.entries(summaryPaymentTotals).sort(([first], [second]) => first.localeCompare(second)).map(([currency, total]) => (
+                      <span key={currency}><small>Total {currency}</small><strong>{fmtMoney(total, currency)}</strong></span>
+                    ))}
+                  </div>
+                </div>
+              )}
               {summaryDetail.kind === "forecast" && (
                 <div className="toolbar">
                   <label className="dashboard-status-filter">
@@ -396,11 +445,11 @@ export function createPaymentsPage(dependencies) {
                   : summaryVisibleItems.length === 1 ? "pago incluido" : "pagos incluidos"}
                 {summaryDetail.kind === "forecast" && summaryClientQuery && ` de ${summaryDetail.items.length}`}
               </div>
-              {summaryDetail.items.length && summaryDetail.kind === "payments" ? (
-                <div className="table-wrap summary-payments-table"><table><thead><tr><th>Cliente</th><th>Importe</th><th>Concepto</th><th>Vencimiento</th><th>Fecha de pago</th><th>Estado</th><th>Acción</th></tr></thead><tbody>{summaryDetail.items.map((payment) => <tr key={payment.id} className="clickable-payment-row" tabIndex={0} role="button" onClick={() => openClientPayments(payment.client_id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openClientPayments(payment.client_id); } }}><td><button type="button" className="client-link" onClick={(event) => { event.stopPropagation(); openClientPayments(payment.client_id); }}>{payment.client_name}</button></td><td><strong>{fmtMoney(payment.amount, payment.currency)}</strong></td><td>{LABEL[payment.payment_type] || payment.payment_type}</td><td>{fmtDate(payment.due_date)}</td><td>{payment.paid_at ? fmtDate(payment.paid_at) : "Todavía no pagado"}</td><td>{badge(payment.status)}</td><td>{payment.status !== "paid" ? <button className="text-btn complete" onClick={(event) => { event.stopPropagation(); setPaymentStatus(payment.id, "paid"); }}><Check size={16} />Marcar pagado</button> : <span>Pagado</span>}</td></tr>)}</tbody></table></div>
+              {summaryVisibleItems.length && summaryDetail.kind === "payments" ? (
+                <div className="table-wrap summary-payments-table"><table><thead><tr><th>Cliente</th><th>Importe</th><th>Concepto</th><th>Vencimiento</th><th>Fecha de pago</th><th>Estado</th><th>Acción</th></tr></thead><tbody>{summaryVisibleItems.map((payment) => <tr key={payment.id} className="clickable-payment-row" tabIndex={0} role="button" onClick={() => openClientPayments(payment.client_id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openClientPayments(payment.client_id); } }}><td><button type="button" className="client-link" onClick={(event) => { event.stopPropagation(); openClientPayments(payment.client_id); }}>{payment.client_name}</button></td><td><strong>{fmtMoney(payment.amount, payment.currency)}</strong></td><td>{LABEL[payment.payment_type] || payment.payment_type}</td><td>{fmtDate(payment.due_date)}</td><td>{payment.paid_at ? fmtDate(payment.paid_at) : "Todavía no pagado"}</td><td>{badge(payment.status)}</td><td>{payment.status !== "paid" ? <button className="text-btn complete" onClick={(event) => { event.stopPropagation(); setPaymentStatus(payment.id, "paid"); }}><Check size={16} />Marcar pagado</button> : <span>Pagado</span>}</td></tr>)}</tbody></table></div>
               ) : summaryVisibleItems.length ? (
                 <div className="table-wrap summary-payments-table forecast-detail-table"><table><thead><tr><th>Cliente</th><th>Negocio</th><th>Estado</th><th>Mensualidad</th></tr></thead><tbody>{summaryVisibleItems.map((client) => <tr key={client.id} className="clickable-payment-row" tabIndex={0} role="button" onClick={() => openClientPayments(client.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openClientPayments(client.id); } }}><td><button type="button" className="client-link" onClick={(event) => { event.stopPropagation(); openClientPayments(client.id); }}>{client.name}</button></td><td>{client.business_name}</td><td>{badge(client.status)}</td><td><strong>{client.amount > 0 ? fmtMoney(client.amount, client.currency) : "Sin monto configurado"}</strong></td></tr>)}</tbody></table></div>
-              ) : <div className="summary-payment-empty">{summaryClientQuery ? "No se encontraron clientes." : "Este total no contiene registros."}</div>}
+              ) : <div className="summary-payment-empty">{summaryDetail.kind === "payments" && summaryPaymentMonth !== "all" ? "No hay pagos en este mes." : summaryClientQuery ? "No se encontraron clientes." : "Este total no contiene registros."}</div>}
             </div>
           </div>
         )}

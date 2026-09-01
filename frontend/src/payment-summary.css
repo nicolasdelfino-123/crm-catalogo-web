@@ -76,6 +76,39 @@ button.global-paid-total {
   color: var(--muted);
   font-size: 12px;
 }
+.payment-summary-filter-bar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: #f7f9f7;
+}
+.payment-summary-filter-bar > label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.payment-summary-filter-bar select {
+  min-width: 250px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid #cbd5cf;
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+  text-transform: none;
+}
+.payment-summary-filter-totals { display: flex; gap: 18px; }
+.payment-summary-filter-totals span { text-align: right; }
+.payment-summary-filter-totals small,
+.payment-summary-filter-totals strong { display: block; }
+.payment-summary-filter-totals small { color: var(--muted); font-size: 9px; text-transform: uppercase; }
+.payment-summary-filter-totals strong { margin-top: 3px; font: 700 16px Manrope; color: var(--green); }
 
 .summary-payments-table {
   width: 100%;
@@ -125,6 +158,9 @@ button.global-paid-total {
 }
 
 @media (max-width: 680px) {
+  .payment-summary-filter-bar { align-items: stretch; flex-direction: column; }
+  .payment-summary-filter-bar select { width: 100%; min-width: 0; }
+  .payment-summary-filter-totals { justify-content: space-between; }
   .payment-summary > button { padding: 12px; }
   .payment-summary-modal { width: 100%; max-width: 100%; height: 100vh; max-height: 100vh; border-radius: 0; }
   .summary-payments-table { display: block; }

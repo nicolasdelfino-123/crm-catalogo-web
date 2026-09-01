@@ -220,7 +220,7 @@ export function createDashboardPage(dependencies) {
                 <span>
                   {incomeClientSearch
                     ? `${filteredIncomeItems.length} de ${incomeCurrencyItems.length}`
-                    : incomeCurrencyItems.length} movimientos
+                    : incomeCurrencyItems.length} {incomeCurrencyItems.length === 1 ? "pago" : "pagos"}
                 </span>
               </div>
               <label className="income-breakdown-search">
