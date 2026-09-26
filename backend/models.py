@@ -38,6 +38,7 @@ class Client(db.Model):
     currency = db.Column(db.String(8), nullable=False, default="ARS")
     payment_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
     sale_date = db.Column(db.Date, index=True)
+    cancelled_date = db.Column(db.Date)
     commercial_signup_date = db.Column(db.Date, index=True)
     signup_date = db.Column(db.Date, nullable=False, default=date.today, index=True)
     next_renewal_date = db.Column(db.Date, index=True)
@@ -91,6 +92,7 @@ class Client(db.Model):
             "payment_amount": float(self.payment_amount or 0), "sale_date": iso(self.sale_date),
             "commercial_signup_date": iso(self.commercial_signup_date), "signup_date": iso(self.signup_date),
             "next_renewal_date": iso(self.next_renewal_date), "status": self.status,
+            "cancelled_date": iso(self.cancelled_date),
             "traffic_light": self.traffic_light or "red",
             "service_stage": self.service_stage, "link_in_bio_status": self.link_in_bio_status,
             "story_status": self.story_status or "no",

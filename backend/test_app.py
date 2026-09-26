@@ -1439,3 +1439,64 @@ def test_undated_action_can_be_assigned_to_a_client(client):
     assert assigned["client_id"] == customer["id"]
     assert assigned["client_name"] == "Cliente agenda"
     assert not any(item["id"] == action_id for item in dated)
+
+
+def test_cancellation_date_persists_and_validates(client):
+    created = client.post('/api/clients', json={
+        'name': 'Baja', 'business_name': 'Baja', 'sale_date': '2026-01-01',
+        'signup_date': '2026-01-01', 'country': 'Argentina', 'currency': 'ARS',
+        'status': 'cancelled', 'cancelled_date': '2026-08-20',
+    })
+    assert created.status_code == 201
+    customer = created.get_json()['data']
+    url = f"/api/clients/{customer['id']}"
+    assert customer['cancelled_date'] == '2026-08-20'
+    assert client.patch(url, json={'cancelled_date': '2026-08-22'}).status_code == 200
+    assert client.get(url).get_json()['data']['cancelled_date'] == '2026-08-22'
+    assert client.patch(url, json={'cancelled_date': '2026-02-30'}).status_code == 422
+    assert client.get(url).get_json()['data']['cancelled_date'] == '2026-08-22'
+    assert client.patch(url, json={'notes_summary': 'Editado'}).get_json()['data']['cancelled_date'] == '2026-08-22'
+    assert client.patch(url, json={'cancelled_date': ''}).get_json()['data']['cancelled_date'] is None
+
+
+def test_cancelled_date_sort_both_directions_keeps_unknown_last(client, app):
+    with app.app_context():
+        for name, status, cancelled in [
+            ('Anterior', 'cancelled', date(2026, 7, 10)),
+            ('Reciente', 'cancelled', date(2026, 8, 20)),
+            ('Sin fecha', 'cancelled', None),
+            ('Activo', 'active', None),
+        ]:
+            db.session.add(Client(name=name, business_name=name, status=status, cancelled_date=cancelled))
+        db.session.commit()
+    for direction, expected in [('asc', ['Anterior', 'Reciente', 'Sin fecha']), ('desc', ['Reciente', 'Anterior', 'Sin fecha'])]:
+        data = client.get(f'/api/clients?status=cancelled&sort_by=cancelled_date&sort_dir={direction}').get_json()['data']
+        assert [item['name'] for item in data['items']] == expected
+        assert data['items'][-1]['cancelled_date'] is None
+
+
+def test_existing_database_adds_cancellation_date_without_losing_clients(tmp_path):
+    import sqlite3
+    path = tmp_path / 'existing.db'
+    config = {
+        'TESTING': True, 'AUTH_DISABLED': True,
+        'SQLALCHEMY_DATABASE_URI': f'sqlite:///{path}',
+        'JWT_SECRET_KEY': 'test-secret-key-with-at-least-32-chars',
+    }
+    original = create_app(config)
+    with original.app_context():
+        db.session.add(Client(name='Existente', business_name='Existente', status='cancelled'))
+        db.session.commit()
+        db.session.remove()
+        db.engine.dispose()
+    with sqlite3.connect(path) as connection:
+        connection.execute('ALTER TABLE client DROP COLUMN cancelled_date')
+    for _ in range(2):
+        migrated = create_app(config)
+        with migrated.app_context():
+            customer = Client.query.one()
+            assert customer.name == 'Existente'
+            assert customer.status == 'cancelled'
+            assert customer.cancelled_date is None
+            db.session.remove()
+            db.engine.dispose()

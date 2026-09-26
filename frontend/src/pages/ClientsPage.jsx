@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CalendarDays, WalletCards, Server, Plus, Search, SlidersHorizontal, Download, X, ChevronRight, AlertTriangle, CheckCircle2, Clock3, ArrowUpDown, ExternalLink, MapPin, Instagram, Mail, Phone, Edit3, Check, RotateCcw, Pin, Save, ChartNoAxesColumnIncreasing, Trash2, Eye, EyeOff, KeyRound, Copy, FileText } from "lucide-react";
+import { CalendarDays, WalletCards, Server, Plus, Search, SlidersHorizontal, Download, X, ChevronRight, AlertTriangle, CheckCircle2, Clock3, ArrowUp, ArrowDown, ArrowUpDown, ExternalLink, MapPin, Instagram, Mail, Phone, Edit3, Check, RotateCcw, Pin, Save, ChartNoAxesColumnIncreasing, Trash2, Eye, EyeOff, KeyRound, Copy, FileText } from "lucide-react";
 
 export function createClientsPage(dependencies) {
   const { api, downloadApiFile, LABEL, ACQUISITION_OPTIONS, ACTION_PRESETS, acquisitionLabel, instagramUrl, externalUrl, fmtDate, billingDay, fmtMoney, addCalendarMonth, stageForDates, stageLabel, badge, dateKey, useEscapeClose, IconButton, Toast, Loading, Empty } = dependencies;
@@ -54,6 +54,7 @@ export function createClientsPage(dependencies) {
       currency: "ARS",
       payment_amount: "",
       status: "active",
+      cancelled_date: "",
       service_stage: "first_month",
       service_stage_manual: false,
       email: "",
@@ -233,6 +234,17 @@ export function createClientsPage(dependencies) {
                     <option value="no_signup">Sin alta</option>
                   </select>
                 </label>
+                {form.status === "cancelled" && (
+                  <label>
+                    Fecha de cancelación
+                    <input
+                      type="date"
+                      name="cancelled_date"
+                      value={form.cancelled_date || ""}
+                      onChange={change}
+                    />
+                  </label>
+                )}
                 <label>
                   Etapa
                   <input value={stageLabel(stageForDates(form.signup_date, form.next_renewal_date))} readOnly />
@@ -1997,6 +2009,9 @@ export function createClientsPage(dependencies) {
                       toggle={toggleSort}
                     />
                     <th>Estado</th>
+                    {status === "cancelled" && (
+                      <Th label="Fecha de cancelación" name="cancelled_date" sort={sort} toggle={toggleSort} />
+                    )}
                     <Th
                       label="Etapa"
                       name="service_stage"
@@ -2042,6 +2057,7 @@ export function createClientsPage(dependencies) {
                         />
                       </td>
                       <td>{badge(c.status)}</td>
+                      {status === "cancelled" && <td>{fmtDate(c.cancelled_date)}</td>}
                       <td>{badge(c.service_stage)}</td>
                       <td>
                         <strong>{fmtDate(c.status === "no_signup" ? c.sale_date : c.signup_date)}</strong>
@@ -2128,6 +2144,9 @@ export function createClientsPage(dependencies) {
                     </IconButton>
                   </div>
                   <dl>
+                    {status === "cancelled" && (
+                      <div><dt>Fecha de cancelación</dt><dd>{fmtDate(c.cancelled_date)}</dd></div>
+                    )}
                     <div>
                       <dt>Día de cobro</dt>
                       <dd>{c.status === "no_signup" ? "Sin alta" : billingDay(c.signup_date)}</dd>
@@ -2234,10 +2253,12 @@ export function createClientsPage(dependencies) {
   }
   function Th({ label, name, sort, toggle }) {
     return (
-      <th>
+      <th aria-sort={sort.by === name ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
         <button onClick={() => toggle(name)}>
           {label}
-          <ArrowUpDown className={sort.by === name ? "active" : ""} size={14} />
+          {sort.by === name
+            ? (sort.dir === "asc" ? <ArrowUp className="active" size={14} /> : <ArrowDown className="active" size={14} />)
+            : <ArrowUpDown size={14} />}
         </button>
       </th>
     );

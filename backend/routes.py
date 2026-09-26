@@ -245,7 +245,7 @@ def apply_client(client, data, partial=False):
     for field in text_fields:
         if field in data:
             setattr(client, field, data[field] or None)
-    for field in ["sale_date", "signup_date", "next_renewal_date"]:
+    for field in ["sale_date", "signup_date", "next_renewal_date", "cancelled_date"]:
         if field in data:
             setattr(client, field, parse_date(data[field]))
     client.commercial_signup_date = client.sale_date or date.today()
@@ -415,6 +415,8 @@ def clients_list():
     else:
         column = getattr(Client, sort_by, Client.name)
     direction = column.desc() if request.args.get("sort_dir") == "desc" else column.asc()
+    if sort_by == "cancelled_date":
+        query = query.order_by(Client.cancelled_date.is_(None).asc())
     query = query.order_by(direction, Client.name.asc())
     page = max(1, request.args.get("page", 1, type=int)); per_page = min(100, request.args.get("per_page", 25, type=int))
     result = query.paginate(page=page, per_page=per_page, error_out=False)

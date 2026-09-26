@@ -115,6 +115,9 @@ def create_app(test_config=None):
                 db.session.execute(text("ALTER TABLE client_action ADD COLUMN kanban_order INTEGER DEFAULT 0 NOT NULL"))
                 db.session.commit()
         columns = {column["name"] for column in inspect(db.engine).get_columns("client")}
+        if "cancelled_date" not in columns:
+            db.session.execute(text("ALTER TABLE client ADD COLUMN cancelled_date DATE"))
+            db.session.commit()
         if "sale_date" not in columns:
             db.session.execute(text("ALTER TABLE client ADD COLUMN sale_date DATE"))
             db.session.commit()
