@@ -1747,7 +1747,6 @@ export function createClientsPage(dependencies) {
     const [status, setStatus] = useState("");
     const [acquisition, setAcquisition] = useState("");
     const [stageMonth, setStageMonth] = useState("");
-    const [indicatorMonth, setIndicatorMonth] = useState("1");
     const [customStageMonth, setCustomStageMonth] = useState("");
     const [showAcquisition, setShowAcquisition] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -1759,6 +1758,11 @@ export function createClientsPage(dependencies) {
     const [toast, setToast] = useState("");
     const [updatingTrafficLight, setUpdatingTrafficLight] = useState(new Set());
     const [sort, setSort] = useState({ by: "billing_day", dir: "asc" });
+    const indicatorMonth = stageMonth === "custom" ? customStageMonth : stageMonth;
+    const indicatorStage = [null, "first_month", "second_month", "third_month"][Number(indicatorMonth)] || `month_${indicatorMonth}`;
+    const indicatorCount = data.service_month_counts
+      ? indicatorMonth ? data.service_month_counts[indicatorStage] || 0 : Object.values(data.service_month_counts).reduce((total, count) => total + count, 0)
+      : "…";
     const selectedServiceStage = stageMonth === "custom"
       ? Number(customStageMonth) > 6 ? `month_${Number(customStageMonth)}` : ""
       : {
@@ -1874,16 +1878,21 @@ export function createClientsPage(dependencies) {
           </div>
           <div className="client-month-indicator">
             <label>Clientes por mes
-              <select value={indicatorMonth} onChange={(event) => setIndicatorMonth(event.target.value)}>
-                {Array.from({ length: 7 }, (_, index) => {
+              <select value={indicatorMonth} onChange={(event) => {
+                const month = event.target.value;
+                setStageMonth(Number(month) > 6 ? "custom" : month);
+                setCustomStageMonth(Number(month) > 6 ? month : "");
+              }}>
+                <option value="">Todos los meses</option>
+                {Array.from({ length: Math.max(7, Number(indicatorMonth) || 0) }, (_, index) => {
                   const month = index + 1;
                   const stage = [null, "first_month", "second_month", "third_month"][month] || `month_${month}`;
                   return <option key={month} value={month}>Mes {month} · {data.service_month_counts?.[stage] ?? "…"} clientes</option>;
                 })}
               </select>
             </label>
-            {badge([null, "first_month", "second_month", "third_month"][Number(indicatorMonth)] || `month_${indicatorMonth}`)}
-            <strong>{data.service_month_counts?.[[null, "first_month", "second_month", "third_month"][Number(indicatorMonth)] || `month_${indicatorMonth}`] ?? "…"} clientes</strong>
+            {indicatorMonth ? badge(indicatorStage) : <span className="badge">Todos</span>}
+            <strong>{indicatorCount} clientes</strong>
           </div>
           <div className="intro-actions">
             <button className="secondary" onClick={() => setShowAcquisition(true)}>
