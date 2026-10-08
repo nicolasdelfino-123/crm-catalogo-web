@@ -420,8 +420,13 @@ def clients_list():
     query = query.order_by(direction, Client.name.asc())
     page = max(1, request.args.get("page", 1, type=int)); per_page = min(100, request.args.get("per_page", 25, type=int))
     result = query.paginate(page=page, per_page=per_page, error_out=False)
+    service_month_counts = {}
+    for client in listed_clients:
+        stage = client.service_stage
+        service_month_counts[stage] = service_month_counts.get(stage, 0) + 1
     return ok({
         "items": [c.summary() for c in result.items],
+        "service_month_counts": service_month_counts,
         "pagination": {"page": page, "per_page": per_page, "total": result.total, "pages": result.pages},
         "renewal_totals": renewal_totals,
         "renewal_clients": renewal_clients,

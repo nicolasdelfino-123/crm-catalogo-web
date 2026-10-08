@@ -1747,6 +1747,7 @@ export function createClientsPage(dependencies) {
     const [status, setStatus] = useState("");
     const [acquisition, setAcquisition] = useState("");
     const [stageMonth, setStageMonth] = useState("");
+    const [indicatorMonth, setIndicatorMonth] = useState("1");
     const [customStageMonth, setCustomStageMonth] = useState("");
     const [showAcquisition, setShowAcquisition] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -1870,6 +1871,19 @@ export function createClientsPage(dependencies) {
           <div>
             <h2>{data.pagination.total || 0} clientes</h2>
             <p>Seguimiento, renovaciones y retención en un solo lugar.</p>
+          </div>
+          <div className="client-month-indicator">
+            <label>Clientes por mes
+              <select value={indicatorMonth} onChange={(event) => setIndicatorMonth(event.target.value)}>
+                {Array.from({ length: 7 }, (_, index) => {
+                  const month = index + 1;
+                  const stage = [null, "first_month", "second_month", "third_month"][month] || `month_${month}`;
+                  return <option key={month} value={month}>Mes {month} · {data.service_month_counts?.[stage] ?? "…"} clientes</option>;
+                })}
+              </select>
+            </label>
+            {badge([null, "first_month", "second_month", "third_month"][Number(indicatorMonth)] || `month_${indicatorMonth}`)}
+            <strong>{data.service_month_counts?.[[null, "first_month", "second_month", "third_month"][Number(indicatorMonth)] || `month_${indicatorMonth}`] ?? "…"} clientes</strong>
           </div>
           <div className="intro-actions">
             <button className="secondary" onClick={() => setShowAcquisition(true)}>
