@@ -677,6 +677,13 @@ export function createDashboardPage(dependencies) {
         return itemDate?.slice(0, 7) === calendarMonth;
       })
       : displayedItems;
+    const pendingCalendarTotals = calendarVisibleItems.reduce((totals, payment) => {
+      if (!paymentMetric || !["pending", "partial", "overdue"].includes(payment.status)) return totals;
+      const currency = payment.currency || "ARS";
+      const amount = Number(payment.amount);
+      if (currency in totals && Number.isFinite(amount)) totals[currency] += amount;
+      return totals;
+    }, { ARS: 0, USD: 0 });
     const calendarDays = useMemo(() => {
       const [year, month] = calendarMonth.split("-").map(Number);
       const firstDay = new Date(Date.UTC(year, month - 1, 1));
@@ -1080,6 +1087,7 @@ export function createDashboardPage(dependencies) {
               </div>
             )}
             {supportsCalendar && metricKey !== "active_clients" && (
+              <div className="dashboard-calendar-view-row">
               <div className="dashboard-view-switch" aria-label={`Cambiar vista de ${title.toLowerCase()}`}>
                 <button
                   type="button"
@@ -1110,6 +1118,14 @@ export function createDashboardPage(dependencies) {
                     Kanban
                   </button>
                 )}
+              </div>
+              {paymentMetric && metricView === "calendar" && (
+                <div className="dashboard-calendar-pending-total" aria-live="polite">
+                  <span>Pendiente de pagar</span>
+                  <strong>USD {fmtMoney(pendingCalendarTotals.USD, "USD")}</strong>
+                  <strong>Pesos {fmtMoney(pendingCalendarTotals.ARS, "ARS")}</strong>
+                </div>
+              )}
               </div>
             )}
             {metricKey === "active_clients" && metricView === "list" && (
