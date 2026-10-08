@@ -1487,6 +1487,7 @@ def dashboard():
             "pending_payments": [
                 {
                     **payment_collection_item(payment),
+                    "active_month": client_item(payment.client)["active_month"],
                     "status": payment.status,
                     "amount": float(payment.amount),
                     "currency": payment.currency,

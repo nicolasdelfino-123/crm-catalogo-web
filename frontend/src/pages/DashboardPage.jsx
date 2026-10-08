@@ -265,6 +265,7 @@ export function createDashboardPage(dependencies) {
             title={selectedMetric.label}
             metricKey={selectedMetric.key}
             items={data.details?.[selectedMetric.key] || []}
+            clients={data.details?.traffic_lights || []}
             onRefresh={loadDashboard}
             onClose={() => setSelectedMetric(null)}
           />
@@ -489,7 +490,7 @@ export function createDashboardPage(dependencies) {
     );
   }
 
-  function DashboardMetricModal({ title, metricKey, items, onRefresh, onClose }) {
+  function DashboardMetricModal({ title, metricKey, items, clients = [], onRefresh, onClose }) {
     const actionMetric = ["pending_actions", "overdue_actions", "urgent_actions"].includes(metricKey);
     const collectionFilterMetric = metricKey === "pending_actions" || metricKey === "overdue_actions";
     const paymentMetric = metricKey === "pending_payments";
@@ -951,6 +952,13 @@ export function createDashboardPage(dependencies) {
                 ? `${item.client_name} · ${item.business_name}`
                 : item.business_name}
             </span>
+            {paymentMetric && metricView === "calendar" && (
+              <span className="badge">{(() => {
+                const client = clients.find((candidate) => candidate.id === item.client_id);
+                const activeMonth = item.active_month ?? client?.active_month;
+                return activeMonth ? `Mes ${activeMonth} de servicio` : "Mes de servicio sin información";
+              })()}</span>
+            )}
           </div>
           <div className="dashboard-metric-meta">
             {actionMetric || paymentMetric ? (
