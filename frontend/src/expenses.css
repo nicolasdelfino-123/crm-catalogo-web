@@ -78,3 +78,13 @@
   .expense-form-actions button { flex: 1; }
   .expenses-page .table-wrap { display: block; }
 }
+
+@media (max-width: 680px) {
+  .expenses-page .page-intro { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 14px; align-items: stretch; }
+  .expenses-page .page-intro > div:first-child { display: block; width: 100%; min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
+  .expenses-page .page-intro h2 { display: inline; font-size: 16px; margin: 0 8px 0 0; }
+  .expenses-page .page-intro p { display: inline; font-size: 11px; margin: 0; }
+  .expenses-page .expense-period-filter { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; min-width: 0; }
+  .expenses-page .expense-period-filter label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; font-size: 11px; }
+  .expenses-page .expense-period-filter input, .expenses-page .expense-period-filter select { display: block; width: 100%; min-width: 0; max-width: 100%; min-height: 36px; padding: 6px 8px; font-size: 12px; }
+}

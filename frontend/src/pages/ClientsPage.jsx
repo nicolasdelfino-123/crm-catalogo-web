@@ -116,7 +116,7 @@ export function createClientsPage(dependencies) {
     }
     return (
       <div className="modal-layer">
-        <div className="form-modal" role="dialog" aria-modal="true">
+        <div className="form-modal client-form-modal" role="dialog" aria-modal="true">
           <div className="modal-head">
             <div>
               <span className="eyebrow">
@@ -129,6 +129,7 @@ export function createClientsPage(dependencies) {
             </IconButton>
           </div>
           <form onSubmit={submit}>
+            <div className="client-form-fields">
             <fieldset>
               <legend>Datos principales</legend>
               <div className="form-grid">
@@ -335,6 +336,7 @@ export function createClientsPage(dependencies) {
                 </label>
               </div>
             </fieldset>
+            </div>
             <div className="form-actions">
               <button type="button" className="secondary" onClick={onClose}>
                 Cancelar

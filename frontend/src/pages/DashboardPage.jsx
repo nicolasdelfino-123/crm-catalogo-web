@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Users, CalendarDays, WalletCards, ReceiptText, Plus, Search, Download, X, ChevronLeft, ChevronRight, AlertTriangle, Check, Clock3, ArrowUpDown, TrendingUp, Timer, List, Columns3, GripVertical } from "lucide-react";
 
 export function createDashboardPage(dependencies) {
@@ -75,7 +75,7 @@ export function createDashboardPage(dependencies) {
       ["sold_clients_month", "Ventas del mes", data.sold_clients_month, ReceiptText, "amber"],
     ];
     return (
-      <section className="page">
+      <section className="page dashboard-page">
         <div className="page-intro">
           <div>
             <h2>Lo importante, a primera vista</h2>
@@ -430,11 +430,37 @@ export function createDashboardPage(dependencies) {
         currency: client.currency,
       };
     };
+    const rows = clients.map((client) => ({
+      client,
+      cells: months.map((month) => cellFor(client, month)),
+    }));
+    const totals = {
+      paid: { ARS: 0, USD: 0 },
+      pending: { ARS: 0, USD: 0 },
+      overdue: { ARS: 0, USD: 0 },
+    };
+    rows.forEach(({ cells }) => cells.forEach((cell) => {
+      if (!cell) return;
+      const currency = cell.currency || "ARS";
+      const amount = Number(cell.amount);
+      if (currency in totals[cell.status] && Number.isFinite(amount)) {
+        totals[cell.status][currency] += amount;
+      }
+    }));
     return (
       <div className="modal-layer">
         <section className="payment-calendar-modal" role="dialog" aria-modal="true" aria-labelledby="payment-calendar-title">
           <div className="modal-head">
             <div><span className="eyebrow">Seguimiento mensual</span><h2 id="payment-calendar-title">Calendario de pagos visual</h2></div>
+            <div className="payment-calendar-totals" aria-label="Totales de la tabla por estado" aria-live="polite">
+            {[["paid", "Pagado"], ["pending", "Pendiente"], ["overdue", "Vencido"]].map(([status, label]) => (
+              <div key={status} className={`payment-calendar-total ${status}`}>
+                <strong>{label}</strong>
+                <span><span className="payment-calendar-currency">USD</span><b>{fmtMoney(totals[status].USD, "USD")}</b></span>
+                <span><span className="payment-calendar-currency">Pesos</span><b>{fmtMoney(totals[status].ARS, "ARS")}</b></span>
+              </div>
+            ))}
+            </div>
             <div className="payment-calendar-legend">
               <span className="paid">Pagado</span><span className="pending">Pendiente</span><span className="overdue">Vencido</span>
             </div>
@@ -444,12 +470,12 @@ export function createDashboardPage(dependencies) {
             <table>
               <thead><tr><th>Cliente</th><th><button type="button" className={sortBySignupDay ? "active" : ""} onClick={() => setSortBySignupDay((current) => !current)} title={sortBySignupDay ? "Volver al orden por fecha de alta" : "Ordenar por día del mes del 1 al 31"}>Alta <ArrowUpDown size={13} /></button></th>{months.map((month) => <th key={month}>{fmtMonth(month)}</th>)}</tr></thead>
               <tbody>
-                {clients.map((client) => (
+                {rows.map(({ client, cells }) => (
                   <tr key={client.id}>
                     <td><button type="button" onClick={() => onClient(client.id)}>{client.name}<small>{client.business_name}</small></button></td>
                     <td>{fmtDate(client.signup_date)}</td>
-                    {months.map((month) => {
-                      const cell = cellFor(client, month);
+                    {months.map((month, index) => {
+                      const cell = cells[index];
                       return <td key={month} className={cell ? `payment-month-cell ${cell.status}` : "payment-month-cell empty-month"}>{cell ? fmtMoney(cell.amount, cell.currency) : "—"}</td>;
                     })}
                   </tr>
@@ -478,6 +504,7 @@ export function createDashboardPage(dependencies) {
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [calendarMonth, setCalendarMonth] = useState(new Date().toISOString().slice(0, 7));
     const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
+    const calendarResultsRef = useRef(null);
     const [selectedActionClient, setSelectedActionClient] = useState(null);
     const [selectedActionId, setSelectedActionId] = useState(null);
     const [selectedStandaloneAction, setSelectedStandaloneAction] = useState(null);
@@ -1304,6 +1331,12 @@ export function createDashboardPage(dependencies) {
                       className={`${day.currentMonth ? "" : "outside"} ${day.iso === todayIso ? "today" : ""} ${selectedCalendarDate === day.iso ? "selected" : ""} ${metricKey === "sold_clients_month" && sellingDays.includes(day.iso) ? "selling-day" : ""} ${savingSellingDay === day.iso ? "saving" : ""}`}
                       onClick={(event) => {
                         setSelectedCalendarDate(day.iso);
+                        requestAnimationFrame(() => {
+                          calendarResultsRef.current?.scrollIntoView({
+                            behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+                            block: "start",
+                          });
+                        });
                         if (event.detail === 3) toggleSellingDay(day);
                       }}
                       aria-label={`${day.iso}: ${day.count} ${calendarItemLabel[1]}${sellingDays.includes(day.iso) ? ", día vendido" : ""}`}
@@ -1320,15 +1353,15 @@ export function createDashboardPage(dependencies) {
                         </span>
                       )}
                       {day.count > 0 && (
-                        <strong>
-                          {day.count} {day.count === 1 ? calendarItemLabel[0] : calendarItemLabel[1]}
+                        <strong className={`calendar-count-marker${metricKey === "pending_payments" ? " payment-collection-marker" : ""}`}>
+                          <span>{day.count}</span><span className="calendar-count-marker-label"> {day.count === 1 ? calendarItemLabel[0] : calendarItemLabel[1]}</span>
                         </strong>
                       )}
                     </button>
                   ))}
                 </div>
                 {selectedCalendarDate && (
-                  <div className="dashboard-calendar-selection">
+                  <div className="dashboard-calendar-selection" ref={calendarResultsRef}>
                     <h3>{calendarItemLabel[2]} del {fmtDate(selectedCalendarDate)}</h3>
                     <div className="dashboard-calendar-items">
                       {selectedDayItems.map(renderMetricItem)}

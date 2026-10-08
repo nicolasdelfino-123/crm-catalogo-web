@@ -244,7 +244,7 @@ export function createAgendaPage(dependencies) {
                   onClick={() => setSelectedCalendarDate(day.iso)}
                 >
                   <time>{day.day}</time>
-                  {day.count > 0 && <strong>{day.count} {day.count === 1 ? "acción" : "acciones"}</strong>}
+                  {day.count > 0 && <strong className="calendar-count-marker"><span>{day.count}</span><span className="calendar-count-marker-label"> {day.count === 1 ? "acción" : "acciones"}</span></strong>}
                 </button>
               ))}
             </div>
