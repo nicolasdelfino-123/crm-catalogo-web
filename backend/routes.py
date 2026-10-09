@@ -334,16 +334,7 @@ def generate_schedule(client):
     return count
 
 
-@api.get("/clients")
-def clients_list():
-    query = Client.query.filter(Client.archived_at.is_(None))
-    listed_clients = query.all()
-    sync_service_stages(listed_clients)
-    removed_legacy_collections = False
-    for client in listed_clients:
-        removed_legacy_collections = ensure_collection_action(client) or removed_legacy_collections
-    if removed_legacy_collections:
-        db.session.commit()
+def filter_clients_query(query):
     search = request.args.get("search", "").strip()
     if search:
         term = f"%{normalize_search(search)}%"
@@ -365,6 +356,20 @@ def clients_list():
         query = query.filter(Client.status == requested_status)
     for field in ["country", "currency", "acquisition_source"]:
         if request.args.get(field): query = query.filter(getattr(Client, field) == request.args[field])
+    return query
+
+
+@api.get("/clients")
+def clients_list():
+    query = Client.query.filter(Client.archived_at.is_(None))
+    listed_clients = query.all()
+    sync_service_stages(listed_clients)
+    removed_legacy_collections = False
+    for client in listed_clients:
+        removed_legacy_collections = ensure_collection_action(client) or removed_legacy_collections
+    if removed_legacy_collections:
+        db.session.commit()
+    query = filter_clients_query(query)
     service_month_counts = dict(query.with_entities(
         Client.service_stage, func.count(Client.id),
     ).group_by(Client.service_stage).all())
@@ -435,6 +440,18 @@ def clients_list():
         "renewal_totals": renewal_totals,
         "renewal_clients": renewal_clients,
     })
+
+
+@api.get("/clients/statistics")
+def clients_statistics():
+    from client_statistics import build_client_statistics
+
+    query = Client.query.filter(Client.archived_at.is_(None))
+    sync_service_stages(query.all())
+    query = filter_clients_query(query)
+    if request.args.get("service_stage"):
+        query = query.filter(Client.service_stage == request.args["service_stage"])
+    return ok(build_client_statistics(query.all(), date.today()))
 
 
 @api.post("/clients")

@@ -1,0 +1,27 @@
+.saas-statistics-modal{width:min(1480px,96vw);height:min(900px,94dvh);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 80px #17211d30;display:flex;flex-direction:column;overflow:hidden}
+.saas-statistics-modal .modal-head{flex:0 0 auto}
+.saas-statistics-body{padding:20px;overflow:auto;min-height:0;overscroll-behavior:contain}
+.saas-statistics-body .toolbar{margin:0;flex-wrap:wrap}
+.saas-statistics-body .search{flex:1 1 280px}
+.saas-statistics-note{color:var(--muted);font-size:13px;line-height:1.6;margin:14px 0}
+.saas-statistics-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:20px 0}
+.saas-statistics-summary>div{border:1px solid var(--line);border-radius:9px;padding:16px;background:#f7faf8}
+.saas-statistics-summary small{display:block;color:var(--muted);font-size:12px}
+.saas-statistics-summary strong{display:block;font-size:30px;margin-top:6px;font-variant-numeric:tabular-nums}
+.saas-statistics-views{display:flex;gap:10px;flex-wrap:wrap}
+.saas-statistics-views button.active{background:var(--green-bg);color:var(--green);border-color:var(--green)}
+.saas-statistics-table{overflow:auto;max-height:52dvh;border:1px solid var(--line);border-radius:8px}
+.saas-statistics-table table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;font-variant-numeric:tabular-nums}
+.saas-statistics-table caption{text-align:left;padding:12px 16px;color:var(--muted);font-size:12px}
+.saas-statistics-table th,.saas-statistics-table td{padding:13px 16px;white-space:nowrap;border-bottom:1px solid var(--line);text-align:right}
+.saas-statistics-table thead th{position:sticky;top:0;background:#f1f5f2;z-index:2;font-weight:600}
+.saas-statistics-table th:first-child{position:sticky;left:0;text-align:left;background:#fff;z-index:1;min-width:180px}
+.saas-statistics-table thead th:first-child{z-index:3;background:#f1f5f2}
+.saas-statistics-table small{display:block;font-size:11px;margin-top:4px;color:var(--muted)}
+.saas-statistics-table tr:last-child>*{border-bottom:0}
+.saas-statistics-table .saas-loss{color:var(--red);font-weight:600}
+.saas-statistics-table .saas-retention-high{background:var(--green-bg);color:var(--green)}
+.saas-statistics-table .saas-retention-mid{background:var(--amber-bg);color:var(--amber)}
+.saas-statistics-table .saas-retention-low{background:var(--red-bg);color:var(--red)}
+.saas-statistics-missing{font-size:13px;line-height:1.6;padding:12px 16px;border-radius:8px;background:var(--amber-bg);color:var(--amber)}
+@media(max-width:680px){.saas-statistics-layer{padding:0}.saas-statistics-modal{width:100vw;height:100dvh;border-radius:0}.saas-statistics-body{padding:14px}.saas-statistics-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.saas-statistics-summary>div{padding:12px}.saas-statistics-summary strong{font-size:24px}.saas-statistics-table{max-height:60dvh}.saas-statistics-table th,.saas-statistics-table td{padding:11px}.saas-statistics-modal .modal-head h2{font-size:20px}}

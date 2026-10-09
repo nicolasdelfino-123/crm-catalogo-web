@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import "../saas-statistics.css";
 import { CalendarDays, WalletCards, Server, Plus, Search, SlidersHorizontal, Download, X, ChevronRight, AlertTriangle, CheckCircle2, Clock3, ArrowUp, ArrowDown, ArrowUpDown, ExternalLink, MapPin, Instagram, Mail, Phone, Edit3, Check, RotateCcw, Pin, Save, ChartNoAxesColumnIncreasing, Trash2, Eye, EyeOff, KeyRound, Copy, FileText } from "lucide-react";
 
 export function createClientsPage(dependencies) {
@@ -1741,6 +1742,205 @@ export function createClientsPage(dependencies) {
     );
   }
 
+  function serviceStageForFilter(stageMonth, customStageMonth) {
+    return stageMonth === "custom"
+      ? Number(customStageMonth) > 6 ? `month_${Number(customStageMonth)}` : ""
+      : {
+        1: "first_month",
+        2: "second_month",
+        3: "third_month",
+        4: "month_4",
+        5: "month_5",
+        6: "month_6",
+      }[stageMonth] || "";
+  }
+
+  function ClientStatisticsModal({ initialFilters, onClose }) {
+    const [query, setQuery] = useState(initialFilters.query);
+    const [status, setStatus] = useState(initialFilters.status);
+    const [acquisition, setAcquisition] = useState(initialFilters.acquisition);
+    const [stageMonth, setStageMonth] = useState(initialFilters.stageMonth);
+    const [customStageMonth, setCustomStageMonth] = useState(initialFilters.customStageMonth);
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [view, setView] = useState("monthly");
+    const [retry, setRetry] = useState(0);
+    const closeButton = useRef(null);
+    useEscapeClose(onClose);
+    useEffect(() => {
+      const previousFocus = document.activeElement;
+      const alreadyLocked = document.body.classList.contains("locked");
+      document.body.classList.add("locked");
+      closeButton.current?.focus();
+      return () => {
+        if (!alreadyLocked) document.body.classList.remove("locked");
+        previousFocus?.focus();
+      };
+    }, []);
+    useEffect(() => {
+      let cancelled = false;
+      const timer = setTimeout(async () => {
+        setLoading(true);
+        setError("");
+        const serviceStage = serviceStageForFilter(stageMonth, customStageMonth);
+        try {
+          const result = await api(`/clients/statistics?${new URLSearchParams({ search: query, status, acquisition_source: acquisition, service_stage: serviceStage })}`);
+          if (!cancelled) setData(result);
+        } catch (err) {
+          if (!cancelled) setError(err.message);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      }, 250);
+      return () => { cancelled = true; clearTimeout(timer); };
+    }, [query, status, acquisition, stageMonth, customStageMonth, retry]);
+    const updateFilter = (setter) => (value) => { setLoading(true); setter(value); };
+    const monthLabel = (value) => new Date(`${value}-01T12:00:00`).toLocaleDateString("es-AR", { month: "long", year: "numeric" });
+    const trapFocus = (event) => {
+      if (event.key !== "Tab") return;
+      const items = [...event.currentTarget.querySelectorAll('button:not(:disabled), input, select, [tabindex="0"]')];
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    return (
+      <div className="modal-layer saas-statistics-layer">
+        <section className="saas-statistics-modal" role="dialog" aria-modal="true" aria-labelledby="saas-statistics-title" onKeyDown={trapFocus}>
+          <div className="modal-head">
+            <div><span className="eyebrow">Clientes · Estadísticas</span><h2 id="saas-statistics-title">Salud de tu SaaS</h2></div>
+            <button ref={closeButton} type="button" className="icon-btn" aria-label="Cerrar estadísticas" onClick={onClose}><X /></button>
+          </div>
+          <div className="saas-statistics-body">
+            <div className="toolbar">
+              <ClientsFilters query={query} setQuery={updateFilter(setQuery)} status={status} setStatus={updateFilter(setStatus)} acquisition={acquisition} setAcquisition={updateFilter(setAcquisition)} stageMonth={stageMonth} setStageMonth={updateFilter(setStageMonth)} customStageMonth={customStageMonth} setCustomStageMonth={updateFilter(setCustomStageMonth)} />
+            </div>
+            <p className="saas-statistics-note">Los filtros se aplican a todas las estadísticas. Activos incluye clientes en riesgo. Para evaluar la salud general y comparar ventas con bajas, elegí todos los estados.</p>
+            {loading ? <Loading /> : error ? <div role="alert"><p>{error}</p><button className="secondary" onClick={() => setRetry((value) => value + 1)}>Reintentar</button></div> : data && <>
+              <div className="saas-statistics-summary">
+                {[["Clientes filtrados", data.summary.total], ["Ventas registradas", data.summary.sales], ["Activos hoy", data.summary.active], ["Cancelados", data.summary.cancelled], ["Sin alta", data.summary.no_signup]].map(([label, value]) => <div key={label}><small>{label}</small><strong>{value}</strong></div>)}
+              </div>
+              <div className="saas-statistics-views" role="group" aria-label="Tipo de estadísticas">
+                <button className={view === "monthly" ? "secondary active" : "secondary"} aria-pressed={view === "monthly"} onClick={() => setView("monthly")}>Ventas y bajas por mes</button>
+                <button className={view === "retention" ? "secondary active" : "secondary"} aria-pressed={view === "retention"} onClick={() => setView("retention")}>Permanencia por mes de venta</button>
+              </div>
+              {view === "monthly" ? <>
+                <p className="saas-statistics-note">Ventas por fecha de venta; altas por fecha de alta; bajas por fecha de cancelación. Balance = altas − bajas. La tasa de bajas mide qué porcentaje de la base inicial canceló en el mes. El mes actual está en curso.</p>
+                <div className="saas-statistics-table" tabIndex={0} role="region" aria-label="Evolución mensual">
+                  <table><caption>Ventas, altas y bajas por mes calendario</caption><thead><tr>{["Mes", "Ventas", "Altas", "Bajas", "Balance", "Activos al inicio", "Activos al cierre", "Tasa de bajas"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
+                    <tbody>{[...data.monthly].reverse().map((row) => <tr key={row.month}>
+                      <th scope="row">{monthLabel(row.month)}{row.partial && <small>En curso · al {fmtDate(data.as_of)}</small>}</th>
+                      <td>{row.sales}</td><td>{row.signups}</td><td className={row.cancellations ? "saas-loss" : ""}>{row.cancellations}</td><td>{row.net > 0 ? "+" : ""}{row.net}</td><td>{row.active_start}</td><td>{row.active_end}</td><td>{row.churn_rate === null ? "—" : `${row.churn_rate}%`}</td>
+                    </tr>)}{!data.monthly.length && <tr><td colSpan={8}>No hay movimientos con fechas para estos filtros.</td></tr>}</tbody>
+                  </table>
+                </div>
+              </> : <>
+                <p className="saas-statistics-note">Cada fila agrupa ventas del mismo mes. Después de N meses muestra cuántos seguían como clientes al cumplir N meses desde el alta, sobre los que ya pudieron llegar a esa fecha. Se muestra cantidad, base evaluable y porcentaje. — significa que todavía no hay clientes evaluables.</p>
+                <div className="saas-statistics-table" tabIndex={0} role="region" aria-label="Permanencia de clientes">
+                  <table><caption>Permanencia después de cada mes completo de servicio</caption><thead><tr><th scope="col">Mes de venta</th><th scope="col">Ventas</th><th scope="col">Activos hoy</th><th scope="col">Cancelados</th><th scope="col">Sin alta</th>{data.retention_months.map((month) => <th scope="col" key={month}>Después de mes {month}</th>)}</tr></thead>
+                    <tbody>{[...data.cohorts].reverse().map((row) => <tr key={row.month}>
+                      <th scope="row">{monthLabel(row.month)}</th><td>{row.sales}</td><td>{row.active}</td><td>{row.cancelled}</td><td>{row.no_signup}</td>
+                      {row.retention.map((cell) => <td key={cell.month} className={cell.rate === null ? "" : cell.rate >= 80 ? "saas-retention-high" : cell.rate >= 50 ? "saas-retention-mid" : "saas-retention-low"} title={cell.eligible ? `${cell.retained} de ${cell.eligible} clientes permanecieron después de ${cell.month} meses` : "Todavía sin clientes evaluables"}>
+                        {cell.rate === null ? "—" : <><strong>{cell.retained} / {cell.eligible}</strong><small>{cell.rate}%</small></>}
+                      </td>)}
+                    </tr>)}{!data.cohorts.length && <tr><td colSpan={5 + data.retention_months.length}>No hay ventas con fecha para estos filtros.</td></tr>}</tbody>
+                  </table>
+                </div>
+              </>}
+              <p className="saas-statistics-note">Activos históricos y permanencia se reconstruyen con las fechas de alta y cancelación de clientes hoy activos, en riesgo o cancelados. El sistema no registra un historial de pausas y reactivaciones. Los clientes sin alta quedan fuera de permanencia.</p>
+              {(data.summary.missing_sale_date > 0 || data.summary.missing_cancellation_date > 0) && <p className="saas-statistics-missing" role="status">Fechas pendientes: {data.summary.missing_sale_date} clientes sin fecha de venta y {data.summary.missing_cancellation_date} cancelados sin fecha de cancelación. Las ventas sin fecha no se agrupan por mes; los cancelados sin fecha quedan fuera de bajas mensuales y permanencia.</p>}
+            </>}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function ClientsFilters({ query, setQuery, status, setStatus, acquisition, setAcquisition, stageMonth, setStageMonth, customStageMonth, setCustomStageMonth }) {
+    return <>
+          <label className="search">
+            <Search />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar cliente, negocio, teléfono, ciudad o Instagram"
+            />
+          </label>
+          <label className="filter">
+            <SlidersHorizontal />
+            <select value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="">Todos los estados</option>
+              <option value="no_signup">Sin alta</option>
+              <option value="active_no_signup">Activos y sin alta</option>
+              <option value="active">Activos</option>
+              <option value="at_risk">En riesgo</option>
+              <option value="cancelled">Cancelados</option>
+            </select>
+          </label>
+          <label className="filter stage-month-filter">
+            <CalendarDays />
+            <select
+              value={stageMonth}
+              onChange={(event) => {
+                setStageMonth(event.target.value);
+                if (event.target.value !== "custom") setCustomStageMonth("");
+              }}
+            >
+              <option value="">Todos los meses</option>
+              <option value="1">Mes 1</option>
+              <option value="2">Mes 2</option>
+              <option value="3">Mes 3</option>
+              <option value="4">Mes 4</option>
+              <option value="5">Mes 5</option>
+              <option value="6">Mes 6</option>
+              <option value="custom">Otro mes…</option>
+            </select>
+          </label>
+          {stageMonth === "custom" && (
+            <label className="filter custom-stage-month">
+              <span>Mes</span>
+              <input
+                type="number"
+                min="7"
+                step="1"
+                value={customStageMonth}
+                onChange={(event) => setCustomStageMonth(event.target.value)}
+                placeholder="7 o más"
+                aria-label="Número de mes de la etapa"
+              />
+            </label>
+          )}
+          <label className="filter acquisition-filter">
+            <ChartNoAxesColumnIncreasing />
+            <select
+              value={acquisition}
+              onChange={(e) => setAcquisition(e.target.value)}
+            >
+              <option value="">Todos los canales</option>
+              {ACQUISITION_OPTIONS.map(([value, label]) => (
+                <option value={value} key={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          {(query || status || stageMonth || acquisition) && (
+            <button
+              className="text-btn"
+              onClick={() => {
+                setQuery("");
+                setStatus("");
+                setStageMonth("");
+                setCustomStageMonth("");
+                setAcquisition("");
+              }}
+            >
+              <X size={15} />
+              Limpiar
+            </button>
+          )}
+    </>;
+  }
+
   function Clients() {
     const [data, setData] = useState({ items: [], pagination: {}, renewal_totals: { ARS: 0, USD: 0 }, renewal_clients: { ARS: [], USD: [] } });
     const [query, setQuery] = useState("");
@@ -1749,6 +1949,7 @@ export function createClientsPage(dependencies) {
     const [stageMonth, setStageMonth] = useState("");
     const [customStageMonth, setCustomStageMonth] = useState("");
     const [showAcquisition, setShowAcquisition] = useState(false);
+    const [showStatistics, setShowStatistics] = useState(false);
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState(null);
     const [form, setForm] = useState(null);
@@ -1763,16 +1964,7 @@ export function createClientsPage(dependencies) {
     const indicatorCount = data.service_month_counts
       ? indicatorMonth ? data.service_month_counts[indicatorStage] || 0 : Object.values(data.service_month_counts).reduce((total, count) => total + count, 0)
       : "…";
-    const selectedServiceStage = stageMonth === "custom"
-      ? Number(customStageMonth) > 6 ? `month_${Number(customStageMonth)}` : ""
-      : {
-        1: "first_month",
-        2: "second_month",
-        3: "third_month",
-        4: "month_4",
-        5: "month_5",
-        6: "month_6",
-      }[stageMonth] || "";
+    const selectedServiceStage = serviceStageForFilter(stageMonth, customStageMonth);
     const load = useCallback(async () => {
       setLoading(true);
       try {
@@ -1893,6 +2085,7 @@ export function createClientsPage(dependencies) {
             </label>
             {indicatorMonth ? badge(indicatorStage) : <span className="badge">Todos</span>}
             <strong>{indicatorCount} clientes</strong>
+            <button type="button" className="secondary" onClick={() => setShowStatistics(true)}><ChartNoAxesColumnIncreasing size={17} />Ver estadísticas</button>
           </div>
           <div className="intro-actions">
             <button className="secondary" onClick={() => setShowAcquisition(true)}>
@@ -1915,85 +2108,7 @@ export function createClientsPage(dependencies) {
           </div>
         </div>
         <div className="toolbar">
-          <label className="search">
-            <Search />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar cliente, negocio, teléfono, ciudad o Instagram"
-            />
-          </label>
-          <label className="filter">
-            <SlidersHorizontal />
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">Todos los estados</option>
-              <option value="no_signup">Sin alta</option>
-              <option value="active_no_signup">Activos y sin alta</option>
-              <option value="active">Activos</option>
-              <option value="at_risk">En riesgo</option>
-              <option value="cancelled">Cancelados</option>
-            </select>
-          </label>
-          <label className="filter stage-month-filter">
-            <CalendarDays />
-            <select
-              value={stageMonth}
-              onChange={(event) => {
-                setStageMonth(event.target.value);
-                if (event.target.value !== "custom") setCustomStageMonth("");
-              }}
-            >
-              <option value="">Todos los meses</option>
-              <option value="1">Mes 1</option>
-              <option value="2">Mes 2</option>
-              <option value="3">Mes 3</option>
-              <option value="4">Mes 4</option>
-              <option value="5">Mes 5</option>
-              <option value="6">Mes 6</option>
-              <option value="custom">Otro mes…</option>
-            </select>
-          </label>
-          {stageMonth === "custom" && (
-            <label className="filter custom-stage-month">
-              <span>Mes</span>
-              <input
-                type="number"
-                min="7"
-                step="1"
-                value={customStageMonth}
-                onChange={(event) => setCustomStageMonth(event.target.value)}
-                placeholder="7 o más"
-                aria-label="Número de mes de la etapa"
-              />
-            </label>
-          )}
-          <label className="filter acquisition-filter">
-            <ChartNoAxesColumnIncreasing />
-            <select
-              value={acquisition}
-              onChange={(e) => setAcquisition(e.target.value)}
-            >
-              <option value="">Todos los canales</option>
-              {ACQUISITION_OPTIONS.map(([value, label]) => (
-                <option value={value} key={value}>{label}</option>
-              ))}
-            </select>
-          </label>
-          {(query || status || stageMonth || acquisition) && (
-            <button
-              className="text-btn"
-              onClick={() => {
-                setQuery("");
-                setStatus("");
-                setStageMonth("");
-                setCustomStageMonth("");
-                setAcquisition("");
-              }}
-            >
-              <X size={15} />
-              Limpiar
-            </button>
-          )}
+          <ClientsFilters query={query} setQuery={setQuery} status={status} setStatus={setStatus} acquisition={acquisition} setAcquisition={setAcquisition} stageMonth={stageMonth} setStageMonth={setStageMonth} customStageMonth={customStageMonth} setCustomStageMonth={setCustomStageMonth} />
           <div className={`client-renewal-totals${loading ? " loading-totals" : ""}`} aria-live="polite">
             <button type="button" onClick={() => setRenewalCurrency("ARS")} disabled={loading}>
               <small>Mensualidades · Pesos</small>
@@ -2221,6 +2336,7 @@ export function createClientsPage(dependencies) {
           />
         )}
         {toast && <Toast message={toast} onClose={() => setToast("")} />}
+        {showStatistics && <ClientStatisticsModal initialFilters={{ query, status, acquisition, stageMonth, customStageMonth }} onClose={() => setShowStatistics(false)} />}
         {showAcquisition && <AcquisitionModal onClose={() => setShowAcquisition(false)} />}
         {clientToDelete && (
           <DeleteClientModal
