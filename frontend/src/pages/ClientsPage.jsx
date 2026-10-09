@@ -1887,7 +1887,7 @@ export function createClientsPage(dependencies) {
                 {Array.from({ length: Math.max(7, Number(indicatorMonth) || 0) }, (_, index) => {
                   const month = index + 1;
                   const stage = [null, "first_month", "second_month", "third_month"][month] || `month_${month}`;
-                  return <option key={month} value={month}>Mes {month} · {data.service_month_counts?.[stage] ?? "…"} clientes</option>;
+                  return <option key={month} value={month}>Mes {month} · {data.service_month_counts ? data.service_month_counts[stage] || 0 : "…"} clientes</option>;
                 })}
               </select>
             </label>

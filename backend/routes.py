@@ -209,13 +209,16 @@ def advance_service_stage(client, today=None):
     today = today or date.today()
     if not client.signup_date:
         return False
+    if client.status == "cancelled" and not client.cancelled_date:
+        return False
     original = client.service_stage
     original_renewal = client.next_renewal_date
-    reference_date = client.next_renewal_date or today
+    cancellation = client.status == "cancelled"
+    reference_date = client.cancelled_date if cancellation else client.next_renewal_date or today
     elapsed_months = max(0, (reference_date.year - client.signup_date.year) * 12 + reference_date.month - client.signup_date.month)
     if reference_date < add_calendar_months(client.signup_date, elapsed_months):
         elapsed_months = max(0, elapsed_months - 1)
-    month_number = max(1, elapsed_months if client.next_renewal_date else elapsed_months + 1)
+    month_number = max(1, elapsed_months if client.next_renewal_date and not cancellation else elapsed_months + 1)
     stages = {1: "first_month", 2: "second_month", 3: "third_month"}
     client.service_stage = stages.get(month_number, f"month_{month_number}")
     client.service_stage_manual = False
@@ -360,8 +363,13 @@ def clients_list():
         query = query.filter(Client.status.in_(("active", "at_risk")))
     elif requested_status:
         query = query.filter(Client.status == requested_status)
-    for field in ["service_stage", "country", "currency", "acquisition_source"]:
+    for field in ["country", "currency", "acquisition_source"]:
         if request.args.get(field): query = query.filter(getattr(Client, field) == request.args[field])
+    service_month_counts = dict(query.with_entities(
+        Client.service_stage, func.count(Client.id),
+    ).group_by(Client.service_stage).all())
+    if request.args.get("service_stage"):
+        query = query.filter(Client.service_stage == request.args["service_stage"])
     renewal_totals = {"ARS": 0.0, "USD": 0.0}
     renewal_clients = {"ARS": [], "USD": []}
     totals_query = query.with_entities(
@@ -420,10 +428,6 @@ def clients_list():
     query = query.order_by(direction, Client.name.asc())
     page = max(1, request.args.get("page", 1, type=int)); per_page = min(100, request.args.get("per_page", 25, type=int))
     result = query.paginate(page=page, per_page=per_page, error_out=False)
-    service_month_counts = {}
-    for client in listed_clients:
-        stage = client.service_stage
-        service_month_counts[stage] = service_month_counts.get(stage, 0) + 1
     return ok({
         "items": [c.summary() for c in result.items],
         "service_month_counts": service_month_counts,

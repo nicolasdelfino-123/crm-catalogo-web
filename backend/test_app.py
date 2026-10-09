@@ -1028,6 +1028,43 @@ def test_service_stage_changes_only_on_monthly_date():
     assert customer.service_stage == "month_7"
 
 
+def test_month_counts_respect_filters_without_limiting_month_options(client):
+    for name, status, renewal, source in [
+        ("Activo", "active", "2026-02-15", "instagram"),
+        ("Riesgo", "at_risk", "2026-03-15", "instagram"),
+        ("Otro", "active", "2026-02-15", "referral"),
+        ("Cancelado", "cancelled", "2026-02-15", "instagram"),
+    ]:
+        response = client.post("/api/clients", json={
+            "name": name, "business_name": name, "status": status,
+            "sale_date": "2026-01-15",
+            "signup_date": "2026-01-15", "next_renewal_date": renewal,
+            "cancelled_date": "2026-04-15" if status == "cancelled" else None,
+            "acquisition_source": source, "country": "Argentina", "currency": "ARS",
+        })
+        assert response.status_code == 201
+
+    data = client.get("/api/clients?status=active&acquisition_source=instagram&service_stage=first_month&per_page=1").get_json()["data"]
+    assert data["service_month_counts"] == {"first_month": 1, "second_month": 1}
+    assert [item["name"] for item in data["items"]] == ["Activo"]
+    searched = client.get("/api/clients?status=active&search=Riesgo").get_json()["data"]
+    assert searched["service_month_counts"] == {"second_month": 1}
+    cancelled = client.get("/api/clients?status=cancelled&service_stage=month_4").get_json()["data"]
+    assert cancelled["service_month_counts"] == {"month_4": 1}
+    assert [item["name"] for item in cancelled["items"]] == ["Cancelado"]
+
+
+def test_cancelled_stage_stops_at_cancellation_anniversary():
+    customer = Client(name="Cancelado", business_name="Cancelado", status="cancelled",
+                      signup_date=date(2026, 1, 31), cancelled_date=date(2026, 2, 27),
+                      next_renewal_date=date(2026, 8, 31))
+    advance_service_stage(customer, date(2027, 1, 1))
+    assert customer.service_stage == "first_month"
+    customer.cancelled_date = date(2026, 2, 28)
+    advance_service_stage(customer, date(2027, 1, 1))
+    assert customer.service_stage == "second_month"
+
+
 def test_service_stage_uses_next_renewal_date(client):
     created = client.post("/api/clients", json={
         "name": "Cliente Etapa", "business_name": "Marca Etapa",
