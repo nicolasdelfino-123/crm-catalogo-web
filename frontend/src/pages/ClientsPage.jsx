@@ -1014,11 +1014,12 @@ export function createClientsPage(dependencies) {
     );
     useEffect(() => {
       load();
+      const alreadyLocked = document.body.classList.contains("locked");
       document.body.classList.add("locked");
       const esc = (e) => e.key === "Escape" && onClose();
       window.addEventListener("keydown", esc);
       return () => {
-        document.body.classList.remove("locked");
+        if (!alreadyLocked) document.body.classList.remove("locked");
         window.removeEventListener("keydown", esc);
       };
     }, [load, onClose]);
@@ -1769,9 +1770,16 @@ export function createClientsPage(dependencies) {
     const [detail, setDetail] = useState(null);
     const detailPanel = useRef(null);
     const detailTrigger = useRef(null);
+    const [statisticsClient, setStatisticsClient] = useState(null);
+    const [statisticsForm, setStatisticsForm] = useState(null);
+    const clientTrigger = useRef(null);
+    const clientOverlayOpen = Boolean(statisticsClient || statisticsForm);
+    useEffect(() => {
+      if (!clientOverlayOpen) clientTrigger.current?.focus({ preventScroll: true });
+    }, [clientOverlayOpen]);
     useEffect(() => { if (detail) detailPanel.current?.focus(); }, [detail]);
     const closeButton = useRef(null);
-    useEscapeClose(onClose);
+    useEscapeClose(onClose, !clientOverlayOpen);
     useEffect(() => {
       const previousFocus = document.activeElement;
       const alreadyLocked = document.body.classList.contains("locked");
@@ -1829,7 +1837,8 @@ export function createClientsPage(dependencies) {
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     };
     return (
-      <div className="modal-layer saas-statistics-layer">
+      <>
+      <div className="modal-layer saas-statistics-layer" style={clientOverlayOpen ? { display: "none" } : undefined}>
         <section className="saas-statistics-modal" role="dialog" aria-modal="true" aria-labelledby="saas-statistics-title" onKeyDown={trapFocus}>
           <div className="modal-head">
             <div><span className="eyebrow">Clientes · Estadísticas</span><h2 id="saas-statistics-title">Salud de tu SaaS</h2></div>
@@ -1874,7 +1883,7 @@ export function createClientsPage(dependencies) {
               {detail && <section className="saas-client-detail" ref={detailPanel} tabIndex={-1} aria-labelledby="saas-detail-title">
                 <div className="saas-detail-head"><div><h3 id="saas-detail-title">{detail.label}: {detail.value} · {monthLabel(detail.row.month)}</h3><p>Fechas registradas y estado actual de los clientes.</p></div><button type="button" className="icon-btn" aria-label="Cerrar detalle de clientes" onClick={closeDetail}><X size={18} /></button></div>
                 {detail.key === "churn_rate" && <p className="saas-statistics-note">{detailGroups[0].clients.length} bajas de los {detail.row.active_start} clientes activos al inicio. {detail.row.churn_rate === null ? "Sin base inicial para calcular la tasa." : "Las altas que también cancelaron este mes no forman parte de esta tasa."}</p>}
-                {detailGroups.map((group) => <div key={group.label}><h4>{group.label} · {group.clients.length}</h4>{!group.clients.length ? <p className="saas-statistics-note">No hay clientes para esta cifra con los filtros seleccionados.</p> : <ul className="saas-detail-list">{group.clients.map((client) => <li key={client.id}><div><strong>{client.name || client.business_name}</strong>{client.business_name && client.business_name !== client.name && <span>{client.business_name}</span>}<small>{LABEL[client.status] || client.status}{client.acquisition_source && ` · ${acquisitionLabel(client.acquisition_source)}`}</small></div><div><span>Venta: {client.sale_date ? fmtDate(client.sale_date) : "Sin fecha"}</span><span>Alta: {client.signup_date ? monthLabel(client.signup_date.slice(0, 7)) : "Sin alta registrada"}</span><span>Baja: {client.cancelled_date ? monthLabel(client.cancelled_date.slice(0, 7)) : client.status === "cancelled" ? "Sin fecha registrada" : "Sin baja registrada"}</span>{client.status === "cancelled" && <span>Duración: {clientDuration(client)}</span>}</div></li>)}</ul>}</div>)}
+                {detailGroups.map((group) => <div key={group.label}><h4>{group.label} · {group.clients.length}</h4>{!group.clients.length ? <p className="saas-statistics-note">No hay clientes para esta cifra con los filtros seleccionados.</p> : <ul className="saas-detail-list">{group.clients.map((client) => <li key={client.id}><div><button type="button" className="saas-client-link" onClick={(event) => { clientTrigger.current = event.currentTarget; setStatisticsClient(client.id); }}>{client.name || client.business_name}<ExternalLink size={13} /></button>{client.business_name && client.business_name !== client.name && <span>{client.business_name}</span>}<small>{LABEL[client.status] || client.status}{client.acquisition_source && ` · ${acquisitionLabel(client.acquisition_source)}`}</small></div><div><span>Venta: {client.sale_date ? fmtDate(client.sale_date) : "Sin fecha"}</span><span>Alta: {client.signup_date ? monthLabel(client.signup_date.slice(0, 7)) : "Sin alta registrada"}</span><span>Baja: {client.cancelled_date ? monthLabel(client.cancelled_date.slice(0, 7)) : client.status === "cancelled" ? "Sin fecha registrada" : "Sin baja registrada"}</span>{client.status === "cancelled" && <span>Duración: {clientDuration(client)}</span>}</div></li>)}</ul>}</div>)}
               </section>}
               <p className="saas-statistics-note">Activos históricos y permanencia se reconstruyen con las fechas de alta y cancelación de clientes hoy activos, en riesgo o cancelados. El sistema no registra un historial de pausas y reactivaciones. Los clientes sin alta quedan fuera de permanencia.</p>
               {(data.summary.missing_sale_date > 0 || data.summary.missing_cancellation_date > 0) && <p className="saas-statistics-missing" role="status">Fechas pendientes: {data.summary.missing_sale_date} clientes sin fecha de venta y {data.summary.missing_cancellation_date} cancelados sin fecha de cancelación. Las ventas sin fecha no se agrupan por mes; los cancelados sin fecha quedan fuera de bajas mensuales y permanencia.</p>}
@@ -1882,6 +1891,9 @@ export function createClientsPage(dependencies) {
           </div>
         </section>
       </div>
+      {statisticsClient && !statisticsForm && <DetailModal clientId={statisticsClient} onClose={() => setStatisticsClient(null)} onRefresh={() => setRetry((value) => value + 1)} onEdit={(client) => setStatisticsForm(client)} />}
+      {statisticsForm && <ClientForm client={statisticsForm} onClose={() => setStatisticsForm(null)} onSaved={() => { setStatisticsForm(null); setRetry((value) => value + 1); }} />}
+      </>
     );
   }
 
