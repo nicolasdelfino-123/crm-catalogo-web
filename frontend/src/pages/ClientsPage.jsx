@@ -1766,6 +1766,10 @@ export function createClientsPage(dependencies) {
     const [error, setError] = useState("");
     const [view, setView] = useState("monthly");
     const [retry, setRetry] = useState(0);
+    const [detail, setDetail] = useState(null);
+    const detailPanel = useRef(null);
+    const detailTrigger = useRef(null);
+    useEffect(() => { if (detail) detailPanel.current?.focus(); }, [detail]);
     const closeButton = useRef(null);
     useEscapeClose(onClose);
     useEffect(() => {
@@ -1795,8 +1799,11 @@ export function createClientsPage(dependencies) {
       }, 250);
       return () => { cancelled = true; clearTimeout(timer); };
     }, [query, status, acquisition, stageMonth, customStageMonth, retry]);
-    const updateFilter = (setter) => (value) => { setLoading(true); setter(value); };
+    const updateFilter = (setter) => (value) => { setDetail(null); setLoading(true); setter(value); };
     const monthLabel = (value) => new Date(`${value}-01T12:00:00`).toLocaleDateString("es-AR", { month: "long", year: "numeric" });
+    const closeDetail = () => { setDetail(null); detailTrigger.current?.focus(); };
+    const metricButton = (row, key, label, value) => <button type="button" className="saas-metric-button" aria-label={`${label}: ${value}, ${monthLabel(row.month)}. Ver clientes`} onClick={(event) => { detailTrigger.current = event.currentTarget; setDetail({ row, key, label, value }); }}>{value}</button>;
+    const detailGroups = detail ? (detail.key === "net" ? [["Altas del mes", "signups"], ["Bajas del mes", "cancellations"]] : [[detail.label, detail.key]]).map(([label, key]) => ({ label, clients: (data?.monthly_details?.[detail.row.month]?.[key] || []).map((id) => data.clients.find((client) => client.id === id)).filter(Boolean) })) : [];
     const trapFocus = (event) => {
       if (event.key !== "Tab") return;
       const items = [...event.currentTarget.querySelectorAll('button:not(:disabled), input, select, [tabindex="0"]')];
@@ -1822,16 +1829,16 @@ export function createClientsPage(dependencies) {
                 {[["Clientes filtrados", data.summary.total], ["Ventas registradas", data.summary.sales], ["Activos hoy", data.summary.active], ["Cancelados", data.summary.cancelled], ["Sin alta", data.summary.no_signup]].map(([label, value]) => <div key={label}><small>{label}</small><strong>{value}</strong></div>)}
               </div>
               <div className="saas-statistics-views" role="group" aria-label="Tipo de estadísticas">
-                <button className={view === "monthly" ? "secondary active" : "secondary"} aria-pressed={view === "monthly"} onClick={() => setView("monthly")}>Ventas y bajas por mes</button>
-                <button className={view === "retention" ? "secondary active" : "secondary"} aria-pressed={view === "retention"} onClick={() => setView("retention")}>Permanencia por mes de venta</button>
+                <button className={view === "monthly" ? "secondary active" : "secondary"} aria-pressed={view === "monthly"} onClick={() => { setDetail(null); setView("monthly"); }}>Ventas y bajas por mes</button>
+                <button className={view === "retention" ? "secondary active" : "secondary"} aria-pressed={view === "retention"} onClick={() => { setDetail(null); setView("retention"); }}>Permanencia por mes de venta</button>
               </div>
               {view === "monthly" ? <>
                 <p className="saas-statistics-note">Ventas por fecha de venta; altas por fecha de alta; bajas por fecha de cancelación. Balance = altas − bajas. La tasa de bajas mide qué porcentaje de la base inicial canceló en el mes. El mes actual está en curso.</p>
                 <div className="saas-statistics-table" tabIndex={0} role="region" aria-label="Evolución mensual">
-                  <table><caption>Ventas, altas y bajas por mes calendario</caption><thead><tr>{["Mes", "Ventas", "Altas", "Bajas", "Balance", "Activos al inicio", "Activos al cierre", "Tasa de bajas"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
+                  <table><caption>Ventas, altas y bajas por mes calendario · Hacé clic en una cifra para ver los clientes</caption><thead><tr>{["Mes", "Ventas", "Altas", "Bajas", "Balance", "Activos al inicio", "Activos al cierre", "Tasa de bajas"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
                     <tbody>{[...data.monthly].reverse().map((row) => <tr key={row.month}>
                       <th scope="row">{monthLabel(row.month)}{row.partial && <small>En curso · al {fmtDate(data.as_of)}</small>}</th>
-                      <td>{row.sales}</td><td>{row.signups}</td><td className={row.cancellations ? "saas-loss" : ""}>{row.cancellations}</td><td>{row.net > 0 ? "+" : ""}{row.net}</td><td>{row.active_start}</td><td>{row.active_end}</td><td>{row.churn_rate === null ? "—" : `${row.churn_rate}%`}</td>
+                      <td>{metricButton(row, "sales", "Ventas", row.sales)}</td><td>{metricButton(row, "signups", "Altas", row.signups)}</td><td className={row.cancellations ? "saas-loss" : ""}>{metricButton(row, "cancellations", "Bajas", row.cancellations)}</td><td>{metricButton(row, "net", "Balance", `${row.net > 0 ? "+" : ""}${row.net}`)}</td><td>{metricButton(row, "active_start", "Activos al inicio", row.active_start)}</td><td>{metricButton(row, "active_end", "Activos al cierre", row.active_end)}</td><td>{metricButton(row, "churn_rate", "Tasa de bajas", row.churn_rate === null ? "—" : `${row.churn_rate}%`)}</td>
                     </tr>)}{!data.monthly.length && <tr><td colSpan={8}>No hay movimientos con fechas para estos filtros.</td></tr>}</tbody>
                   </table>
                 </div>
@@ -1848,6 +1855,11 @@ export function createClientsPage(dependencies) {
                   </table>
                 </div>
               </>}
+              {detail && <section className="saas-client-detail" ref={detailPanel} tabIndex={-1} aria-labelledby="saas-detail-title">
+                <div className="saas-detail-head"><div><h3 id="saas-detail-title">{detail.label}: {detail.value} · {monthLabel(detail.row.month)}</h3><p>Fechas registradas y estado actual de los clientes.</p></div><button type="button" className="icon-btn" aria-label="Cerrar detalle de clientes" onClick={closeDetail}><X size={18} /></button></div>
+                {detail.key === "churn_rate" && <p className="saas-statistics-note">{detailGroups[0].clients.length} bajas de los {detail.row.active_start} clientes activos al inicio. {detail.row.churn_rate === null ? "Sin base inicial para calcular la tasa." : "Las altas que también cancelaron este mes no forman parte de esta tasa."}</p>}
+                {detailGroups.map((group) => <div key={group.label}><h4>{group.label} · {group.clients.length}</h4>{!group.clients.length ? <p className="saas-statistics-note">No hay clientes para esta cifra con los filtros seleccionados.</p> : <ul className="saas-detail-list">{group.clients.map((client) => <li key={client.id}><div><strong>{client.name || client.business_name}</strong>{client.business_name && client.business_name !== client.name && <span>{client.business_name}</span>}<small>{LABEL[client.status] || client.status}{client.acquisition_source && ` · ${acquisitionLabel(client.acquisition_source)}`}</small></div><div><span>Venta: {client.sale_date ? fmtDate(client.sale_date) : "Sin fecha"}</span><span>Alta: {client.signup_date ? monthLabel(client.signup_date.slice(0, 7)) : "Sin alta registrada"}</span><span>Baja: {client.cancelled_date ? monthLabel(client.cancelled_date.slice(0, 7)) : client.status === "cancelled" ? "Sin fecha registrada" : "Sin baja registrada"}</span></div></li>)}</ul>}</div>)}
+              </section>}
               <p className="saas-statistics-note">Activos históricos y permanencia se reconstruyen con las fechas de alta y cancelación de clientes hoy activos, en riesgo o cancelados. El sistema no registra un historial de pausas y reactivaciones. Los clientes sin alta quedan fuera de permanencia.</p>
               {(data.summary.missing_sale_date > 0 || data.summary.missing_cancellation_date > 0) && <p className="saas-statistics-missing" role="status">Fechas pendientes: {data.summary.missing_sale_date} clientes sin fecha de venta y {data.summary.missing_cancellation_date} cancelados sin fecha de cancelación. Las ventas sin fecha no se agrupan por mes; los cancelados sin fecha quedan fuera de bajas mensuales y permanencia.</p>}
             </>}

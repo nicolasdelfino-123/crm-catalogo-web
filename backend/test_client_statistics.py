@@ -57,6 +57,12 @@ def test_monthly_health_uses_each_event_date_and_carries_empty_months():
     assert march["active_start"] == 2
     assert march["active_end"] == 1
     assert march["churn_rate"] == 50.0  # Only cancellations from the opening base.
+    details = data["monthly_details"]["2026-03"]
+    assert details == {"sales": [3, 4], "signups": [3], "cancellations": [2, 3],
+                       "active_start": [1, 2], "active_end": [1], "churn_rate": [2]}
+    assert data["clients"][1]["signup_date"] == "2026-01-31"
+    assert data["clients"][1]["cancelled_date"] == "2026-03-10"
+    assert data["clients"][3]["signup_date"] is None
     assert rows["2026-04"]["sales"] == 0
     assert rows["2026-04"]["active_end"] == 1
     assert rows["2026-05"]["partial"] is True
@@ -99,6 +105,9 @@ def test_statistics_share_table_filters_and_use_all_results(client, app):
     table = client.get(f"/api/clients?{filters}&per_page=1").get_json()["data"]
     assert statistics["summary"]["total"] == table["pagination"]["total"] == 105
     assert statistics["summary"]["active"] == 105
+    assert len(statistics["clients"]) == 105
+    assert len(statistics["monthly_details"]["2026-01"]["sales"]) == 105
+    assert all(c["name"].startswith("Córdoba") for c in statistics["clients"])
     assert statistics["cohorts"][0]["sales"] == 105
     cancelled = client.get("/api/clients/statistics?status=cancelled&service_stage=second_month").get_json()["data"]
     assert cancelled["summary"]["total"] == 1

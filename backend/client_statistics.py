@@ -25,6 +25,7 @@ def build_client_statistics(clients, today):
         c.cancelled_date if c.status == "cancelled" else None,
     ) if value and value <= today]
     monthly = []
+    monthly_details = {}
     if dates:
         first = min(dates).replace(day=1)
         cursor = first
@@ -39,6 +40,15 @@ def build_client_statistics(clients, today):
             cancellations = sum(bool(c.status == "cancelled" and c.cancelled_date
                                      and cursor <= c.cancelled_date <= end) for c in clients)
             lost = sum(c.status == "cancelled" and c.cancelled_date <= end for c in opening)
+            month_key = cursor.strftime("%Y-%m")
+            monthly_details[month_key] = {
+                "sales": [c.id for c in clients if c.sale_date and cursor <= c.sale_date <= end],
+                "signups": [c.id for c in clients if c.status != "no_signup" and c.signup_date and cursor <= c.signup_date <= end],
+                "cancellations": [c.id for c in clients if c.status == "cancelled" and c.cancelled_date and cursor <= c.cancelled_date <= end],
+                "active_start": [c.id for c in opening],
+                "active_end": [c.id for c in subscriptions if alive(c, end)],
+                "churn_rate": [c.id for c in opening if c.status == "cancelled" and c.cancelled_date <= end],
+            }
             monthly.append({
                 "month": cursor.strftime("%Y-%m"), "sales": sales, "signups": signups,
                 "cancellations": cancellations, "net": signups - cancellations,
@@ -74,6 +84,14 @@ def build_client_statistics(clients, today):
     return {
         "as_of": today.isoformat(), "monthly": monthly, "cohorts": cohorts,
         "retention_months": retention_months,
+        "monthly_details": monthly_details,
+        "clients": [{"id": c.id, "name": getattr(c, "name", ""),
+                     "business_name": getattr(c, "business_name", ""), "status": c.status,
+                     "sale_date": c.sale_date.isoformat() if c.sale_date else None,
+                     "signup_date": c.signup_date.isoformat() if c.signup_date and c.status != "no_signup" else None,
+                     "cancelled_date": c.cancelled_date.isoformat() if c.cancelled_date and c.status == "cancelled" else None,
+                     "acquisition_source": getattr(c, "acquisition_source", "")}
+                    for c in clients],
         "summary": {"total": len(clients),
                     "sales": sum(bool(c.sale_date and c.sale_date <= today) for c in clients),
                     "active": sum(c.status in active_statuses for c in clients),
