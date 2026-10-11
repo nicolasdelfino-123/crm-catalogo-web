@@ -1801,6 +1801,22 @@ export function createClientsPage(dependencies) {
     }, [query, status, acquisition, stageMonth, customStageMonth, retry]);
     const updateFilter = (setter) => (value) => { setDetail(null); setLoading(true); setter(value); };
     const monthLabel = (value) => new Date(`${value}-01T12:00:00`).toLocaleDateString("es-AR", { month: "long", year: "numeric" });
+    const clientDuration = (client) => {
+      if (!client.signup_date || !client.cancelled_date) return "Sin fechas suficientes";
+      const start = new Date(`${client.signup_date}T00:00:00Z`);
+      const end = new Date(`${client.cancelled_date}T00:00:00Z`);
+      if (end < start) return "Revisar fechas de alta y baja";
+      let months = (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + end.getUTCMonth() - start.getUTCMonth();
+      const anniversaryDate = (offset) => {
+        const first = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + offset, 1));
+        const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+        first.setUTCDate(Math.min(start.getUTCDate(), lastDay));
+        return first;
+      };
+      if (anniversaryDate(months) > end) months -= 1;
+      const days = Math.round((end - anniversaryDate(months)) / 86400000);
+      return `${months} ${months === 1 ? "mes" : "meses"}${days ? ` y ${days} ${days === 1 ? "día" : "días"}` : ""}`;
+    };
     const closeDetail = () => { setDetail(null); detailTrigger.current?.focus(); };
     const metricButton = (row, key, label, value) => <button type="button" className="saas-metric-button" aria-label={`${label}: ${value}, ${monthLabel(row.month)}. Ver clientes`} onClick={(event) => { detailTrigger.current = event.currentTarget; setDetail({ row, key, label, value }); }}>{value}</button>;
     const detailGroups = detail ? (detail.key === "net" ? [["Altas del mes", "signups"], ["Bajas del mes", "cancellations"]] : [[detail.label, detail.key]]).map(([label, key]) => ({ label, clients: (data?.monthly_details?.[detail.row.month]?.[key] || []).map((id) => data.clients.find((client) => client.id === id)).filter(Boolean) })) : [];
@@ -1858,7 +1874,7 @@ export function createClientsPage(dependencies) {
               {detail && <section className="saas-client-detail" ref={detailPanel} tabIndex={-1} aria-labelledby="saas-detail-title">
                 <div className="saas-detail-head"><div><h3 id="saas-detail-title">{detail.label}: {detail.value} · {monthLabel(detail.row.month)}</h3><p>Fechas registradas y estado actual de los clientes.</p></div><button type="button" className="icon-btn" aria-label="Cerrar detalle de clientes" onClick={closeDetail}><X size={18} /></button></div>
                 {detail.key === "churn_rate" && <p className="saas-statistics-note">{detailGroups[0].clients.length} bajas de los {detail.row.active_start} clientes activos al inicio. {detail.row.churn_rate === null ? "Sin base inicial para calcular la tasa." : "Las altas que también cancelaron este mes no forman parte de esta tasa."}</p>}
-                {detailGroups.map((group) => <div key={group.label}><h4>{group.label} · {group.clients.length}</h4>{!group.clients.length ? <p className="saas-statistics-note">No hay clientes para esta cifra con los filtros seleccionados.</p> : <ul className="saas-detail-list">{group.clients.map((client) => <li key={client.id}><div><strong>{client.name || client.business_name}</strong>{client.business_name && client.business_name !== client.name && <span>{client.business_name}</span>}<small>{LABEL[client.status] || client.status}{client.acquisition_source && ` · ${acquisitionLabel(client.acquisition_source)}`}</small></div><div><span>Venta: {client.sale_date ? fmtDate(client.sale_date) : "Sin fecha"}</span><span>Alta: {client.signup_date ? monthLabel(client.signup_date.slice(0, 7)) : "Sin alta registrada"}</span><span>Baja: {client.cancelled_date ? monthLabel(client.cancelled_date.slice(0, 7)) : client.status === "cancelled" ? "Sin fecha registrada" : "Sin baja registrada"}</span></div></li>)}</ul>}</div>)}
+                {detailGroups.map((group) => <div key={group.label}><h4>{group.label} · {group.clients.length}</h4>{!group.clients.length ? <p className="saas-statistics-note">No hay clientes para esta cifra con los filtros seleccionados.</p> : <ul className="saas-detail-list">{group.clients.map((client) => <li key={client.id}><div><strong>{client.name || client.business_name}</strong>{client.business_name && client.business_name !== client.name && <span>{client.business_name}</span>}<small>{LABEL[client.status] || client.status}{client.acquisition_source && ` · ${acquisitionLabel(client.acquisition_source)}`}</small></div><div><span>Venta: {client.sale_date ? fmtDate(client.sale_date) : "Sin fecha"}</span><span>Alta: {client.signup_date ? monthLabel(client.signup_date.slice(0, 7)) : "Sin alta registrada"}</span><span>Baja: {client.cancelled_date ? monthLabel(client.cancelled_date.slice(0, 7)) : client.status === "cancelled" ? "Sin fecha registrada" : "Sin baja registrada"}</span>{client.status === "cancelled" && <span>Duración: {clientDuration(client)}</span>}</div></li>)}</ul>}</div>)}
               </section>}
               <p className="saas-statistics-note">Activos históricos y permanencia se reconstruyen con las fechas de alta y cancelación de clientes hoy activos, en riesgo o cancelados. El sistema no registra un historial de pausas y reactivaciones. Los clientes sin alta quedan fuera de permanencia.</p>
               {(data.summary.missing_sale_date > 0 || data.summary.missing_cancellation_date > 0) && <p className="saas-statistics-missing" role="status">Fechas pendientes: {data.summary.missing_sale_date} clientes sin fecha de venta y {data.summary.missing_cancellation_date} cancelados sin fecha de cancelación. Las ventas sin fecha no se agrupan por mes; los cancelados sin fecha quedan fuera de bajas mensuales y permanencia.</p>}
