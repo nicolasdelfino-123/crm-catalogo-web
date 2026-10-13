@@ -327,6 +327,7 @@ export function createDashboardPage(dependencies) {
     const [error, setError] = useState("");
     const [month, setMonth] = useState(monthKey());
     const [selectedDay, setSelectedDay] = useState(null);
+    const movementsResultsRef = useRef(null);
     const [filter, setFilter] = useState("all");
     useEscapeClose(onClose);
     useEffect(() => {
@@ -361,6 +362,15 @@ export function createDashboardPage(dependencies) {
       const value = dateKey(next).slice(0, 7);
       if (value <= monthKey()) changeMonth(value);
     }
+    function selectDay(day) {
+      setSelectedDay(day);
+      requestAnimationFrame(() => {
+        movementsResultsRef.current?.scrollIntoView({
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+          block: "start",
+        });
+      });
+    }
     return <div className="modal-layer"><section className="dashboard-metric-modal movements-modal" role="dialog" aria-modal="true" aria-labelledby="movements-title">
       <div className="modal-head"><div><span className="eyebrow">Evolución de clientes</span><h2 id="movements-title">Bajas y altas por mes</h2></div><IconButton label="Cerrar" onClick={onClose}><X /></IconButton></div>
       <div className="movements-body">
@@ -377,10 +387,10 @@ export function createDashboardPage(dependencies) {
           {statistics.summary.missing_cancellation_date > 0 && <p className="movements-note">Hay {statistics.summary.missing_cancellation_date} clientes cancelados sin fecha de baja; no pueden asignarse a un mes.</p>}
           <div className="movements-filters" aria-label="Filtrar movimientos">{[["all", "Altas y bajas"], ["signup", "Solo altas"], ["cancellation", "Solo bajas"]].map(([value, label]) => <button type="button" key={value} aria-pressed={filter === value} className={filter === value ? "active" : ""} onClick={() => { setFilter(value); setSelectedDay(null); }}>{label}</button>)}</div>
           <div className="calendar-grid calendar-weekdays">{["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div>
-          <div className="calendar-grid calendar-days movements-calendar">{days.map((day) => <button type="button" key={day.iso} disabled={!day.current} className={`${!day.current ? "outside" : ""} ${selectedDay === day.iso ? "selected" : ""} ${day.iso === dateKey(new Date()) ? "today" : ""}`} onClick={() => setSelectedDay(day.iso === selectedDay ? null : day.iso)} aria-pressed={selectedDay === day.iso} aria-label={`${fmtDate(day.iso)}: ${day.events.filter((e) => e.type === "signup").length} altas, ${day.events.filter((e) => e.type === "cancellation").length} bajas`}>
+          <div className="calendar-grid calendar-days movements-calendar">{days.map((day) => <button type="button" key={day.iso} disabled={!day.current} className={`${!day.current ? "outside" : ""} ${selectedDay === day.iso ? "selected" : ""} ${day.iso === dateKey(new Date()) ? "today" : ""}`} onClick={() => selectDay(day.iso)} aria-pressed={selectedDay === day.iso} aria-label={`${fmtDate(day.iso)}: ${day.events.filter((e) => e.type === "signup").length} altas, ${day.events.filter((e) => e.type === "cancellation").length} bajas`}>
             <time>{day.number}</time>{[["signup", "alta", "altas"], ["cancellation", "baja", "bajas"]].map(([type, singular, plural]) => { const count = day.events.filter((event) => event.type === type).length; return count > 0 && <strong className={`movement-marker ${type}`} key={type}>{count}<span>{count === 1 ? singular : plural}</span></strong>; })}
           </button>)}</div>
-          <div className="movements-detail-head"><h3>{selectedDay ? `Movimientos del ${fmtDate(selectedDay)}` : `Movimientos de ${fmtMonth(month)}`}</h3>{selectedDay && <button type="button" className="secondary small" onClick={() => setSelectedDay(null)}>Ver todo el mes</button>}</div>
+          <div className="movements-detail-head" ref={movementsResultsRef}><h3>{selectedDay ? `Movimientos del ${fmtDate(selectedDay)}` : `Movimientos de ${fmtMonth(month)}`}</h3>{selectedDay && <button type="button" className="secondary small" onClick={() => setSelectedDay(null)}>Ver todo el mes</button>}</div>
           <div className="movements-list">{visible.map((event) => <button type="button" key={`${event.client.id}-${event.type}`} onClick={() => onClient(event.client.id)}><span className={`movement-label ${event.type}`}>{event.label}</span><div><strong>{event.client.name}</strong><small>{event.client.business_name}</small></div><time>{fmtDate(event.date)}</time><ChevronRight size={16} /></button>)}{!visible.length && <p>No hay {filter === "signup" ? "altas" : filter === "cancellation" ? "bajas" : "movimientos"} registrados {selectedDay ? "para este día" : "en este mes"}.</p>}</div>
         </>}
       </div>
