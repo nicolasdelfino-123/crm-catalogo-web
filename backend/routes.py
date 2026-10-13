@@ -1502,6 +1502,10 @@ def dashboard():
         ),
         "renewals_week": len(renewals_week), "new_clients_month": len(new_clients_month),
         "sold_clients_month": len(sold_clients_month),
+        "cancelled_clients_month": sum(
+            c.status == "cancelled" and c.cancelled_date is not None
+            and month_start <= c.cancelled_date <= today for c in clients
+        ),
         "traffic_lights": traffic_light_counts,
         "collected": money,
         "details": {

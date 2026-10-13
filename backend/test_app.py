@@ -1537,3 +1537,19 @@ def test_existing_database_adds_cancellation_date_without_losing_clients(tmp_pat
             assert customer.cancelled_date is None
             db.session.remove()
             db.engine.dispose()
+
+
+def test_dashboard_monthly_cancellations_use_recorded_date(client, app):
+    today = date.today()
+    start = today.replace(day=1)
+    with app.app_context():
+        db.session.add_all([
+            Client(name="Baja del mes", business_name="Uno", status="cancelled", signup_date=start - timedelta(days=40), cancelled_date=start),
+            Client(name="Baja anterior", business_name="Dos", status="cancelled", signup_date=start - timedelta(days=40), cancelled_date=start - timedelta(days=1)),
+            Client(name="Sin fecha", business_name="Tres", status="cancelled", signup_date=start - timedelta(days=40)),
+            Client(name="Activo", business_name="Cuatro", status="active", signup_date=start, cancelled_date=start),
+            Client(name="Archivado", business_name="Cinco", status="cancelled", signup_date=start - timedelta(days=40), cancelled_date=start, archived_at=datetime.now()),
+        ])
+        db.session.commit()
+    summary = client.get("/api/dashboard/summary").get_json()["data"]
+    assert summary["cancelled_clients_month"] == 1

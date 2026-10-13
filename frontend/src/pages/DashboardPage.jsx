@@ -22,6 +22,7 @@ export function createDashboardPage(dependencies) {
     const [incomeLoading, setIncomeLoading] = useState(true);
     const [showTrafficLights, setShowTrafficLights] = useState(false);
     const [showPaymentCalendar, setShowPaymentCalendar] = useState(false);
+    const [showMonthlyMovements, setShowMonthlyMovements] = useState(false);
     const [selectedTrafficClient, setSelectedTrafficClient] = useState(null);
     const [trafficClientForm, setTrafficClientForm] = useState(null);
     const loadDashboard = useCallback(() => api("/dashboard/summary").then(setData), []);
@@ -113,6 +114,10 @@ export function createDashboardPage(dependencies) {
           <button type="button" className="metric metric-button" onClick={() => setShowPaymentCalendar(true)} aria-label="Abrir calendario visual de pagos">
             <span className="green"><CalendarDays size={20} /></span>
             <div><small>Calendario de pagos visual</small><strong>Ver tabla</strong></div>
+          </button>
+          <button type="button" className="metric metric-button" onClick={() => setShowMonthlyMovements(true)} aria-label="Abrir bajas por mes y calendario de altas">
+            <span className="red"><CalendarDays size={20} /></span>
+            <div><small>Bajas por mes</small><strong>{data.cancelled_clients_month ?? 0}</strong></div>
           </button>
           {cards.map(([key, label, value, Icon, color]) => (
             <button
@@ -270,6 +275,7 @@ export function createDashboardPage(dependencies) {
             onClose={() => setSelectedMetric(null)}
           />
         )}
+        {showMonthlyMovements && <MonthlyMovementsModal onClose={() => setShowMonthlyMovements(false)} onClient={(id) => { setShowMonthlyMovements(false); setSelectedTrafficClient(id); }} />}
         {showTrafficLights && <TrafficLightModal items={data.details?.traffic_lights || []} onClose={() => setShowTrafficLights(false)} onClient={(clientId) => { setShowTrafficLights(false); setSelectedTrafficClient(clientId); }} onRefresh={loadDashboard} />}
         {showPaymentCalendar && (
           <PaymentCalendarModal
@@ -314,6 +320,71 @@ export function createDashboardPage(dependencies) {
         )}
       </section>
     );
+  }
+
+  function MonthlyMovementsModal({ onClose, onClient }) {
+    const [statistics, setStatistics] = useState(null);
+    const [error, setError] = useState("");
+    const [month, setMonth] = useState(monthKey());
+    const [selectedDay, setSelectedDay] = useState(null);
+    const [filter, setFilter] = useState("all");
+    useEscapeClose(onClose);
+    useEffect(() => {
+      let active = true;
+      api("/clients/statistics").then((result) => { if (active) setStatistics(result); })
+        .catch((failure) => { if (active) setError(failure.message); });
+      return () => { active = false; };
+    }, []);
+    const summary = statistics?.monthly.find((item) => item.month === month);
+    const events = (statistics?.clients || []).flatMap((client) => [
+      ...(client.signup_date ? [{ client, date: client.signup_date, type: "signup", label: "Alta" }] : []),
+      ...(client.cancelled_date ? [{ client, date: client.cancelled_date, type: "cancellation", label: "Baja" }] : []),
+    ]).filter((event) => event.date.startsWith(month) && event.date <= statistics.as_of)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.client.name.localeCompare(b.client.name, "es"));
+    const filtered = events.filter((event) => filter === "all" || event.type === filter);
+    const visible = filtered.filter((event) => !selectedDay || event.date === selectedDay);
+    const first = fromDateKey(`${month}-01`);
+    const calendarStart = startOfWeek(first);
+    const days = Array.from({ length: 42 }, (_, index) => {
+      const day = addDays(calendarStart, index);
+      const iso = dateKey(day);
+      return { iso, number: day.getDate(), current: iso.startsWith(month), events: filtered.filter((event) => event.date === iso) };
+    });
+    function changeMonth(value) {
+      if (!/^\d{4}-\d{2}$/.test(value)) return;
+      setMonth(value);
+      setSelectedDay(null);
+    }
+    function moveMonth(offset) {
+      const next = fromDateKey(`${month}-01`);
+      next.setMonth(next.getMonth() + offset);
+      const value = dateKey(next).slice(0, 7);
+      if (value <= monthKey()) changeMonth(value);
+    }
+    return <div className="modal-layer"><section className="dashboard-metric-modal movements-modal" role="dialog" aria-modal="true" aria-labelledby="movements-title">
+      <div className="modal-head"><div><span className="eyebrow">Evolución de clientes</span><h2 id="movements-title">Bajas y altas por mes</h2></div><IconButton label="Cerrar" onClick={onClose}><X /></IconButton></div>
+      <div className="movements-body">
+        <div className="movements-toolbar"><div className="calendar-head">
+          <button type="button" className="icon-btn" onClick={() => moveMonth(-1)} aria-label="Mes anterior"><ChevronLeft /></button>
+          <label>Mes del resumen<input type="month" value={month} max={monthKey()} onChange={(event) => { if (event.target.value <= monthKey()) changeMonth(event.target.value); }} /></label>
+          <button type="button" className="icon-btn" disabled={month >= monthKey()} onClick={() => moveMonth(1)} aria-label="Mes siguiente"><ChevronRight /></button>
+        </div><span className="movements-period">{month === monthKey() ? "Mes en curso · hasta hoy" : "Mes cerrado"}</span></div>
+        {error ? <p role="alert">{error}</p> : !statistics ? <Loading /> : <>
+          <div className="movements-summary">
+            {[["Activos al iniciar el mes", summary?.active_start, ""], ["Altas del mes", summary?.signups, "signup"], ["Bajas del mes", summary?.cancellations, "cancellation"], [month === monthKey() ? "Activos al cierre de hoy" : "Activos al finalizar el mes", summary?.active_end, ""]].map(([label, value, color]) => <div className={color} key={label}><small>{label}</small><strong>{value ?? 0}</strong></div>)}
+          </div>
+          <div className="movements-balance"><strong>Balance del mes: {(summary?.net || 0) > 0 ? "+" : ""}{summary?.net || 0} clientes</strong><span>Activos y en riesgo con alta registrada. Las bajas se ubican por su fecha de cancelación.</span></div>
+          {statistics.summary.missing_cancellation_date > 0 && <p className="movements-note">Hay {statistics.summary.missing_cancellation_date} clientes cancelados sin fecha de baja; no pueden asignarse a un mes.</p>}
+          <div className="movements-filters" aria-label="Filtrar movimientos">{[["all", "Altas y bajas"], ["signup", "Solo altas"], ["cancellation", "Solo bajas"]].map(([value, label]) => <button type="button" key={value} aria-pressed={filter === value} className={filter === value ? "active" : ""} onClick={() => { setFilter(value); setSelectedDay(null); }}>{label}</button>)}</div>
+          <div className="calendar-grid calendar-weekdays">{["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div>
+          <div className="calendar-grid calendar-days movements-calendar">{days.map((day) => <button type="button" key={day.iso} disabled={!day.current} className={`${!day.current ? "outside" : ""} ${selectedDay === day.iso ? "selected" : ""} ${day.iso === dateKey(new Date()) ? "today" : ""}`} onClick={() => setSelectedDay(day.iso === selectedDay ? null : day.iso)} aria-pressed={selectedDay === day.iso} aria-label={`${fmtDate(day.iso)}: ${day.events.filter((e) => e.type === "signup").length} altas, ${day.events.filter((e) => e.type === "cancellation").length} bajas`}>
+            <time>{day.number}</time>{[["signup", "alta", "altas"], ["cancellation", "baja", "bajas"]].map(([type, singular, plural]) => { const count = day.events.filter((event) => event.type === type).length; return count > 0 && <strong className={`movement-marker ${type}`} key={type}>{count}<span>{count === 1 ? singular : plural}</span></strong>; })}
+          </button>)}</div>
+          <div className="movements-detail-head"><h3>{selectedDay ? `Movimientos del ${fmtDate(selectedDay)}` : `Movimientos de ${fmtMonth(month)}`}</h3>{selectedDay && <button type="button" className="secondary small" onClick={() => setSelectedDay(null)}>Ver todo el mes</button>}</div>
+          <div className="movements-list">{visible.map((event) => <button type="button" key={`${event.client.id}-${event.type}`} onClick={() => onClient(event.client.id)}><span className={`movement-label ${event.type}`}>{event.label}</span><div><strong>{event.client.name}</strong><small>{event.client.business_name}</small></div><time>{fmtDate(event.date)}</time><ChevronRight size={16} /></button>)}{!visible.length && <p>No hay {filter === "signup" ? "altas" : filter === "cancellation" ? "bajas" : "movimientos"} registrados {selectedDay ? "para este día" : "en este mes"}.</p>}</div>
+        </>}
+      </div>
+    </section></div>;
   }
 
   function TrafficLightModal({ items, onClose, onClient, onRefresh }) {
