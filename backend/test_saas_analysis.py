@@ -182,3 +182,25 @@ def test_signup_cohorts_month_end_censoring_and_paid_records():
     assert data['early_cancellations']['1'] == 1
     assert data['current']['subscriptions'] == 2  # No invented reactivation event.
     assert any('reactivaci' in q for q in data['quality'])
+
+
+def test_simulation_can_include_no_signup_independently_of_report_filter(client, app):
+    from models import db, Client
+    with app.app_context():
+        for name, status, amount, currency, archived in [
+            ('Active', 'active', 30000, 'ARS', False),
+            ('Risk', 'at_risk', 20, 'USD', False),
+            ('Pending1', 'no_signup', 25000, 'ARS', False),
+            ('Pending2', 'no_signup', 15, 'USD', False),
+            ('Cancelled', 'cancelled', 99999, 'ARS', False),
+            ('Archived', 'no_signup', 99999, 'ARS', True),
+        ]:
+            db.session.add(Client(name=name, business_name=name, status=status,
+                                  payment_amount=amount, currency=currency,
+                                  archived_at=datetime(2026, 1, 1) if archived else None))
+        db.session.commit()
+    data = client.get('/api/saas-analysis?status=active').get_json()['data']
+    assert data['selected_count'] == 2
+    assert data['current']['mrr'] == {'ARS': 30000, 'USD': 20}
+    assert data['simulation_base']['active'] == {'count': 2, 'no_signup_count': 0, 'tariffs': {'ARS': 30000, 'USD': 20}}
+    assert data['simulation_base']['active_no_signup'] == {'count': 4, 'no_signup_count': 2, 'tariffs': {'ARS': 55000, 'USD': 35}}

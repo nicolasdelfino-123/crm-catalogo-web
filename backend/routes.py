@@ -452,6 +452,21 @@ def saas_analysis():
     client_ids = [c.id for c in clients]
     payments = Payment.query.filter(Payment.client_id.in_(client_ids)).all()
     result = build_saas_analysis(clients, payments, date.today())
+    # Simulation uses the whole current portfolio, independent of report filters.
+    simulation_clients = Client.query.filter(
+        Client.archived_at.is_(None), Client.status.in_(("active", "at_risk", "no_signup")),
+    ).all()
+    result["simulation_base"] = {}
+    for key, statuses in (("active", {"active", "at_risk"}),
+                          ("active_no_signup", {"active", "at_risk", "no_signup"})):
+        members = [c for c in simulation_clients if c.status in statuses]
+        totals = {"ARS": 0.0, "USD": 0.0}
+        for c in members:
+            totals[c.currency] = totals.get(c.currency, 0.0) + float(c.payment_amount or 0)
+        result["simulation_base"][key] = {
+            "count": len(members), "tariffs": totals,
+            "no_signup_count": sum(c.status == "no_signup" for c in members),
+        }
     result["scope"] = {"status": request.args.get("status") or "all", "archived": "excluded",
                        "payments": "Sólo pagos de los clientes del estado seleccionado actualmente"}
     return ok(result)
