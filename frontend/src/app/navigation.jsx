@@ -1,5 +1,6 @@
 import {
   CalendarDays,
+  ChartNoAxesCombined,
   LayoutDashboard,
   Mail,
   ReceiptText,
@@ -14,6 +15,7 @@ export const CRM_TABS = [
   { id: "dashboard", label: "Resumen", title: "Resumen operativo", icon: LayoutDashboard },
   { id: "clients", label: "Clientes", title: "Clientes", icon: Users },
   { id: "agenda", label: "Agenda", title: "Agenda de acciones", icon: CalendarDays },
+  { id: "saas-analysis", label: "Análisis de SaaS", title: "Análisis de SaaS", icon: ChartNoAxesCombined },
   { id: "payments", label: "Pagos", title: "Pagos", icon: WalletCards },
   { id: "expenses", label: "Gastos", title: "Gastos", icon: ReceiptText },
   { id: "vps", label: "VPS", title: "VPS", icon: Server },

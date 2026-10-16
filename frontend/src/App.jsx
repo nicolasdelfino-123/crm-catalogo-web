@@ -7,6 +7,8 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
+import { createSaasPage } from "./pages/SaasPage";
+import "./saas-analysis.css";
 import AppShell from "./app/AppShell";
 import TabPages from "./app/TabPages";
 import "./expenses.css";
@@ -310,6 +312,8 @@ const { Vps } = createVpsPage({ api, IconButton });
 const { Expenses } = createExpensesPage({ api, fmtDate, fmtMoney, IconButton, Empty });
 const { Payments } = createPaymentsPage({ api, LABEL, fmtDate, fmtMoney, badge, useEscapeClose, IconButton, ClientForm, DetailModal, PaymentEditor });
 
+const { SaasAnalysis } = createSaasPage({ api, useEscapeClose });
+
 function Login({ onAuthenticated }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -387,6 +391,7 @@ export default function App() {
     agenda: <Agenda />,
     payments: <Payments />,
     expenses: <Expenses />,
+    "saas-analysis": <SaasAnalysis />,
     vps: <Vps />,
     messages: <Messages />,
     "worked-hours": <WorkedHours />,

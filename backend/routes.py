@@ -442,6 +442,12 @@ def clients_list():
     })
 
 
+@api.get("/saas-analysis")
+def saas_analysis():
+    from saas_analysis import build_saas_analysis
+    return ok(build_saas_analysis(Client.query.all(), Payment.query.all(), date.today()))
+
+
 @api.get("/clients/statistics")
 def clients_statistics():
     from client_statistics import build_client_statistics
