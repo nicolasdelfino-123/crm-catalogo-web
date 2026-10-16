@@ -445,7 +445,16 @@ def clients_list():
 @api.get("/saas-analysis")
 def saas_analysis():
     from saas_analysis import build_saas_analysis
-    return ok(build_saas_analysis(Client.query.all(), Payment.query.all(), date.today()))
+    query = filter_clients_query(Client.query.filter(Client.archived_at.is_(None)))
+    if request.args.get("service_stage"):
+        query = query.filter(Client.service_stage == request.args["service_stage"])
+    clients = query.all()
+    client_ids = [c.id for c in clients]
+    payments = Payment.query.filter(Payment.client_id.in_(client_ids)).all()
+    result = build_saas_analysis(clients, payments, date.today())
+    result["scope"] = {"status": request.args.get("status") or "all", "archived": "excluded",
+                       "payments": "Sólo pagos de los clientes del estado seleccionado actualmente"}
+    return ok(result)
 
 
 @api.get("/clients/statistics")
