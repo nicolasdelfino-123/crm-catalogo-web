@@ -25,8 +25,9 @@ def test_balances_currencies_and_same_month_cancellation():
         assert row['active_start'] + row['signups'] - row['cancellations'] == row['active_end']
         for u in data['currencies']:
             assert row['mrr_end'][u] is None  # No historical price snapshots.
-    assert data['cohorts'][0]['retention'][1]['eligible'] == 2
-    assert data['cohorts'][0]['retention'][2]['rate'] is None
+    assert data['cohorts'][0]['size'] == 3
+    assert data['cohorts'][0]['retention'][1]['eligible'] == 3
+    assert data['cohorts'][0]['retention'][2]['retained'] == 2
 
 
 def test_missing_dates_pauses_reactivation_are_not_invented():
@@ -37,7 +38,7 @@ def test_missing_dates_pauses_reactivation_are_not_invented():
     assert data['cancellation_count'] == 1
     assert data['duration_mean_days'] is None
     assert data['nrr'] is None
-    assert not data['cohorts']
+    assert data['cohorts'][0]['size'] == 1
     assert any('reactivaciones' in q for q in data['quality'])
 
 
@@ -154,3 +155,30 @@ def test_income_month_matches_dashboard_due_date_and_deposit_rules(client, app):
         summary = client.get(f'/api/dashboard/income?month={month}&payment_type=all').get_json()['data']
         assert rows[month]['collected']['ARS'] == summary['totals']['ARS'] == expected
     assert analysis['collected_total']['ARS'] == 430
+
+
+def test_signup_cohorts_month_end_censoring_and_paid_records():
+    clients = [customer(1, 'cancelled', date(2025, 12, 31), date(2026, 1, 31)),
+               customer(2, 'cancelled', date(2025, 12, 31), date(2026, 1, 10)),
+               customer(3, signup=date(2026, 2, 25)),
+               customer(4, signup=date(2025, 12, 31), cancel=date(2026, 1, 5))]
+    payments = [NS(client_id=1, status='paid', paid_at=datetime(2026, 1, 1), currency='ARS', amount=100, payment_type='monthly'),
+                NS(client_id=1, status='paid', paid_at=datetime(2026, 2, 1), currency='ARS', amount=100, payment_type='monthly')]
+    data = build_saas_analysis(clients, payments, date(2026, 3, 1))
+    assert data['cohorts'][0]['month'] == '2025-12'  # Receipt was in January.
+    assert data['cohorts'][0]['size'] == 3
+    assert data['cohorts'][0]['retention'][0]['retained'] == 3
+    assert data['cohorts'][0]['retention'][1]['retained'] == 1
+    assert len(data['cohorts'][1]['retention']) == 1  # Recent customer: month zero only.
+    assert data['hazards'][0]['eligible'] == 3  # Recent customer excluded.
+    assert data['hazards'][0]['cancellations'] == 1
+    assert data['hazards'][1]['cancellations'] == 1
+    details = {c['id']: c for c in data['cancellations']}
+    assert details[1]['completed_months'] == 1
+    assert details[1]['life_month'] == 2
+    assert details[1]['paid_monthly_records'] == 1
+    assert sum(data['duration_distribution'].values()) == 2
+    assert sum(data['paid_monthly_distribution'].values()) == 2
+    assert data['early_cancellations']['1'] == 1
+    assert data['current']['subscriptions'] == 2  # No invented reactivation event.
+    assert any('reactivaci' in q for q in data['quality'])
