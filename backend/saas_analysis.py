@@ -1,8 +1,15 @@
 """Read-only SaaS reporting from recorded clients and payments."""
 from collections import Counter
-from datetime import date, timedelta
+from datetime import date
 from statistics import mean, median
 from client_statistics import anniversary, build_client_statistics
+
+
+def payment_month_date(payment):
+    """Same month assignment as dashboard_income; receipts are not reassigned."""
+    if payment.payment_type == 'deposit' and payment.paid_at:
+        return payment.paid_at.date()
+    return getattr(payment, 'due_date', None) or (payment.paid_at.date() if payment.paid_at else None)
 
 
 def build_saas_analysis(clients, payments, today):
@@ -16,7 +23,7 @@ def build_saas_analysis(clients, payments, today):
     subscriptions = [c for c in clients if c.status in {'active', 'at_risk', 'cancelled'}
                      and c.signup_date and c.signup_date <= today
                      and (c.status != 'cancelled' or c.cancelled_date and c.signup_date <= c.cancelled_date <= today)]
-    paid = [p for p in payments if p.status == 'paid' and p.paid_at and p.paid_at.date() <= today]
+    paid = [p for p in payments if p.status == 'paid']
     currencies = sorted({'ARS', 'USD'} | {c.currency for c in clients} | {p.currency for p in paid})
 
     def money(items, amount):
@@ -26,15 +33,21 @@ def build_saas_analysis(clients, payments, today):
         return c.signup_date <= day and (c.status != 'cancelled' or c.cancelled_date > day)
 
     monthly = []
-    for source in statistics['monthly']:
-        details = statistics['monthly_details'][source['month']]
+    sources = {r['month']: r for r in statistics['monthly']}
+    payment_months = {payment_month_date(p).strftime('%Y-%m') for p in paid
+                      if payment_month_date(p) and payment_month_date(p).strftime('%Y-%m') <= today.strftime('%Y-%m')}
+    for month in payment_months - sources.keys():
+        sources[month] = dict(month=month, partial=month == today.strftime('%Y-%m'),
+                              active_start=0, active_end=0, signups=0, cancellations=0,
+                              net=0, churn_rate=None)
+    for source in sorted(sources.values(), key=lambda r: r['month']):
+        details = statistics['monthly_details'].get(source['month'], {key: [] for key in ('active_start', 'signups', 'cancellations', 'active_end', 'churn_rate')})
         opening = [by_id[i] for i in details['active_start']]
         added = [by_id[i] for i in details['signups']]
         lost = [by_id[i] for i in details['cancellations']]
         closing = [by_id[i] for i in details['active_end']]
         lost_base = [by_id[i] for i in details['churn_rate']]
         cursor = date.fromisoformat(source['month'] + '-01')
-        end = min(anniversary(cursor, 1) - timedelta(days=1), today)
         initial, final = money(opening, 'payment_amount'), money(closing, 'payment_amount')
         base_loss = money(lost_base, 'payment_amount')
         monthly.append(dict(month=source['month'], partial=source['partial'],
@@ -44,7 +57,7 @@ def build_saas_analysis(clients, payments, today):
                             mrr_lost=money(lost, 'payment_amount'), mrr_end=final,
                             mrr_net={u: round(final[u]-initial[u], 2) for u in currencies},
                             mrr_change_percent={u: round((final[u]-initial[u])/initial[u]*100, 2) if initial[u] else None for u in currencies},
-                            collected=money([p for p in paid if cursor <= p.paid_at.date() <= end], 'amount'),
+                            collected=money([p for p in paid if payment_month_date(p) and cursor <= payment_month_date(p) < anniversary(cursor, 1)], 'amount'),
                             arpa={u: round(final[u]/sum(c.currency == u for c in closing), 2) if any(c.currency == u for c in closing) else None for u in currencies},
                             churn=source['churn_rate'],
                             revenue_churn={u: round(base_loss[u]/initial[u]*100, 2) if initial[u] else None for u in currencies}))
@@ -59,7 +72,7 @@ def build_saas_analysis(clients, payments, today):
     # First monthly payment identifies acquisition; payment period is not a receipt date.
     starts = {}
     for p in paid:
-        if p.payment_type == 'monthly':
+        if p.payment_type == 'monthly' and p.paid_at and p.paid_at.date() <= today:
             starts[p.client_id] = min(starts.get(p.client_id, p.paid_at.date()), p.paid_at.date())
     cohorts = []
     for key in sorted({d.strftime('%Y-%m') for d in starts.values()}):
@@ -75,14 +88,14 @@ def build_saas_analysis(clients, payments, today):
         cohorts.append(dict(month=key, size=len(members), retention=cells))
     current_mrr = money(active, 'payment_amount')
     quality = [
-        'Exactos según registros: estado y tarifa actuales; cobros con estado paid y fecha paid_at, por moneda. Clientes archivados excluidos, como en Clientes y Resumen. Cobros: sólo pagos de los clientes seleccionados por su estado actual. No incluye pagos de archivados.',
+        'Exactos según registros: estado y tarifa actuales; pagos con estado paid, asignados al mes por vencimiento; sin vencimiento se usa fecha de pago. Señas: fecha de pago, igual que Resumen. Clientes archivados excluidos, como en Clientes y Resumen. Cobros: sólo pagos de los clientes seleccionados por su estado actual. No incluye pagos de archivados.',
         'El filtro selecciona por estado ACTUAL: el historial describe ese grupo, no sus cambios de estado pasados. Tarifas del grupo no equivalen a MRR ni a cobros; sólo active/at_risk genera MRR actual.',
         'Historia de clientes: misma reconstrucción de altas/bajas que Resumen. MRR histórico, variaciones, ARPA histórico y churn de ingresos: sin datos suficientes; no se extrapolan tarifas actuales.',
         'Activos de Resumen incluyen sin alta; suscripciones activas y MRR sólo active/at_risk. Historia de clientes reutiliza build_client_statistics, igual que Resumen. Las tarifas históricas reales no están disponibles.',
         'Sin datos suficientes: cambios de precios, NRR, motivos de baja e historial de pausas/reactivaciones. No se inventan períodos de reactivación.',
         'Cohortes por primer cobro mensual registrado (puede no ser el primer pago real). Sólo suscripciones con fechas utilizables; retención por aniversarios cumplidos.',
         f'{len(clients)-len(subscriptions)} clientes fuera de reconstrucción (leads, sin alta, pausados o fechas incompletas/inconsistentes). Estado activo actual: {len(active)}; cierre reconstruido: {monthly[-1]["active_end"] if monthly else 0}.',
-        f'{sum(p.status == "paid" and not p.paid_at for p in payments)} pagos marcados pagados sin fecha excluidos de cobros por período.',
+        f'{sum(p.status == "paid" and not payment_month_date(p) for p in payments)} pagos marcados pagados sin fecha excluidos de cobros por período.',
         'Los cobros incluyen todos los conceptos registrados, no sólo mensualidades. Cero significa ningún cobro registrado, no prueba de ausencia de ingresos.',
     ]
     collected_by_type = {kind: money([p for p in paid if p.payment_type == kind], 'amount')

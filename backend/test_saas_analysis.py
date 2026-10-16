@@ -125,3 +125,32 @@ def test_all_state_filters_scope_clients_tariffs_and_payments(client, app):
         assert Client.query.count() == 6
         assert Payment.query.count() == 6
         assert {c.status for c in Client.query.all()} == set(statuses)
+
+
+def test_income_month_matches_dashboard_due_date_and_deposit_rules(client, app):
+    from models import db, Client, Payment
+    with app.app_context():
+        c = Client(name='Monthly', business_name='Monthly', status='active',
+                   signup_date=date(2026, 1, 1), sale_date=date(2026, 1, 1), currency='ARS')
+        db.session.add(c)
+        db.session.flush()
+        # Late receipt, early receipt, deposit, missing due date, missing receipt date,
+        # unpaid item and a payment period predating the client registration.
+        for kind, amount, due, receipt, status in [
+            ('monthly', 100, date(2026, 1, 10), datetime(2026, 2, 2), 'paid'),
+            ('monthly', 200, date(2026, 2, 28), datetime(2026, 1, 5), 'paid'),
+            ('deposit', 30, date(2026, 1, 10), datetime(2026, 2, 3), 'paid'),
+            ('extra_work', 40, None, datetime(2026, 2, 4), 'paid'),
+            ('monthly', 50, date(2026, 2, 5), None, 'paid'),
+            ('monthly', 999, date(2026, 2, 5), None, 'pending'),
+            ('monthly', 10, date(2025, 12, 10), datetime(2026, 1, 5), 'paid'),
+        ]:
+            db.session.add(Payment(client_id=c.id, payment_type=kind, amount=amount,
+                                   currency='ARS', due_date=due, paid_at=receipt, status=status))
+        db.session.commit()
+    analysis = client.get('/api/saas-analysis').get_json()['data']
+    rows = {r['month']: r for r in analysis['monthly']}
+    for month, expected in [('2025-12', 10), ('2026-01', 100), ('2026-02', 320)]:
+        summary = client.get(f'/api/dashboard/income?month={month}&payment_type=all').get_json()['data']
+        assert rows[month]['collected']['ARS'] == summary['totals']['ARS'] == expected
+    assert analysis['collected_total']['ARS'] == 430
