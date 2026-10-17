@@ -1916,9 +1916,9 @@ def test_agenda_real_collections_reject_invalid_month(client, month):
     assert client.get(f'/api/agenda/collections?month={month}').status_code == 422
 
 
-def test_agenda_monthly_billing_preserves_paid_history_and_legacy_date_fallback(client, app):
+def test_agenda_monthly_billing_uses_assigned_period_and_known_billing_day(client, app):
     with app.app_context():
-        customer = Client(name='Mensualidad septiembre', business_name='Periodo', country='Argentina', currency='USD')
+        customer = Client(name='Mensualidad septiembre', business_name='Periodo', country='Argentina', currency='USD', signup_date=date(2026, 8, 15), next_renewal_date=date(2026, 9, 15))
         cancelled = Client(name='Baja sin cobro válido', business_name='Baja', country='Argentina', currency='USD', status='cancelled')
         db.session.add_all([customer, cancelled])
         db.session.flush()
@@ -1930,12 +1930,10 @@ def test_agenda_monthly_billing_preserves_paid_history_and_legacy_date_fallback(
         db.session.commit()
     september = client.get('/api/agenda/collections?month=2026-09').get_json()['data']
     october = client.get('/api/agenda/collections?month=2026-10').get_json()['data']
-    assert len(september) == 2
-    assert sum(row['amount'] for row in september) == 1039
+    assert len(september) == 3
+    assert sum(row['amount'] for row in september) == 1059
     assert {row['calendar_date'] for row in september} == {'2026-09-15'}
-    assert len(october) == 1
-    assert october[0]['amount'] == 20
-    assert october[0]['calendar_date'] == '2026-10-10'
+    assert october == []
     with app.app_context():
         assert Payment.query.count() == 3
         assert Payment.query.filter_by(amount=999).one().status == 'paid'
@@ -1984,5 +1982,88 @@ def test_agenda_paid_totals_keep_all_original_income_records_and_amounts(client,
     agenda = client.get('/api/agenda/collections?month=2026-10').get_json()['data']
     assert {row['payment_id'] for row in agenda if row['status'] == 'paid'} == {row['id'] for row in income['items']}
     assert sum(row['amount'] for row in agenda if row['status'] == 'paid') == income['totals']['ARS'] == 550
+    with app.app_context():
+        assert [row.to_dict() for row in Payment.query.order_by(Payment.id).all()] == before
+
+
+def test_pending_modal_details_are_read_only_and_respect_month_type_and_client_scope(client, app):
+    with app.app_context():
+        active = Client(name='Ana', business_name='Ana', currency='ARS')
+        cancelled = Client(name='Baja', business_name='Baja', currency='ARS', status='cancelled')
+        archived = Client(name='Archivo', business_name='Archivo', currency='ARS', archived_at=datetime(2026, 10, 1))
+        db.session.add_all([active, cancelled, archived])
+        db.session.flush()
+        db.session.add_all([
+            Payment(client=active, amount=100, currency='ARS', status='pending', payment_type='monthly', due_date=date(2026, 10, 10)),
+            Payment(client=active, amount=50, currency='ARS', status='overdue', payment_type='monthly', due_date=date(2026, 10, 11)),
+            Payment(client=active, amount=20, currency='USD', status='partial', payment_type='monthly', due_date=date(2026, 10, 12)),
+            Payment(client=active, amount=30, currency='ARS', status='pending', payment_type='extra_work', due_date=date(2026, 10, 13)),
+            Payment(client=active, amount=40, currency='ARS', status='pending', payment_type='monthly', due_date=date(2026, 9, 10)),
+            Payment(client=active, amount=25, currency='ARS', status='pending', payment_type='monthly', period_year=2026, period_month=10),
+            Payment(client=active, amount=200, currency='ARS', status='paid', payment_type='monthly', due_date=date(2026, 10, 10), paid_at=datetime(2026, 10, 15)),
+            Payment(client=cancelled, amount=300, currency='ARS', status='pending', payment_type='monthly', due_date=date(2026, 10, 10)),
+            Payment(client=archived, amount=400, currency='ARS', status='partial', payment_type='monthly', due_date=date(2026, 10, 10)),
+        ])
+        db.session.commit()
+        before = [row.to_dict() for row in Payment.query.order_by(Payment.id).all()]
+    response = client.get('/api/payments/pending-details?month=2026-10&payment_type=all')
+    assert response.status_code == 200
+    rows = response.get_json()['data']
+    assert len(rows) == 5
+    assert len({row['client_id'] for row in rows}) == 1
+    assert sum(row['amount'] for row in rows if row['currency'] == 'ARS') == 205
+    assert sum(row['amount'] for row in rows if row['currency'] == 'USD') == 20
+    assert all(row['status'] in ('pending', 'partial', 'overdue') for row in rows)
+    monthly = client.get('/api/payments/pending-details?month=2026-10&payment_type=monthly').get_json()['data']
+    assert len(monthly) == 4
+    extras = client.get('/api/payments/pending-details?month=2026-10&payment_type=extra_work').get_json()['data']
+    assert len(extras) == 1
+    assert extras[0]['amount'] == 30
+    history = client.get('/api/payments/pending-details?month=all&payment_type=all').get_json()['data']
+    assert len(history) == 6
+    with app.app_context():
+        assert [row.to_dict() for row in Payment.query.order_by(Payment.id).all()] == before
+
+
+def test_pending_modal_details_do_not_generate_missing_monthlies(client, app):
+    with app.app_context():
+        db.session.add(Client(name='Sin pago registrado', business_name='Sin proyección', currency='ARS', signup_date=date(2020, 1, 1), payment_amount=50000))
+        db.session.commit()
+    assert client.get('/api/payments/pending-details?month=2026-10').get_json()['data'] == []
+    with app.app_context():
+        assert Payment.query.count() == 0
+
+
+def test_pending_modal_details_validate_filters(client):
+    assert client.get('/api/payments/pending-details?month=invalid').status_code == 422
+    assert client.get('/api/payments/pending-details?payment_type=invalid').status_code == 422
+
+
+def test_agenda_monthly_calendar_always_uses_due_date_not_paid_date(client, app):
+    with app.app_context():
+        customer = Client(name='Vence el primero', business_name='Calendario', currency='ARS', signup_date=date(2026, 8, 1), next_renewal_date=date(2026, 11, 1))
+        db.session.add(customer)
+        db.session.flush()
+        rows = [
+            Payment(client=customer, amount=amount, currency='ARS', payment_type='monthly', status='paid', due_date=due, paid_at=paid)
+            for amount, due, paid in [
+                (10, date(2026, 10, 1), datetime(2026, 9, 20)),
+                (20, date(2026, 10, 1), datetime(2026, 10, 10)),
+                (30, date(2026, 10, 1), datetime(2026, 11, 10)),
+                (40, date(2026, 9, 1), datetime(2026, 10, 10)),
+                (50, date(2026, 11, 1), datetime(2026, 10, 10)),
+                (999, None, datetime(2026, 10, 10)),
+            ]
+        ]
+        db.session.add_all(rows)
+        db.session.commit()
+        before = [row.to_dict() for row in Payment.query.order_by(Payment.id).all()]
+    october = client.get('/api/agenda/collections?month=2026-10').get_json()['data']
+    assert {row['amount'] for row in october} == {10, 20, 30}
+    assert {row['calendar_date'] for row in october} == {'2026-10-01'}
+    september = client.get('/api/agenda/collections?month=2026-09').get_json()['data']
+    assert {row['amount'] for row in september} == {40}
+    november = client.get('/api/agenda/collections?month=2026-11').get_json()['data']
+    assert {row['amount'] for row in november} == {50}
     with app.app_context():
         assert [row.to_dict() for row in Payment.query.order_by(Payment.id).all()] == before

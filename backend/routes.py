@@ -1007,14 +1007,24 @@ def agenda_recorded_collections():
     ).all()
     result = []
     for payment in payments:
-        if payment.status == "paid":
+        if payment.payment_type == "monthly":
+            calendar_date = payment.due_date
+            if not calendar_date and payment.period_year and payment.period_month:
+                # Recover only the recorded billing period and known billing day.
+                # Never assign an installment using the date money was received.
+                if payment.client.next_renewal_date or payment.client.signup_date:
+                    try:
+                        calendar_date = billing_date_in_month(payment.client, payment.period_year, payment.period_month)
+                    except (ValueError, TypeError):
+                        calendar_date = None
+        elif payment.status == "paid":
             calendar_date = (
                 payment.paid_at.date()
                 if payment.payment_type == "deposit" and payment.paid_at
                 else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
             )
         else:
-            calendar_date = payment.due_date or date(payment.period_year, payment.period_month, 1)
+            calendar_date = payment.due_date
         if not calendar_date or not month_start <= calendar_date < month_end:
             continue
         result.append({
@@ -1369,6 +1379,42 @@ def payments_delete(payment_id):
     ensure_collection_action(client)
     db.session.commit()
     return ok(None, "Pago eliminado")
+
+
+@api.get("/payments/pending-details")
+def payments_pending_details():
+    """Read-only detail for modal counters; does not generate or change payments."""
+    month = request.args.get("month", "all")
+    payment_type = request.args.get("payment_type", "all")
+    if payment_type not in {"all", "monthly", "extra_work"}:
+        return error("Tipo de pago inválido", 422)
+    month_start = month_end = None
+    if month != "all":
+        try:
+            month_start = date.fromisoformat(f"{month}-01")
+            month_end = add_calendar_months(month_start, 1)
+        except (ValueError, TypeError):
+            return error("Mes inválido", 422)
+    query = Payment.query.join(Client).filter(
+        Client.archived_at.is_(None), Client.status != "cancelled",
+        Payment.status.in_(("pending", "partial", "overdue")),
+    )
+    if payment_type == "monthly":
+        query = query.filter(Payment.payment_type.in_(("monthly", "deposit")))
+    elif payment_type == "extra_work":
+        query = query.filter(Payment.payment_type == "extra_work")
+    items = []
+    for payment in query.all():
+        period_date = payment.due_date
+        if not period_date and payment.payment_type == "monthly" and payment.period_year and payment.period_month:
+            try:
+                period_date = date(payment.period_year, payment.period_month, 1)
+            except ValueError:
+                period_date = None
+        if month_start and (not period_date or not month_start <= period_date < month_end):
+            continue
+        items.append({**payment.to_dict(), "business_name": payment.client.business_name, "display_date": iso(period_date)})
+    return ok(items)
 
 
 @api.get("/payments")

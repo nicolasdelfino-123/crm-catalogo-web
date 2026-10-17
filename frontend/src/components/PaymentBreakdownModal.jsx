@@ -7,14 +7,24 @@ const concepts = { monthly: "Mensualidad", deposit: "Seña", extra_work: "Trabaj
 const statuses = { paid: "Pagado", pending: "Pendiente", partial: "Parcial", overdue: "Vencido" };
 const money = (amount, currency) => `${currency} ${new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)}`;
 
-export default function PaymentBreakdownModal({ title, period, currency, items, total, fmtDate, onClose, onOpenClient, forecast = false }) {
+export default function PaymentBreakdownModal({ title, period, currency, items, total, fmtDate, onClose, onOpenClient, forecast = false, api, month = "all", paymentType = "all" }) {
   const dialog = useRef(null);
   const titleId = useId();
   const [query, setQuery] = useState("");
+  const [pendingState, setPendingState] = useState({ loading: true, error: "", items: [] });
+  useEffect(() => {
+    if (forecast) return undefined;
+    let active = true;
+    api(`/payments/pending-details?month=${encodeURIComponent(month)}&payment_type=${encodeURIComponent(paymentType)}`)
+      .then((rows) => { if (active) setPendingState({ loading: false, error: "", items: rows }); })
+      .catch((error) => { if (active) setPendingState({ loading: false, error: error.message || "No se pudieron cargar los pagos faltantes.", items: [] }); });
+    return () => { active = false; };
+  }, [api, month, paymentType, forecast]);
   useEffect(() => {
     if (dialog.current && !dialog.current.open) dialog.current.showModal();
   }, []);
   const detail = paymentBreakdown(items, currency);
+  const pending = paymentBreakdown(pendingState.items, currency);
   const search = query.trim().toLocaleLowerCase("es");
   const visible = detail.rows.filter((item) => `${item.client_name || ""} ${item.business_name || ""}`.toLocaleLowerCase("es").includes(search));
   const filtered = paymentBreakdown(visible, currency);
@@ -30,6 +40,14 @@ export default function PaymentBreakdownModal({ title, period, currency, items, 
       {search && <p className="payment-breakdown-note">Coinciden {filtered.paymentCount} {source} de {filtered.clientCount} clientes · Subtotal: {money(filtered.total, currency)}. El total general de arriba no cambia.</p>}
       <div className="payment-breakdown-scroll"><table><thead><tr><th>Cliente / negocio</th><th>Pago y concepto</th><th>Mes correspondiente</th><th>Cobrado el</th><th>Estado</th><th>Importe</th></tr></thead><tbody>{visible.map((item) => <tr key={item.payment_id ?? item.id}><td>{onOpenClient && item.client_id != null ? <button type="button" className="payment-breakdown-client" onClick={() => { onClose(); onOpenClient(item.client_id); }}>{item.client_name}</button> : <strong>{item.client_name || "Sin nombre"}</strong>}<small>{item.business_name || ""}</small></td><td><strong>{concepts[item.payment_type] || item.payment_type || "Pago"}</strong><small>{forecast ? "Proyección" : `Pago #${item.payment_id ?? item.id}`}</small>{item.notes || item.description ? <small>{item.notes || item.description}</small> : null}</td><td>{fmtDate(item.display_date || item.calendar_date || item.due_date) || "Sin fecha"}</td><td>{item.paid_at ? fmtDate(item.paid_at.slice(0, 10)) : "—"}</td><td>{forecast ? "Previsto" : statuses[item.status] || item.status || "—"}</td><td>{money(item.amount, currency)}</td></tr>)}</tbody></table></div>
       {!visible.length && <p className="payment-breakdown-empty">{search ? "No hay coincidencias con esa búsqueda." : `No hay ${source} en esta moneda para el período seleccionado.`}</p>}
+      {!forecast && <section className="payment-breakdown-pending" aria-label="Pagos faltantes del período">
+        <h3>Pagos faltantes · {period}</h3>
+        {pendingState.loading ? <p role="status">Cargando pagos faltantes…</p> : pendingState.error ? <p role="alert">{pendingState.error}</p> : <>
+          <div className="payment-breakdown-pending-totals"><div><small>Pagos faltantes</small><strong>{pending.paymentCount}</strong></div><div><small>Clientes con pagos faltantes</small><strong>{pending.clientCount}</strong></div><div><small>Importe registrado pendiente</small><strong>{money(pending.total, currency)}</strong></div></div>
+          <p className="payment-breakdown-note">Solo pagos guardados como pendientes, vencidos o parciales para este período y moneda, de clientes no cancelados ni archivados. No incluye proyecciones. Los parciales se suman por su importe registrado. Estos datos no cambian el total cobrado de arriba.</p>
+          {pending.paymentCount > 0 && <details><summary>Ver los {pending.paymentCount} pagos faltantes en orden alfabético</summary><ul>{pending.rows.map((item) => <li key={item.id}><div><strong>{item.client_name}</strong><small>Pago #{item.id} · {concepts[item.payment_type] || item.payment_type} · {fmtDate(item.display_date || item.due_date) || "Sin fecha"} · {statuses[item.status]}</small></div><strong>{money(item.amount, currency)}</strong></li>)}</ul></details>}
+        </>}
+      </section>}
       <div className="payment-breakdown-footer"><span>{detail.paymentCount} {source} · {detail.clientCount} clientes · Suma del detalle: <strong>{money(detail.total, currency)}</strong></span><button type="button" className="secondary" onClick={() => dialog.current.close()}>Cerrar</button></div>
     </div>
   </dialog>;

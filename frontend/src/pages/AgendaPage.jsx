@@ -255,7 +255,7 @@ export function createAgendaPage(dependencies) {
               <h3>{agendaTypeFilter === "collections_paid" ? "Cobros realizados" : "Cobros pendientes"} · {calendarTitle}</h3>
               {agendaLoadError ? <p role="alert">{agendaLoadError}</p> : collectionsMonthLoaded !== calendarMonth ? <p role="status">Calculando cobros del mes…</p> : <>
                 <div className="agenda-collections-currencies">{Object.entries(collectionSummary.totals).map(([currency, amounts]) => <button type="button" className="agenda-collection-total" key={currency} aria-haspopup="dialog" aria-label={`Ver pagos y clientes del total ${collectionMoney(amounts.total, currency)}`} onClick={() => setCollectionDetail({ currency, total: amounts.total, items: collectionRowsForMonth(filteredAgendaItems, calendarMonth).map((item) => ({ ...item, currency: item.currency || "ARS" })), period: calendarTitle, title: agendaTypeFilter === "collections_paid" ? "Agenda · Cobros realizados" : "Agenda · Cobros pendientes" })}><span className="agenda-collection-currency">{currency === "ARS" ? "Pesos argentinos · ARS" : currency === "USD" ? "Dólares · USD" : currency}</span><span className={agendaTypeFilter === "collections_paid" ? "collections-paid" : "collections-pending"}><small>{agendaTypeFilter === "collections_paid" ? "Total cobrado" : "Total pendiente de cobrar"}</small><strong>{collectionMoney(amounts.total, currency)}</strong></span><span className="agenda-collection-hint">Ver pagos y clientes en orden alfabético</span></button>)}</div>
-                <p>{agendaTypeFilter === "collections_paid" ? "Todos los pagos guardados como pagados para este mes, incluidos los históricos de clientes cancelados o archivados. Se asignan por vencimiento; sin vencimiento, por fecha de pago. Las señas usan la fecha de pago. No se incluyen proyecciones." : "Pagos registrados como pendientes, vencidos o parciales, con vencimiento o período asignado en este mes. No incluye proyecciones ni clientes cancelados o archivados."}</p>
+                <p>{agendaTypeFilter === "collections_paid" ? "Todos los pagos guardados como pagados para este mes, incluidos los históricos de clientes cancelados o archivados. Las mensualidades se ubican por su vencimiento, aunque se paguen antes o después. Si falta, necesitan un período asignado y un día de vencimiento conocido: nunca se ubican por la fecha de cobro. Las señas usan la fecha de pago. No se incluyen proyecciones." : "Pagos registrados como pendientes, vencidos o parciales, con vencimiento o período asignado en este mes. No incluye proyecciones ni clientes cancelados o archivados."}</p>
                 {collectionSummary.partialCount > 0 && <p>Hay {collectionSummary.partialCount} pagos parciales: su importe registrado se incluye en el total pendiente, porque no hay un desglose del monto ya abonado.</p>}
               </>}
             </section>}
@@ -349,7 +349,7 @@ export function createAgendaPage(dependencies) {
             }}
           />
         )}
-        {collectionDetail && <PaymentBreakdownModal {...collectionDetail} fmtDate={fmtDate} onClose={() => setCollectionDetail(null)} onOpenClient={setSelectedAgendaClient} />}
+        {collectionDetail && <PaymentBreakdownModal {...collectionDetail} api={api} month={calendarMonth} fmtDate={fmtDate} onClose={() => setCollectionDetail(null)} onOpenClient={setSelectedAgendaClient} />}
         {agendaToast && <Toast message={agendaToast} onClose={() => setAgendaToast("")} />}
       </section>
     );
@@ -688,7 +688,7 @@ export function createAgendaPage(dependencies) {
       >
         <div className={`priority ${a.priority}`} />
         <div>
-          <time>{a.recorded_payment ? "Fecha del pago / período" : "Vencimiento"}: {fmtDate(a.calendar_date || a.due_date)}</time>
+          <time>{a.recorded_payment ? "Vencimiento / período" : "Vencimiento"}: {fmtDate(a.calendar_date || a.due_date)}</time>
           <h3>{a.title}</h3>
           {a.client_id && <p>{a.client_name} · {a.business_name}</p>}
           {a.recorded_payment && a.paid_at && <p>Cobrado el {fmtDate(a.paid_at.slice(0, 10))}</p>}

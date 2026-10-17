@@ -274,7 +274,7 @@ export function createDashboardPage(dependencies) {
             </div>
           )}
         </div>
-        {incomeDetail && <PaymentBreakdownModal {...incomeDetail} fmtDate={fmtDate} onClose={() => setIncomeDetail(null)} onOpenClient={setSelectedIncomeClient} />}
+        {incomeDetail && <PaymentBreakdownModal {...incomeDetail} api={api} month={incomeMonth} paymentType={incomeType === "monthly_forecast" ? "all" : incomeType} fmtDate={fmtDate} onClose={() => setIncomeDetail(null)} onOpenClient={setSelectedIncomeClient} />}
         {selectedMetric && (
           <DashboardMetricModal
             title={selectedMetric.label}
