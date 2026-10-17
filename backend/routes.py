@@ -163,6 +163,8 @@ def payment_collection_item(payment):
         "business_name": payment.client.business_name,
         "projected": True,
         "payment_id": payment.id,
+        "amount": float(payment.amount),
+        "currency": payment.currency,
     }
 
 
@@ -191,6 +193,8 @@ def projected_collection_items(clients, year, month):
             "title": f"Cobrar a {client.name}",
             "description": "Cobro mensual proyectado desde la fecha de alta.",
             "action_type": "collection_projection",
+            "amount": float(client.payment_amount or 0),
+            "currency": client.currency,
             "status": "pending",
             "priority": "high",
             "due_date": due_date.isoformat(),
@@ -1119,7 +1123,8 @@ def actions_list():
             existing_clients, month_start.year, month_start.month,
         )
         result.extend(payment_items)
-        result.extend(projected_items)
+        existing_ids = {item["id"] for item in result}
+        result.extend(item for item in projected_items if item["id"] not in existing_ids)
         result.sort(key=lambda item: (item.get("due_date") or "9999-12-31", str(item["id"])))
     return ok(result)
 

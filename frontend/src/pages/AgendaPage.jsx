@@ -1,3 +1,4 @@
+import { summarizeCollections } from "../app/collectionSummary";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Plus, X, ChevronLeft, ChevronRight, ArrowUpDown, Edit3, Check, RotateCcw, Save, List } from "lucide-react";
 
@@ -12,6 +13,8 @@ export function createAgendaPage(dependencies) {
     const [actionStatus, setActionStatus] = useState("pending");
     const [agendaTypeFilter, setAgendaTypeFilter] = useState("all");
     const [items, setItems] = useState([]);
+    const [collectionsMonthLoaded, setCollectionsMonthLoaded] = useState(null);
+    const [agendaLoadError, setAgendaLoadError] = useState("");
     const [calendarMonth, setCalendarMonth] = useState(() => new Date().toISOString().slice(0, 7));
     const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
     const [showNewAction, setShowNewAction] = useState(false);
@@ -26,12 +29,19 @@ export function createAgendaPage(dependencies) {
     const load = useCallback(
       () => {
         const requestId = ++agendaRequestId.current;
+        setCollectionsMonthLoaded(null); setAgendaLoadError("");
         const calendarQuery = agendaDisplay === "calendar"
           ? `view=calendar&scope=${view}&month=${calendarMonth}${agendaTypeFilter === "collections" ? "&collections=all" : ""}`
           : `view=${view}`;
         return api(`/actions?${calendarQuery}&status=${actionStatus}`).then((nextItems) => {
-          if (requestId === agendaRequestId.current) setItems(nextItems);
+          if (requestId === agendaRequestId.current) {
+            setItems(nextItems);
+            if (agendaDisplay === "calendar" && agendaTypeFilter === "collections") setCollectionsMonthLoaded(calendarMonth);
+          }
           return nextItems;
+        }).catch((error) => {
+          if (requestId === agendaRequestId.current) setAgendaLoadError(error.message || "No se pudo cargar la agenda.");
+          return [];
         });
       },
       [view, agendaDisplay, actionStatus, calendarMonth, agendaTypeFilter],
@@ -81,6 +91,8 @@ export function createAgendaPage(dependencies) {
       if (agendaTypeFilter === "actions") return !isCollection;
       return true;
     }), [items, agendaTypeFilter]);
+    const collectionSummary = useMemo(() => summarizeCollections(items, calendarMonth), [items, calendarMonth]);
+    const collectionMoney = (value, currency) => `${currency} ${new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
     const calendarDays = useMemo(() => {
       const [year, month] = calendarMonth.split("-").map(Number);
       const firstDay = new Date(Date.UTC(year, month - 1, 1));
@@ -231,6 +243,14 @@ export function createAgendaPage(dependencies) {
               <h3>{calendarTitle}</h3>
               <button className="icon-btn" onClick={() => moveCalendarMonth(1)} aria-label="Mes siguiente"><ChevronRight /></button>
             </div>
+            {agendaTypeFilter === "collections" && <section className="agenda-collections-summary" aria-label={`Resumen de cobros de ${calendarTitle}`}>
+              <h3>Cobros de {calendarTitle}</h3>
+              {agendaLoadError ? <p role="alert">{agendaLoadError}</p> : collectionsMonthLoaded !== calendarMonth ? <p role="status">Calculando cobros del mes…</p> : <>
+                <div className="agenda-collections-currencies">{Object.entries(collectionSummary.totals).map(([currency, amounts]) => <article key={currency}><h4>{currency === "ARS" ? "Pesos argentinos · ARS" : currency === "USD" ? "Dólares · USD" : currency}</h4><dl><div><dt>Total del mes a cobrar</dt><dd>{collectionMoney(amounts.total, currency)}</dd></div><div className="collections-paid"><dt>Ya cobrado</dt><dd>{collectionMoney(amounts.paid, currency)}</dd></div><div className="collections-pending"><dt>Falta cobrar</dt><dd>{collectionMoney(amounts.pending, currency)}</dd></div></dl></article>)}</div>
+                <p>Mensualidades con vencimiento en este mes, incluidos cobros proyectados. “Ya cobrado” suma las marcadas como pagadas, aunque se hayan abonado antes o después. El resumen abarca todo el mes y no cambia con los filtros de acciones.</p>
+                {collectionSummary.partialCount > 0 && <p>Hay {collectionSummary.partialCount} pagos parciales: su importe registrado se incluye en “Falta cobrar”, porque no hay un desglose del monto ya abonado.</p>}
+              </>}
+            </section>}
             <div className="calendar-grid calendar-weekdays">
               {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day) => <span key={day}>{day}</span>)}
             </div>

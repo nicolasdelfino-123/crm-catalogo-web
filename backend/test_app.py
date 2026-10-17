@@ -119,7 +119,9 @@ def test_calendar_collection_mode_includes_paid_and_pending_monthlies(client, ap
     items = client.get(f"/api/actions?view=calendar&scope=all&month={month}&status=pending&collections=all").get_json()["data"]
     statuses = {item["client_name"]: item["status"] for item in items if item.get("action_type") == "collection_payment"}
     assert statuses["Cobro pagado"] == "paid"
-    assert statuses["Cobro pendiente"] == "pending"
+    assert statuses["Cobro pendiente"] == ("overdue" if pending_due < date.today() else "pending")
+    collection_ids = [item["id"] for item in items if item.get("action_type") in ("collection_payment", "collection_projection")]
+    assert len(collection_ids) == len(set(collection_ids))
 from routes import advance_service_stage, sync_overdue_monthly_payments, sync_service_stages
 
 
@@ -1839,3 +1841,28 @@ def test_clients_can_be_sorted_by_traffic_light_including_lilac(client, app):
     response = client.get('/api/clients?sort_by=traffic_light&sort_dir=asc')
     assert response.status_code == 200
     assert [row['traffic_light'] for row in response.get_json()['data']['items']] == ['red', 'yellow', 'green', 'lilac']
+
+
+def test_calendar_collections_have_amounts_for_both_payments_and_projections(client, app):
+    with app.app_context():
+        projected = Client(name='Proyectado USD', business_name='USD', signup_date=date(2098, 12, 10), next_renewal_date=date(2099, 1, 10), currency='USD', payment_amount=35, status='active')
+        paid = Client(name='Pagado ARS', business_name='ARS', signup_date=date(2098, 12, 10), currency='ARS', payment_amount=100, status='active')
+        overdue = Client(name='Vencido ARS', business_name='ARS', signup_date=date(2026, 1, 1), currency='ARS', payment_amount=150, status='paused')
+        db.session.add_all([projected, paid, overdue])
+        db.session.flush()
+        db.session.add_all([
+            Payment(client=paid, amount=100, currency='ARS', payment_type='monthly', due_date=date(2099, 1, 10), status='paid', paid_at=datetime(2098, 12, 30)),
+            Payment(client=overdue, amount=150, currency='ARS', payment_type='monthly', due_date=date(2099, 1, 12), status='pending'),
+        ])
+        db.session.commit()
+    response = client.get('/api/actions?view=calendar&scope=all&month=2099-01&status=pending&collections=all')
+    assert response.status_code == 200
+    items = [row for row in response.get_json()['data'] if row['action_type'] in ('collection_payment', 'collection_projection')]
+    assert len(items) == 3
+    assert len({row['id'] for row in items}) == 3
+    by_name = {row['client_name']: row for row in items}
+    assert by_name['Proyectado USD']['amount'] == 35
+    assert by_name['Proyectado USD']['currency'] == 'USD'
+    assert by_name['Pagado ARS']['amount'] == 100
+    assert by_name['Pagado ARS']['status'] == 'paid'
+    assert by_name['Vencido ARS']['amount'] == 150
