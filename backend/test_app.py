@@ -1733,3 +1733,73 @@ def test_prospecting_dated_plan_validation_is_atomic(client):
     })
     assert response.status_code == 422
     assert client.get('/api/prospecting').get_json()['data']['weekly_goals'] == []
+
+
+def test_prospecting_totals_reduction_updates_latest_days_and_preserves_other_data(client, app):
+    with app.app_context():
+        db.session.add(Client(name='Cliente conservado', business_name='Negocio conservado', currency='ARS', payment_amount=12345))
+        db.session.commit()
+    for day in ['2026-10-12', '2026-10-13']:
+        assert client.put('/api/prospecting/daily', json={'activity_date': day, 'channels': [
+            {'channel': 'business_instagram', 'contacts': 20, 'prices_sent': 5, 'sales': 2},
+            {'channel': 'personal_whatsapp', 'contacts': 9, 'prices_sent': 1, 'sales': 1},
+        ]}).status_code == 200
+    assert client.put('/api/prospecting/goals', json={'week_start': '2026-10-12', 'goals': [
+        {'weekday': 0, 'channel': 'business_instagram', 'target': 50},
+    ]}).status_code == 200
+    payload = {'activity_date': '2026-10-17', 'channels': [
+        {'channel': 'business_instagram', 'contacts': 15, 'prices_sent': 3, 'sales': 1,
+         'previous': {'contacts': 40, 'prices_sent': 10, 'sales': 4}},
+    ]}
+    response = client.put('/api/prospecting/totals', json=payload)
+    assert response.status_code == 200
+    saved = response.get_json()['data']
+    remaining_logs = [row for row in saved['logs'] if row['channel'] == 'business_instagram']
+    assert len(remaining_logs) == 1
+    assert remaining_logs[0]['activity_date'] == '2026-10-12'
+    assert remaining_logs[0]['quantity'] == 15
+    assert sum(row['prices_sent'] for row in saved['outcomes'] if row['channel'] == 'business_instagram') == 3
+    assert sum(row['sales'] for row in saved['outcomes'] if row['channel'] == 'business_instagram') == 1
+    assert sum(row['quantity'] for row in saved['logs'] if row['channel'] == 'personal_whatsapp') == 18
+    assert client.get('/api/prospecting').get_json()['data']['weekly_goals'][0]['target'] == 50
+    with app.app_context():
+        customer = Client.query.one()
+        assert customer.name == 'Cliente conservado'
+        assert customer.payment_amount == 12345
+    payload['channels'][0].update(contacts=0, prices_sent=0, sales=0, previous={'contacts': 15, 'prices_sent': 3, 'sales': 1})
+    assert client.put('/api/prospecting/totals', json=payload).status_code == 200
+    reloaded = client.get('/api/prospecting').get_json()['data']
+    assert not any(row['channel'] == 'business_instagram' for row in reloaded['logs'])
+    assert all(row['prices_sent'] == 0 and row['sales'] == 0 for row in reloaded['outcomes'] if row['channel'] == 'business_instagram')
+
+
+def test_prospecting_totals_increase_uses_adjustment_date(client):
+    payload = {'activity_date': '2026-10-17', 'channels': [
+        {'channel': 'business_instagram', 'contacts': 12, 'prices_sent': 5, 'sales': 2,
+         'previous': {'contacts': 0, 'prices_sent': 0, 'sales': 0}},
+    ]}
+    saved = client.put('/api/prospecting/totals', json=payload).get_json()['data']
+    assert saved['logs'][0]['activity_date'] == '2026-10-17'
+    assert saved['logs'][0]['quantity'] == 12
+    assert saved['outcomes'][0]['prices_sent'] == 5
+    assert saved['outcomes'][0]['sales'] == 2
+    assert len(saved['outcomes']) == 1
+    # Stale totals must not apply the same adjustment twice.
+    assert client.put('/api/prospecting/totals', json=payload).status_code == 409
+    assert sum(row['quantity'] for row in client.get('/api/prospecting').get_json()['data']['logs']) == 12
+
+
+@pytest.mark.parametrize('invalid', [-1, 1.5, True, '5'])
+def test_prospecting_totals_invalid_values_do_not_apply_partial_changes(client, invalid):
+    response = client.put('/api/prospecting/totals', json={
+        'activity_date': '2026-10-17', 'channels': [
+            {'channel': 'business_instagram', 'contacts': 10, 'prices_sent': 0, 'sales': 0,
+             'previous': {'contacts': 0, 'prices_sent': 0, 'sales': 0}},
+            {'channel': 'personal_whatsapp', 'contacts': invalid, 'prices_sent': 0, 'sales': 0,
+             'previous': {'contacts': 0, 'prices_sent': 0, 'sales': 0}},
+        ],
+    })
+    assert response.status_code == 422
+    data = client.get('/api/prospecting').get_json()['data']
+    assert data['logs'] == []
+    assert data['outcomes'] == []

@@ -25,6 +25,8 @@ export function createProspectingPage(dependencies) {
     const [week, setWeek] = useState(startOfWeek(fromDateKey(today)));
     const weekStart = dateKey(week);
     const [draft, setDraft] = useState({});
+    const [editingTotal, setEditingTotal] = useState(false);
+    const [totalDraft, setTotalDraft] = useState({});
     const [editingDate, setEditingDate] = useState(null);
     const [detailDate, setDetailDate] = useState(null);
     const dayDialog = useRef(null);
@@ -72,7 +74,7 @@ export function createProspectingPage(dependencies) {
       prices_sent: data.outcomes.filter((item) => item.channel === channel).reduce((sum, item) => sum + (item.prices_sent ?? item.demos ?? 0), 0),
       sales: data.outcomes.filter((item) => item.channel === channel).reduce((sum, item) => sum + item.sales, 0),
     });
-    const rowFor = (channel) => view === "total" ? accumulatedRow(channel) : draft[channel] || savedRow(selectedDate, channel);
+    const rowFor = (channel) => view === "total" ? totalDraft[channel] || accumulatedRow(channel) : draft[channel] || savedRow(selectedDate, channel);
     const dirty = Object.keys(draft).length > 0;
     const daySaved = data.logs.some((item) => item.activity_date === selectedDate) || data.outcomes.some((item) => item.activity_date === selectedDate);
     const dayLocked = daySaved && editingDate !== selectedDate;
@@ -96,6 +98,30 @@ export function createProspectingPage(dependencies) {
       return { contacts: sum.contacts + Number(row.contacts), prices_sent: sum.prices_sent + Number(row.prices_sent), sales: sum.sales + Number(row.sales) };
     }, { contacts: 0, prices_sent: 0, sales: 0 });
 
+    function changeView(nextView) {
+      if (view === "total" && editingTotal && Object.keys(totalDraft).length && nextView !== "total") {
+        if (!window.confirm("Tenés cambios sin guardar en el acumulado. ¿Querés descartarlos?")) return false;
+        setTotalDraft({}); setEditingTotal(false);
+      }
+      setView(nextView); return true;
+    }
+    async function saveTotal(event) {
+      event.preventDefault();
+      if (!editingTotal || saving || !Object.keys(totalDraft).length) return;
+      const entries = Object.entries(totalDraft).map(([channel, row]) => ({ channel, contacts: Number(row.contacts), prices_sent: Number(row.prices_sent), sales: Number(row.sales), previous: accumulatedRow(channel) }));
+      if (entries.some((row) => [row.contacts, row.prices_sent, row.sales].some((value) => !Number.isInteger(value) || value < 0))) {
+        setError("Usá cantidades enteras y positivas o dejá el campo vacío."); return;
+      }
+      setSaving(true); setError(""); setMessage("");
+      try {
+        const saved = await api("/prospecting/totals", { method: "PUT", body: JSON.stringify({ activity_date: today, channels: entries }) });
+        if (!saved || !Array.isArray(saved.logs) || !Array.isArray(saved.outcomes)) throw new Error("El servidor no confirmó el acumulado.");
+        setData({ logs: saved.logs, outcomes: saved.outcomes });
+        setTotalDraft({}); setDraft({}); setEditingTotal(false); setEditingDate(null);
+        setMessage("Total acumulado actualizado. Los registros diarios y los resúmenes ya reflejan el ajuste.");
+      } catch (err) { setError(err.message || "No se pudo guardar el acumulado. Tus cambios siguen en pantalla."); }
+      finally { setSaving(false); }
+    }
     function selectDate(key) {
       if (!key) return false;
       if (key === selectedDate) return true;
@@ -161,6 +187,10 @@ export function createProspectingPage(dependencies) {
     const activeMetric = metrics.find((metric) => metric.key === selectedMetric);
     const metricRows = activeMetric ? detailRows.filter((row) => row[activeMetric.key] > 0) : [];
     const detailHasRecords = detailDate && (data.logs.some((item) => item.activity_date === detailDate) || data.outcomes.some((item) => item.activity_date === detailDate));
+    const totalActions = view === "total" && <div className="prospecting-day-actions">
+      <button type="button" className="secondary" disabled={editingTotal || saving || savingPlan} onClick={() => { if (dirty && !window.confirm("Tenés cambios sin guardar en el día. ¿Querés descartarlos para editar el acumulado?")) return; setDraft({}); setEditingTotal(true); setTotalDraft({}); setMessage(""); setError(""); }}><Edit3 size={16} />Editar total acumulado</button>
+      {editingTotal && <><button type="submit" className="primary" disabled={saving || savingPlan || !Object.keys(totalDraft).length}><Save size={16} />{saving ? "Guardando…" : "Guardar acumulado"}</button><button type="button" className="secondary" disabled={saving} onClick={() => { setEditingTotal(false); setTotalDraft({}); setError(""); }}>Cancelar edición</button></>}
+    </div>;
     const dayActions = view === "day" && <div className="prospecting-day-actions">
       <button key="save" type="submit" className="primary" disabled={dayLocked || saving || savingPlan}><Save size={16} />{saving ? "Guardando…" : "Guardar día"}</button>
       <button key="edit" type="button" className="secondary" disabled={!dayLocked || saving} onClick={() => { setEditingDate(selectedDate); setMessage(""); }}><Edit3 size={16} />Editar día</button>
@@ -172,12 +202,13 @@ export function createProspectingPage(dependencies) {
       {error && <p role="alert" className="prospecting-error">{error}</p>}
       {message && <p role="status" className="prospecting-success">{message}</p>}
       {loading ? <p role="status">Cargando prospección…</p> : <>
-        <form className="prospecting-daily" onSubmit={saveDay}>
-          <div className="prospecting-daily-head"><div><span className="eyebrow">{view === "day" ? "Registro real del día" : "Resultados reales guardados"}</span><h3>{view === "day" ? `Lo que registraste · ${fmtDate(selectedDate)}` : "Total acumulado por canal"}</h3><p>{view === "day" ? (dayLocked ? "Día guardado. Tocá Editar día para cambiar las cantidades." : "Ingresá el total del día. Al guardar se actualiza, sin duplicarlo.") : "Todos los días registrados. Para cargar o corregir cantidades, elegí Día seleccionado."}</p></div><label>Ver<select value={view} disabled={saving} onChange={(event) => setView(event.target.value)}><option value="day">Día seleccionado</option><option value="total">Total acumulado</option></select></label><label>Fecha<input type="date" required value={selectedDate} disabled={saving || savingPlan || view === "total"} onChange={(event) => selectDate(event.target.value)} /></label><button type="button" className="secondary small" disabled={saving || savingPlan} onClick={() => { setView("day"); selectDate(today); }}>Hoy</button>{dayActions}</div>
+        <form className="prospecting-daily" onSubmit={view === "total" ? saveTotal : saveDay}>
+          <div className="prospecting-daily-head"><div><span className="eyebrow">{view === "day" ? "Registro real del día" : "Resultados reales guardados"}</span><h3>{view === "day" ? `Lo que registraste · ${fmtDate(selectedDate)}` : "Total acumulado por canal"}</h3><p>{view === "day" ? (dayLocked ? "Día guardado. Tocá Editar día para cambiar las cantidades." : "Ingresá el total del día. Al guardar se actualiza, sin duplicarlo.") : (editingTotal ? "Corregí los totales por canal. Vaciar un campo equivale a dejarlo en cero." : "Todos los días registrados. Tocá Editar total acumulado para corregir o quitar datos viejos.")}</p></div><label>Ver<select value={view} disabled={saving} onChange={(event) => changeView(event.target.value)}><option value="day">Día seleccionado</option><option value="total">Total acumulado</option></select></label><label>Fecha<input type="date" required value={selectedDate} disabled={saving || savingPlan || view === "total"} onChange={(event) => selectDate(event.target.value)} /></label><button type="button" className="secondary small" disabled={saving || savingPlan} onClick={() => { if (changeView("day")) selectDate(today); }}>Hoy</button>{dayActions}{totalActions}</div>
+          {view === "total" && editingTotal && <p className="prospecting-total-edit-note">Al bajar un total, se reducen primero los registros más recientes del canal. Los aumentos se registran con fecha de hoy ({fmtDate(today)}). Este ajuste modifica únicamente Prospección; no cambia clientes, pagos ni objetivos.</p>}
           <div className="prospecting-entry-table"><div className="prospecting-entry-row prospecting-entry-heading"><span>Canal</span><span>Contactados</span><span>Precios enviados</span><span>Ventas</span></div>
             {channels.map(([channel, label]) => {
               const row = rowFor(channel);
-              return <div className="prospecting-entry-row" key={channel}><div><strong>{label}</strong><small>{view === "total" ? "Todos los días registrados" : "Contactos, precios enviados y ventas reales"}</small></div>{[["contacts", "Contactados"], ["prices_sent", "Precios enviados"], ["sales", "Ventas"]].map(([field, title]) => <label key={field}><span>{title}</span><input aria-label={`${label}: ${title}`} type="number" min="0" step="1" inputMode="numeric" value={row[field] || ""} readOnly={view === "total" || dayLocked} disabled={saving} onFocus={(event) => event.target.select()} onChange={(event) => { setDraft((current) => ({ ...current, [channel]: { ...row, [field]: event.target.value } })); setMessage(""); }} /></label>)}</div>;
+              return <div className="prospecting-entry-row" key={channel}><div><strong>{label}</strong><small>{view === "total" ? "Todos los días registrados" : "Contactos, precios enviados y ventas reales"}</small></div>{[["contacts", "Contactados"], ["prices_sent", "Precios enviados"], ["sales", "Ventas"]].map(([field, title]) => <label key={field}><span>{title}</span><input aria-label={`${label}: ${title}`} type="number" min="0" step="1" inputMode="numeric" value={row[field] || ""} readOnly={view === "total" ? !editingTotal : dayLocked} disabled={saving} onFocus={(event) => event.target.select()} onChange={(event) => { (view === "total" ? setTotalDraft : setDraft)((current) => ({ ...current, [channel]: { ...row, [field]: event.target.value } })); setMessage(""); }} /></label>)}</div>;
             })}
           </div>
           <div className="prospecting-daily-footer"><div><strong>{dailyTotals.contacts}</strong> contactados <b>·</b> <strong>{dailyTotals.prices_sent}</strong> precios enviados <b>·</b> <strong>{dailyTotals.sales}</strong> ventas</div></div>
@@ -228,7 +259,7 @@ export function createProspectingPage(dependencies) {
               <p className="prospecting-entry-note">El objetivo mide contactos. Los precios enviados y las ventas se muestran aparte y no se suman a ese avance. Las ventas pueden venir de contactos de días anteriores.</p>
               <p className="prospecting-entry-note">Se muestran solo datos guardados. El objetivo corresponde a la semana de esta fecha. Los objetivos de otras semanas no se aplican acá.</p>
               {detailDate === selectedDate && dirty && <p className="prospecting-entry-note">Tenés cambios sin guardar en este día. Aparecerán acá cuando guardes el registro.</p>}
-              <div className="prospecting-day-dialog-actions"><button type="button" className="secondary" onClick={() => dayDialog.current.close()}>Cerrar</button><button type="button" className="primary" onClick={() => { if (selectDate(detailDate)) { setView("day"); dayDialog.current.close(); } }}>{detailHasRecords ? "Ir al registro del día" : "Cargar este día"}</button></div>
+              <div className="prospecting-day-dialog-actions"><button type="button" className="secondary" onClick={() => dayDialog.current.close()}>Cerrar</button><button type="button" className="primary" onClick={() => { if (changeView("day") && selectDate(detailDate)) { dayDialog.current.close(); } }}>{detailHasRecords ? "Ir al registro del día" : "Cargar este día"}</button></div>
             </div>
           </div>
         </dialog>}

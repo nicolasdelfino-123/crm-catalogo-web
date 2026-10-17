@@ -775,6 +775,74 @@ def prospecting_daily_save():
     }, "Día guardado")
 
 
+@api.put("/prospecting/totals")
+def prospecting_totals_save():
+    data = request.get_json(silent=True) or {}
+    try:
+        activity_date = parse_date(data.get("activity_date"))
+        rows = data.get("channels")
+        if not activity_date or not isinstance(rows, list) or not rows:
+            raise ValueError()
+        validated, seen = [], set()
+        for row in rows:
+            channel = row.get("channel")
+            values = [row.get(key) for key in ("contacts", "prices_sent", "sales")]
+            previous = row.get("previous")
+            if channel not in PROSPECTING_CHANNELS or channel in seen or not isinstance(previous, dict):
+                raise ValueError()
+            old_values = [previous.get(key) for key in ("contacts", "prices_sent", "sales")]
+            if any(type(value) is not int or value < 0 for value in values + old_values):
+                raise ValueError()
+            seen.add(channel)
+            validated.append((channel, values, old_values))
+    except (ValueError, TypeError, AttributeError):
+        return error("Revisá los canales, la fecha y las cantidades enteras del acumulado", 422)
+    changes = []
+    for channel, values, previous in validated:
+        logs = ProspectingLog.query.filter_by(channel=channel).order_by(ProspectingLog.activity_date.desc(), ProspectingLog.id.desc()).all()
+        outcomes = ProspectingOutcome.query.filter_by(channel=channel).order_by(ProspectingOutcome.activity_date.desc(), ProspectingOutcome.id.desc()).all()
+        actual = [sum(item.quantity for item in logs), sum(item.demos for item in outcomes), sum(item.sales for item in outcomes)]
+        if actual != previous:
+            return error("Los datos cambiaron mientras editabas. Cancelá la edición y recargá antes de volver a guardar.", 409)
+        changes.append((channel, values, actual, logs, outcomes))
+    for channel, values, actual, logs, outcomes in changes:
+        difference = values[0] - actual[0]
+        if difference > 0:
+            db.session.add(ProspectingLog(activity_date=activity_date, channel=channel, quantity=difference, notes="Ajuste de total acumulado"))
+        elif difference < 0:
+            remaining = -difference
+            for item in logs:
+                removed = min(remaining, item.quantity)
+                item.quantity -= removed
+                remaining -= removed
+                if item.quantity == 0:
+                    db.session.delete(item)
+                if remaining == 0:
+                    break
+        for index, field in ((1, "demos"), (2, "sales")):
+            difference = values[index] - actual[index]
+            if difference > 0:
+                item = next((item for item in outcomes if item.activity_date == activity_date), None)
+                if item is None:
+                    item = ProspectingOutcome(activity_date=activity_date, channel=channel, demos=0, sales=0)
+                    outcomes.append(item)
+                    db.session.add(item)
+                setattr(item, field, getattr(item, field) + difference)
+            elif difference < 0:
+                remaining = -difference
+                for item in outcomes:
+                    removed = min(remaining, getattr(item, field))
+                    setattr(item, field, getattr(item, field) - removed)
+                    remaining -= removed
+                    if remaining == 0:
+                        break
+    db.session.commit()
+    return ok({
+        "logs": [item.to_dict() for item in ProspectingLog.query.order_by(ProspectingLog.activity_date.desc(), ProspectingLog.id.desc()).all()],
+        "outcomes": [item.to_dict() for item in ProspectingOutcome.query.order_by(ProspectingOutcome.activity_date.desc()).all()],
+    }, "Acumulado actualizado")
+
+
 @api.put("/prospecting/goals")
 def prospecting_goals_save():
     data = request.get_json(silent=True) or {}
