@@ -1,4 +1,4 @@
-// Real receipts use their paid date; outstanding payments use their due date.
+// Use the billing date assigned by the calendar for both paid and pending records.
 export function summarizeCollections(items, month) {
   const totals = { ARS: { total: 0, paid: 0, pending: 0 }, USD: { total: 0, paid: 0, pending: 0 } };
   const seen = new Set();
@@ -6,7 +6,7 @@ export function summarizeCollections(items, month) {
   for (const item of items) {
     if (item.action_type !== "collection_payment" || !item.payment_id) continue;
     if (!["paid", "pending", "partial", "overdue"].includes(item.status)) continue;
-    const relevantDate = item.status === "paid" ? item.paid_at?.slice(0, 10) : item.due_date;
+    const relevantDate = item.calendar_date || item.due_date;
     if (!relevantDate?.startsWith(`${month}-`) || seen.has(item.payment_id)) continue;
     seen.add(item.payment_id);
     const amount = Number(item.amount);

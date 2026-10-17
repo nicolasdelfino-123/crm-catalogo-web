@@ -1868,7 +1868,7 @@ def test_calendar_collections_have_amounts_for_both_payments_and_projections(cli
     assert by_name['Vencido ARS']['amount'] == 150
 
 
-def test_agenda_real_collections_use_paid_dates_and_registered_pending_only_without_writes(client, app):
+def test_agenda_real_collections_use_billing_month_and_exclude_cancelled_without_writes(client, app):
     with app.app_context():
         customer = Client(name='Pagos reales', business_name='Real', country='Argentina', currency='ARS', signup_date=date(2020, 1, 1), next_renewal_date=date(2020, 2, 1), payment_amount=99999, status='active')
         cancelled = Client(name='Cancelado pagado', business_name='Cancelado', country='Argentina', currency='USD', status='cancelled')
@@ -1897,12 +1897,13 @@ def test_agenda_real_collections_use_paid_dates_and_registered_pending_only_with
     response = client.get('/api/agenda/collections?month=2026-10')
     assert response.status_code == 200
     items = response.get_json()['data']
-    assert len(items) == 5
-    assert sum(row['amount'] for row in items if row['status'] == 'paid' and row['currency'] == 'ARS') == 150
-    assert sum(row['amount'] for row in items if row['status'] == 'paid' and row['currency'] == 'USD') == 20
+    assert len(items) == 4
+    assert sum(row['amount'] for row in items if row['status'] == 'paid' and row['currency'] == 'ARS') == 250
+    assert sum(row['amount'] for row in items if row['status'] == 'paid' and row['currency'] == 'USD') == 0
     assert sum(row['amount'] for row in items if row['status'] != 'paid') == 330
     assert all(row['recorded_payment'] is True and row['projected'] is False for row in items)
-    assert next(row for row in items if row['amount'] == 100)['calendar_date'] == '2026-10-01'
+    assert next(row for row in items if row['amount'] == 200)['calendar_date'] == '2026-10-05'
+    assert not any(row['amount'] in (100, 20, 999) for row in items)
     assert next(row for row in items if row['amount'] == 50)['calendar_date'] == '2026-10-31'
     with app.app_context():
         assert [row.to_dict() for row in Payment.query.order_by(Payment.id).all()] == original_payments
@@ -1912,3 +1913,26 @@ def test_agenda_real_collections_use_paid_dates_and_registered_pending_only_with
 @pytest.mark.parametrize('month', ['', '2026-13', 'wrong'])
 def test_agenda_real_collections_reject_invalid_month(client, month):
     assert client.get(f'/api/agenda/collections?month={month}').status_code == 422
+
+
+def test_agenda_monthly_billing_period_survives_late_collection_and_customer_cancellation(client, app):
+    with app.app_context():
+        customer = Client(name='Mensualidad septiembre', business_name='Periodo', country='Argentina', currency='USD')
+        cancelled = Client(name='Baja sin cobro válido', business_name='Baja', country='Argentina', currency='USD', status='cancelled')
+        db.session.add_all([customer, cancelled])
+        db.session.flush()
+        db.session.add_all([
+            Payment(client=customer, amount=40, currency='USD', status='paid', payment_type='monthly', due_date=date(2026, 9, 15), paid_at=datetime(2026, 10, 10)),
+            Payment(client=customer, amount=20, currency='USD', status='paid', payment_type='monthly', due_date=None, period_year=2026, period_month=9, paid_at=datetime(2026, 10, 10)),
+            Payment(client=cancelled, amount=999, currency='USD', status='paid', payment_type='monthly', due_date=date(2026, 9, 15), paid_at=datetime(2026, 10, 10)),
+        ])
+        db.session.commit()
+    september = client.get('/api/agenda/collections?month=2026-09').get_json()['data']
+    october = client.get('/api/agenda/collections?month=2026-10').get_json()['data']
+    assert len(september) == 2
+    assert sum(row['amount'] for row in september) == 60
+    assert {row['calendar_date'] for row in september} == {'2026-09-01', '2026-09-15'}
+    assert october == []
+    with app.app_context():
+        assert Payment.query.count() == 3
+        assert Payment.query.filter_by(amount=999).one().status == 'paid'

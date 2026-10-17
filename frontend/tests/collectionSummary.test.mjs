@@ -17,14 +17,14 @@ test('counts only recorded payments, splits currencies and excludes duplicate re
   assert.deepEqual(result.totals.USD, { total: 30, paid: 10, pending: 20 });
 });
 
-test('paid totals follow actual payment date rather than billing due date', () => {
+test('paid totals follow billing month despite being collected in another month', () => {
   const result = summarizeCollections([
     payment(1, 100, 'ARS', 'paid', '2026-10-05', '2026-09-30'),
     payment(2, 50, 'ARS', 'partial'),
     payment(3, 200, 'ARS', 'paid', '2026-09-05', '2026-10-01'),
     payment(4, 999, 'ARS', 'paid', '2026-10-05', null),
   ], '2026-10');
-  assert.deepEqual(result.totals.ARS, { total: 250, paid: 200, pending: 50 });
+  assert.deepEqual(result.totals.ARS, { total: 1149, paid: 1099, pending: 50 });
   assert.equal(result.partialCount, 1);
 });
 
@@ -38,4 +38,13 @@ test('empty months show zero totals for both currencies', () => {
   assert.deepEqual(summarizeCollections([], '2026-10').totals, {
     ARS: { total: 0, paid: 0, pending: 0 }, USD: { total: 0, paid: 0, pending: 0 },
   });
+});
+
+
+test('uses assigned calendar period for deposits and monthly records without due dates', () => {
+  const result = summarizeCollections([
+    { ...payment(1, 50, 'USD', 'paid', null, '2026-11-15'), calendar_date: '2026-10-01' },
+    { ...payment(2, 20, 'USD', 'paid', null, '2026-10-17'), calendar_date: '2026-10-17', payment_type: 'deposit' },
+  ], '2026-10');
+  assert.deepEqual(result.totals.USD, { total: 70, paid: 70, pending: 0 });
 });

@@ -46,7 +46,7 @@ export function createAgendaPage(dependencies) {
           return [];
         });
       },
-      [view, agendaDisplay, actionStatus, calendarMonth, agendaTypeFilter, isCollectionFilter],
+      [view, agendaDisplay, actionStatus, calendarMonth, isCollectionFilter],
     );
     useEffect(() => {
       load();
@@ -253,8 +253,8 @@ export function createAgendaPage(dependencies) {
               <h3>{agendaTypeFilter === "collections_paid" ? "Cobros realizados" : "Cobros pendientes"} · {calendarTitle}</h3>
               {agendaLoadError ? <p role="alert">{agendaLoadError}</p> : collectionsMonthLoaded !== calendarMonth ? <p role="status">Calculando cobros del mes…</p> : <>
                 <div className="agenda-collections-currencies">{Object.entries(collectionSummary.totals).map(([currency, amounts]) => <article key={currency}><h4>{currency === "ARS" ? "Pesos argentinos · ARS" : currency === "USD" ? "Dólares · USD" : currency}</h4><dl><div className={agendaTypeFilter === "collections_paid" ? "collections-paid" : "collections-pending"}><dt>{agendaTypeFilter === "collections_paid" ? "Total cobrado" : "Total pendiente de cobrar"}</dt><dd>{collectionMoney(amounts.total, currency)}</dd></div></dl></article>)}</div>
-                <p>{agendaTypeFilter === "collections_paid" ? "Pagos registrados como pagados, según su fecha real de cobro en este mes. Incluye mensualidades, señas y otros pagos, aunque correspondan a otro vencimiento." : "Pagos registrados como pendientes, vencidos o parciales, con vencimiento en este mes. No incluye mensualidades proyectadas ni importes estimados."}</p>
-                {collectionSummary.partialCount > 0 && <p>Hay {collectionSummary.partialCount} pagos parciales: su importe registrado se incluye en “Falta cobrar”, porque no hay un desglose del monto ya abonado.</p>}
+                <p>{agendaTypeFilter === "collections_paid" ? "Pagos registrados como pagados que corresponden a este mes por su vencimiento o período asignado. Una mensualidad de septiembre cobrada en octubre figura en septiembre. Las señas se ubican por su fecha de pago. Se excluyen clientes cancelados y archivados." : "Pagos registrados como pendientes, vencidos o parciales, con vencimiento o período asignado en este mes. No incluye proyecciones ni clientes cancelados o archivados."}</p>
+                {collectionSummary.partialCount > 0 && <p>Hay {collectionSummary.partialCount} pagos parciales: su importe registrado se incluye en el total pendiente, porque no hay un desglose del monto ya abonado.</p>}
               </>}
             </section>}
             <div className="calendar-grid calendar-weekdays">
@@ -685,9 +685,10 @@ export function createAgendaPage(dependencies) {
       >
         <div className={`priority ${a.priority}`} />
         <div>
-          <time>{a.recorded_payment && a.status === "paid" ? "Cobrado el" : "Vencimiento"}: {fmtDate(a.calendar_date || a.due_date)}</time>
+          <time>{a.recorded_payment ? "Fecha del pago / período" : "Vencimiento"}: {fmtDate(a.calendar_date || a.due_date)}</time>
           <h3>{a.title}</h3>
           {a.client_id && <p>{a.client_name} · {a.business_name}</p>}
+          {a.recorded_payment && a.paid_at && <p>Cobrado el {fmtDate(a.paid_at.slice(0, 10))}</p>}
           {a.recorded_payment && <p><strong>{a.currency} {new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(a.amount)}</strong>{a.payment_type ? ` · ${a.payment_type === "monthly" ? "Mensualidad" : a.payment_type === "deposit" ? "Seña" : "Otro pago"}` : ""}</p>}
           {(a.description || !a.client_id || a.projected) && (
             <p>{a.description || `${a.client_name} · ${a.business_name}`}{a.projected ? " · Cobro previsto" : ""}</p>

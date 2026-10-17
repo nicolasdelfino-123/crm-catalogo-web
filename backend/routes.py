@@ -995,16 +995,28 @@ def agenda_recorded_collections():
     paid_start = datetime.combine(month_start, datetime.min.time())
     paid_end = datetime.combine(month_end, datetime.min.time())
     payments = Payment.query.join(Client).filter(
-        Client.archived_at.is_(None),
+        Client.archived_at.is_(None), Client.status != "cancelled",
+        Payment.status.in_(("paid", "pending", "partial", "overdue")),
         or_(
-            (Payment.status == "paid") & (Payment.paid_at >= paid_start) & (Payment.paid_at < paid_end),
-            (Client.status != "cancelled") & Payment.status.in_(("pending", "partial", "overdue"))
-            & (Payment.due_date >= month_start) & (Payment.due_date < month_end),
+            # Monthly installments belong to the due month, not the receipt date.
+            (Payment.payment_type != "deposit") & (Payment.due_date >= month_start) & (Payment.due_date < month_end),
+            (Payment.payment_type == "monthly") & Payment.due_date.is_(None)
+            & (Payment.period_year == month_start.year) & (Payment.period_month == month_start.month),
+            (Payment.payment_type == "deposit") & (Payment.paid_at >= paid_start) & (Payment.paid_at < paid_end),
+            Payment.payment_type.notin_(("monthly", "deposit")) & Payment.due_date.is_(None)
+            & (Payment.paid_at >= paid_start) & (Payment.paid_at < paid_end),
         ),
     ).all()
     result = []
     for payment in payments:
-        calendar_date = payment.paid_at.date() if payment.status == "paid" else payment.due_date
+        if payment.payment_type == "deposit":
+            calendar_date = payment.paid_at.date()
+        elif payment.due_date:
+            calendar_date = payment.due_date
+        elif payment.payment_type == "monthly":
+            calendar_date = date(payment.period_year, payment.period_month, 1)
+        else:
+            calendar_date = payment.paid_at.date()
         result.append({
             **payment_collection_item(payment),
             "projected": False,
@@ -1015,6 +1027,8 @@ def agenda_recorded_collections():
             "calendar_date": iso(calendar_date),
             "paid_at": iso(payment.paid_at),
             "payment_type": payment.payment_type,
+            "period_year": payment.period_year,
+            "period_month": payment.period_month,
         })
     result.sort(key=lambda item: (item["calendar_date"], item["client_name"], item["payment_id"]))
     return ok(result)
