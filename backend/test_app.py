@@ -1936,3 +1936,41 @@ def test_agenda_monthly_billing_period_survives_late_collection_and_customer_can
     with app.app_context():
         assert Payment.query.count() == 3
         assert Payment.query.filter_by(amount=999).one().status == 'paid'
+
+
+def test_agenda_received_and_dashboard_income_match_for_same_month_types_and_clients(client, app):
+    with app.app_context():
+        active = Client(name='Comparar totales', business_name='Activo', country='Argentina', currency='ARS')
+        cancelled = Client(name='Cancelado excluido', business_name='Baja', country='Argentina', currency='ARS', status='cancelled')
+        archived = Client(name='Archivado excluido', business_name='Archivado', country='Argentina', currency='ARS', archived_at=datetime(2026, 9, 1))
+        db.session.add_all([active, cancelled, archived])
+        db.session.flush()
+        db.session.add_all([
+            Payment(client=active, amount=100, currency='ARS', payment_type='monthly', status='paid', due_date=date(2026, 9, 15), paid_at=datetime(2026, 10, 1)),
+            Payment(client=active, amount=20, currency='USD', payment_type='monthly', status='paid', due_date=None, period_year=2026, period_month=9, paid_at=datetime(2026, 10, 1)),
+            Payment(client=active, amount=30, currency='ARS', payment_type='extra_work', status='paid', due_date=date(2026, 9, 20), paid_at=datetime(2026, 10, 1)),
+            Payment(client=active, amount=40, currency='USD', payment_type='extra_work', status='paid', due_date=None, paid_at=datetime(2026, 10, 2)),
+            Payment(client=active, amount=50, currency='ARS', payment_type='deposit', status='paid', due_date=None, paid_at=datetime(2026, 10, 3)),
+            Payment(client=active, amount=999, currency='ARS', payment_type='monthly', status='pending', due_date=date(2026, 9, 15)),
+            Payment(client=cancelled, amount=1000, currency='ARS', payment_type='monthly', status='paid', due_date=date(2026, 9, 15), paid_at=datetime(2026, 10, 1)),
+            Payment(client=archived, amount=2000, currency='USD', payment_type='extra_work', status='paid', due_date=date(2026, 9, 15), paid_at=datetime(2026, 10, 1)),
+        ])
+        db.session.commit()
+        before = [row.to_dict() for row in Payment.query.order_by(Payment.id).all()]
+    expected = {'2026-09': {'ARS': 130, 'USD': 20}, '2026-10': {'ARS': 50, 'USD': 40}}
+    for month in ('2026-09', '2026-10', '2026-11'):
+        agenda = client.get(f'/api/agenda/collections?month={month}').get_json()['data']
+        received = [row for row in agenda if row['status'] == 'paid']
+        income = client.get(f'/api/dashboard/income?month={month}&payment_type=all').get_json()['data']
+        assert {row['payment_id'] for row in received} == {row['id'] for row in income['items']}
+        agenda_totals = {currency: sum(row['amount'] for row in received if row['currency'] == currency) for currency in ('ARS', 'USD')}
+        assert agenda_totals == income['totals'] == expected.get(month, {'ARS': 0, 'USD': 0})
+        monthly = client.get(f'/api/dashboard/income?month={month}&payment_type=monthly').get_json()['data']
+        extras = client.get(f'/api/dashboard/income?month={month}&payment_type=extra_work').get_json()['data']
+        for currency in ('ARS', 'USD'):
+            assert monthly['totals'][currency] + extras['totals'][currency] == income['totals'][currency]
+    history = client.get('/api/dashboard/income?month=all&payment_type=all').get_json()['data']
+    assert history['totals'] == {'ARS': 180, 'USD': 60}
+    assert history['available_months'] == ['2026-10', '2026-09']
+    with app.app_context():
+        assert [row.to_dict() for row in Payment.query.order_by(Payment.id).all()] == before

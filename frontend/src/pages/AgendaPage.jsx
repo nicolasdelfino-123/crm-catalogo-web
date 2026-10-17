@@ -1,4 +1,5 @@
-import { summarizeCollections } from "../app/collectionSummary";
+import PaymentBreakdownModal from "../components/PaymentBreakdownModal";
+import { collectionRowsForMonth, summarizeCollections } from "../app/collectionSummary";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Plus, X, ChevronLeft, ChevronRight, ArrowUpDown, Edit3, Check, RotateCcw, Save, List } from "lucide-react";
 
@@ -13,6 +14,7 @@ export function createAgendaPage(dependencies) {
     const [actionStatus, setActionStatus] = useState("pending");
     const [agendaTypeFilter, setAgendaTypeFilter] = useState("all");
     const isCollectionFilter = ["collections_paid", "collections_pending"].includes(agendaTypeFilter);
+    const [collectionDetail, setCollectionDetail] = useState(null);
     const [items, setItems] = useState([]);
     const [collectionsMonthLoaded, setCollectionsMonthLoaded] = useState(null);
     const [agendaLoadError, setAgendaLoadError] = useState("");
@@ -252,7 +254,7 @@ export function createAgendaPage(dependencies) {
             {isCollectionFilter && <section className="agenda-collections-summary" aria-label={`Resumen de cobros de ${calendarTitle}`}>
               <h3>{agendaTypeFilter === "collections_paid" ? "Cobros realizados" : "Cobros pendientes"} · {calendarTitle}</h3>
               {agendaLoadError ? <p role="alert">{agendaLoadError}</p> : collectionsMonthLoaded !== calendarMonth ? <p role="status">Calculando cobros del mes…</p> : <>
-                <div className="agenda-collections-currencies">{Object.entries(collectionSummary.totals).map(([currency, amounts]) => <article key={currency}><h4>{currency === "ARS" ? "Pesos argentinos · ARS" : currency === "USD" ? "Dólares · USD" : currency}</h4><dl><div className={agendaTypeFilter === "collections_paid" ? "collections-paid" : "collections-pending"}><dt>{agendaTypeFilter === "collections_paid" ? "Total cobrado" : "Total pendiente de cobrar"}</dt><dd>{collectionMoney(amounts.total, currency)}</dd></div></dl></article>)}</div>
+                <div className="agenda-collections-currencies">{Object.entries(collectionSummary.totals).map(([currency, amounts]) => <button type="button" className="agenda-collection-total" key={currency} aria-haspopup="dialog" aria-label={`Ver pagos y clientes del total ${collectionMoney(amounts.total, currency)}`} onClick={() => setCollectionDetail({ currency, total: amounts.total, items: collectionRowsForMonth(filteredAgendaItems, calendarMonth).map((item) => ({ ...item, currency: item.currency || "ARS" })), period: calendarTitle, title: agendaTypeFilter === "collections_paid" ? "Agenda · Cobros realizados" : "Agenda · Cobros pendientes" })}><span className="agenda-collection-currency">{currency === "ARS" ? "Pesos argentinos · ARS" : currency === "USD" ? "Dólares · USD" : currency}</span><span className={agendaTypeFilter === "collections_paid" ? "collections-paid" : "collections-pending"}><small>{agendaTypeFilter === "collections_paid" ? "Total cobrado" : "Total pendiente de cobrar"}</small><strong>{collectionMoney(amounts.total, currency)}</strong></span><span className="agenda-collection-hint">Ver pagos y clientes en orden alfabético</span></button>)}</div>
                 <p>{agendaTypeFilter === "collections_paid" ? "Pagos registrados como pagados que corresponden a este mes por su vencimiento o período asignado. Una mensualidad de septiembre cobrada en octubre figura en septiembre. Las señas se ubican por su fecha de pago. Se excluyen clientes cancelados y archivados." : "Pagos registrados como pendientes, vencidos o parciales, con vencimiento o período asignado en este mes. No incluye proyecciones ni clientes cancelados o archivados."}</p>
                 {collectionSummary.partialCount > 0 && <p>Hay {collectionSummary.partialCount} pagos parciales: su importe registrado se incluye en el total pendiente, porque no hay un desglose del monto ya abonado.</p>}
               </>}
@@ -347,6 +349,7 @@ export function createAgendaPage(dependencies) {
             }}
           />
         )}
+        {collectionDetail && <PaymentBreakdownModal {...collectionDetail} fmtDate={fmtDate} onClose={() => setCollectionDetail(null)} onOpenClient={setSelectedAgendaClient} />}
         {agendaToast && <Toast message={agendaToast} onClose={() => setAgendaToast("")} />}
       </section>
     );

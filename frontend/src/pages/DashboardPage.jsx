@@ -1,3 +1,5 @@
+import PaymentBreakdownModal from "../components/PaymentBreakdownModal";
+import { paymentBreakdown } from "../app/paymentBreakdown";
 import { TRAFFIC_LIGHT_COLORS, trafficLightLabel } from "../app/trafficLights";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Users, CalendarDays, WalletCards, ReceiptText, Plus, Search, Download, X, ChevronLeft, ChevronRight, AlertTriangle, Check, Clock3, ArrowUpDown, TrendingUp, Timer, List, Columns3, GripVertical } from "lucide-react";
@@ -15,6 +17,7 @@ export function createDashboardPage(dependencies) {
     const [incomeType, setIncomeType] = useState("all");
     const [incomeTotals, setIncomeTotals] = useState({ ARS: 0, USD: 0 });
     const [incomeItems, setIncomeItems] = useState([]);
+    const [incomeDetail, setIncomeDetail] = useState(null);
     const [expandedIncomeCurrency, setExpandedIncomeCurrency] = useState(null);
     const [incomeClientSearch, setIncomeClientSearch] = useState("");
     const [selectedIncomeClient, setSelectedIncomeClient] = useState(null);
@@ -51,7 +54,7 @@ export function createDashboardPage(dependencies) {
     }, [incomeMonth, incomeType]);
     if (!data) return <Loading />;
     const incomeCurrencyItems = expandedIncomeCurrency
-      ? incomeItems.filter((item) => item.currency === expandedIncomeCurrency)
+      ? paymentBreakdown(incomeItems, expandedIncomeCurrency).rows
       : [];
     const filteredIncomeItems = incomeCurrencyItems.filter((item) =>
       item.client_name.toLocaleLowerCase("es").includes(incomeClientSearch.trim().toLocaleLowerCase("es"))
@@ -153,10 +156,10 @@ export function createDashboardPage(dependencies) {
               {incomeType === "monthly_forecast"
                 ? "Mensualidades previstas de clientes activos, en riesgo y sin alta."
                 : incomeType === "monthly"
-                  ? "Mensualidades y señas cobradas durante el mes seleccionado."
+                  ? "Mensualidades pagadas asignadas a su vencimiento o período; señas por fecha de pago. Excluye clientes cancelados y archivados."
                   : incomeType === "extra_work"
-                    ? "Solo trabajos extra cobrados."
-                    : "Todos los pagos cobrados, incluidas mensualidades, señas y extras."}
+                    ? "Extras pagados asignados a su fecha correspondiente. Excluye clientes cancelados y archivados."
+                    : "Mensualidades, señas y extras pagados, con el mismo período y clientes que Agenda. Excluye cancelados y archivados."}
             </p>
           </div>
           <div className="dashboard-income-controls">
@@ -209,21 +212,25 @@ export function createDashboardPage(dependencies) {
                 className={expandedIncomeCurrency === currency ? "income-total-card active" : "income-total-card"}
                 key={currency}
                 onClick={() => {
-                  setExpandedIncomeCurrency((current) => current === currency ? null : currency);
+                  setExpandedIncomeCurrency(currency);
+                  setIncomeDetail({ currency, total: incomeTotals[currency] || 0, items: incomeItems, period: incomeMonth === "all" ? "Todos los meses" : fmtMonth(incomeMonth), title: incomeType === "all" ? "Resumen · Mensualidades + extras" : incomeType === "monthly" ? "Resumen · Mensualidades + señas" : incomeType === "extra_work" ? "Resumen · Trabajos extra" : "Resumen · Mensualidades previstas", forecast: incomeType === "monthly_forecast" });
                   setIncomeClientSearch("");
                 }}
+                disabled={incomeLoading}
+                aria-haspopup="dialog"
                 aria-expanded={expandedIncomeCurrency === currency}
               >
                 <small>{currency === "ARS" ? "Pesos" : "Dólares"}</small>
                 <strong>{fmtMoney(incomeTotals[currency] || 0, currency)}</strong>
-                <span>{expandedIncomeCurrency === currency ? "Ocultar detalle" : "Ver detalle"}</span>
+                <span>Ver pagos y clientes</span>
               </button>
             ))}
           </div>
           {expandedIncomeCurrency && (
             <div className="income-breakdown">
               <div className="income-breakdown-head">
-                <strong>Detalle en {expandedIncomeCurrency === "ARS" ? "pesos" : "dólares"}</strong>
+                <strong>Detalle en {expandedIncomeCurrency === "ARS" ? "pesos" : "dólares"} · {paymentBreakdown(incomeCurrencyItems, expandedIncomeCurrency).clientCount} clientes distintos</strong>
+                <button type="button" className="secondary small" onClick={() => setExpandedIncomeCurrency(null)}>Ocultar lista</button>
                 <span>
                   {incomeClientSearch
                     ? `${filteredIncomeItems.length} de ${incomeCurrencyItems.length}`
@@ -267,6 +274,7 @@ export function createDashboardPage(dependencies) {
             </div>
           )}
         </div>
+        {incomeDetail && <PaymentBreakdownModal {...incomeDetail} fmtDate={fmtDate} onClose={() => setIncomeDetail(null)} onOpenClient={setSelectedIncomeClient} />}
         {selectedMetric && (
           <DashboardMetricModal
             title={selectedMetric.label}

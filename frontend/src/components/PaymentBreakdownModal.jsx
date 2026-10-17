@@ -1,0 +1,36 @@
+import { useEffect, useId, useRef, useState } from "react";
+import { Search, X } from "lucide-react";
+import { paymentBreakdown } from "../app/paymentBreakdown";
+import "../payment-breakdown.css";
+
+const concepts = { monthly: "Mensualidad", deposit: "Seña", extra_work: "Trabajo extra", domain: "Dominio", discount: "Descuento", other: "Otro", monthly_forecast: "Mensualidad prevista" };
+const statuses = { paid: "Pagado", pending: "Pendiente", partial: "Parcial", overdue: "Vencido" };
+const money = (amount, currency) => `${currency} ${new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)}`;
+
+export default function PaymentBreakdownModal({ title, period, currency, items, total, fmtDate, onClose, onOpenClient, forecast = false }) {
+  const dialog = useRef(null);
+  const titleId = useId();
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    if (dialog.current && !dialog.current.open) dialog.current.showModal();
+  }, []);
+  const detail = paymentBreakdown(items, currency);
+  const search = query.trim().toLocaleLowerCase("es");
+  const visible = detail.rows.filter((item) => `${item.client_name || ""} ${item.business_name || ""}`.toLocaleLowerCase("es").includes(search));
+  const filtered = paymentBreakdown(visible, currency);
+  const differentTotal = Math.abs(Number(total) - detail.total) > 0.005;
+  const source = forecast ? "mensualidades previstas" : "pagos";
+  return <dialog ref={dialog} className="payment-breakdown-modal" aria-labelledby={titleId} onClose={onClose} onClick={(event) => { if (event.target === event.currentTarget) dialog.current.close(); }}>
+    <div className="modal-head"><div><span className="eyebrow">{period} · {currency}</span><h2 id={titleId}>{title}</h2></div><button type="button" className="icon-btn" aria-label="Cerrar detalle de pagos" onClick={() => dialog.current.close()}><X /></button></div>
+    <div className="payment-breakdown-body">
+      <div className="payment-breakdown-stats"><div><small>Total de la tarjeta</small><strong>{money(total, currency)}</strong></div><div><small>{forecast ? "Mensualidades previstas" : "Cantidad de pagos"}</small><strong>{detail.paymentCount}</strong></div><div><small>Clientes distintos</small><strong>{detail.clientCount}</strong></div></div>
+      <p className="payment-breakdown-note">Orden alfabético por cliente. Si un cliente tiene varios registros, aparece una fila por cada uno y se cuenta una sola vez entre los clientes.</p>
+      {differentTotal && <p className="payment-breakdown-difference" role="status">La suma del detalle es {money(detail.total, currency)}. Diferencia con la tarjeta: {money(Number(total) - detail.total, currency)}.</p>}
+      <label className="payment-breakdown-search"><Search size={16} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente o negocio" aria-label="Buscar en el detalle de pagos" /></label>
+      {search && <p className="payment-breakdown-note">Coinciden {filtered.paymentCount} {source} de {filtered.clientCount} clientes · Subtotal: {money(filtered.total, currency)}. El total general de arriba no cambia.</p>}
+      <div className="payment-breakdown-scroll"><table><thead><tr><th>Cliente / negocio</th><th>Pago y concepto</th><th>Mes correspondiente</th><th>Cobrado el</th><th>Estado</th><th>Importe</th></tr></thead><tbody>{visible.map((item) => <tr key={item.payment_id ?? item.id}><td>{onOpenClient && item.client_id != null ? <button type="button" className="payment-breakdown-client" onClick={() => { onClose(); onOpenClient(item.client_id); }}>{item.client_name}</button> : <strong>{item.client_name || "Sin nombre"}</strong>}<small>{item.business_name || ""}</small></td><td><strong>{concepts[item.payment_type] || item.payment_type || "Pago"}</strong><small>{forecast ? "Proyección" : `Pago #${item.payment_id ?? item.id}`}</small>{item.notes || item.description ? <small>{item.notes || item.description}</small> : null}</td><td>{fmtDate(item.display_date || item.calendar_date || item.due_date) || "Sin fecha"}</td><td>{item.paid_at ? fmtDate(item.paid_at.slice(0, 10)) : "—"}</td><td>{forecast ? "Previsto" : statuses[item.status] || item.status || "—"}</td><td>{money(item.amount, currency)}</td></tr>)}</tbody></table></div>
+      {!visible.length && <p className="payment-breakdown-empty">{search ? "No hay coincidencias con esa búsqueda." : `No hay ${source} en esta moneda para el período seleccionado.`}</p>}
+      <div className="payment-breakdown-footer"><span>{detail.paymentCount} {source} · {detail.clientCount} clientes · Suma del detalle: <strong>{money(detail.total, currency)}</strong></span><button type="button" className="secondary" onClick={() => dialog.current.close()}>Cerrar</button></div>
+    </div>
+  </dialog>;
+}

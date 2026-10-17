@@ -85,6 +85,30 @@ def billing_date_in_month(client, year, month):
     return date(year, month, day)
 
 
+def recorded_payments_query(statuses=("paid",)):
+    """Common scope for Agenda receipts and Resumen income."""
+    return Payment.query.join(Client).filter(
+        Client.archived_at.is_(None), Client.status != "cancelled",
+        Payment.status.in_(statuses),
+    )
+
+
+def payment_period_date(payment):
+    """Assign monthly income to its billing period, not its collection date."""
+    if payment.payment_type == "deposit":
+        return payment.paid_at.date() if payment.paid_at else None
+    if payment.due_date:
+        return payment.due_date
+    if payment.payment_type == "monthly":
+        if payment.period_year and payment.period_month:
+            try:
+                return date(payment.period_year, payment.period_month, 1)
+            except ValueError:
+                return None
+        return None
+    return payment.paid_at.date() if payment.paid_at else None
+
+
 def sync_overdue_monthly_payments(clients, today=None):
     """Materializa al iniciar el mes todas las mensualidades de ese período."""
     today = today or date.today()
@@ -994,11 +1018,8 @@ def agenda_recorded_collections():
         return error("Mes inválido", 422)
     paid_start = datetime.combine(month_start, datetime.min.time())
     paid_end = datetime.combine(month_end, datetime.min.time())
-    payments = Payment.query.join(Client).filter(
-        Client.archived_at.is_(None), Client.status != "cancelled",
-        Payment.status.in_(("paid", "pending", "partial", "overdue")),
+    payments = recorded_payments_query(("paid", "pending", "partial", "overdue")).filter(
         or_(
-            # Monthly installments belong to the due month, not the receipt date.
             (Payment.payment_type != "deposit") & (Payment.due_date >= month_start) & (Payment.due_date < month_end),
             (Payment.payment_type == "monthly") & Payment.due_date.is_(None)
             & (Payment.period_year == month_start.year) & (Payment.period_month == month_start.month),
@@ -1009,14 +1030,9 @@ def agenda_recorded_collections():
     ).all()
     result = []
     for payment in payments:
-        if payment.payment_type == "deposit":
-            calendar_date = payment.paid_at.date()
-        elif payment.due_date:
-            calendar_date = payment.due_date
-        elif payment.payment_type == "monthly":
-            calendar_date = date(payment.period_year, payment.period_month, 1)
-        else:
-            calendar_date = payment.paid_at.date()
+        calendar_date = payment_period_date(payment)
+        if not calendar_date or not month_start <= calendar_date < month_end:
+            continue
         result.append({
             **payment_collection_item(payment),
             "projected": False,
@@ -1832,13 +1848,9 @@ def dashboard_income():
         for client in billable_clients:
             totals[client.currency] = totals.get(client.currency, 0) + float(client.payment_amount or 0)
         available_months = sorted({
-            (
-                payment.paid_at.date()
-                if payment.payment_type == "deposit" and payment.paid_at
-                else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
-            ).strftime("%Y-%m")
-            for payment in Payment.query.filter(Payment.status == "paid").all()
-            if payment.due_date or payment.paid_at
+            payment_period_date(payment).strftime("%Y-%m")
+            for payment in recorded_payments_query().all()
+            if payment_period_date(payment)
         }, reverse=True)
         return ok({
             "month": month,
@@ -1863,7 +1875,7 @@ def dashboard_income():
         except ValueError:
             return error("El mes debe tener el formato AAAA-MM o ser all", 422)
         month_end = add_calendar_months(month_start, 1)
-    query = Payment.query.filter(Payment.status == "paid")
+    query = recorded_payments_query()
     if payment_type == "monthly":
         query = query.filter(Payment.payment_type.in_(("monthly", "deposit")))
     elif payment_type == "extra_work":
@@ -1872,20 +1884,12 @@ def dashboard_income():
     paid_payments = query.all()
     matching_payments = []
     available_months = sorted({
-        (
-            payment.paid_at.date()
-            if payment.payment_type == "deposit" and payment.paid_at
-            else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
-        ).strftime("%Y-%m")
-        for payment in Payment.query.filter(Payment.status == "paid").all()
-        if payment.due_date or payment.paid_at
+        payment_period_date(payment).strftime("%Y-%m")
+        for payment in recorded_payments_query().all()
+        if payment_period_date(payment)
     }, reverse=True)
     for payment in paid_payments:
-        payment_date = (
-            payment.paid_at.date()
-            if payment.payment_type == "deposit" and payment.paid_at
-            else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
-        )
+        payment_date = payment_period_date(payment)
         if month_start and (not payment_date or not month_start <= payment_date < month_end):
             continue
         totals[payment.currency] = totals.get(payment.currency, 0) + float(payment.amount)

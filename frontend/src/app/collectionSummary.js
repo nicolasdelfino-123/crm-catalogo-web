@@ -1,8 +1,7 @@
 // Use the billing date assigned by the calendar for both paid and pending records.
-export function summarizeCollections(items, month) {
-  const totals = { ARS: { total: 0, paid: 0, pending: 0 }, USD: { total: 0, paid: 0, pending: 0 } };
+export function collectionRowsForMonth(items, month) {
+  const rows = [];
   const seen = new Set();
-  let partialCount = 0;
   for (const item of items) {
     if (item.action_type !== "collection_payment" || !item.payment_id) continue;
     if (!["paid", "pending", "partial", "overdue"].includes(item.status)) continue;
@@ -11,6 +10,16 @@ export function summarizeCollections(items, month) {
     seen.add(item.payment_id);
     const amount = Number(item.amount);
     if (!Number.isFinite(amount) || amount < 0) continue;
+    rows.push(item);
+  }
+  return rows;
+}
+
+export function summarizeCollections(items, month) {
+  const totals = { ARS: { total: 0, paid: 0, pending: 0 }, USD: { total: 0, paid: 0, pending: 0 } };
+  let partialCount = 0;
+  for (const item of collectionRowsForMonth(items, month)) {
+    const amount = Number(item.amount);
     const currency = item.currency || "ARS";
     totals[currency] ||= { total: 0, paid: 0, pending: 0 };
     totals[currency].total += amount;
