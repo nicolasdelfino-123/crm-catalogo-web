@@ -156,10 +156,10 @@ export function createDashboardPage(dependencies) {
               {incomeType === "monthly_forecast"
                 ? "Mensualidades previstas de clientes activos, en riesgo y sin alta."
                 : incomeType === "monthly"
-                  ? "Mensualidades pagadas asignadas a su vencimiento o período; señas por fecha de pago. Excluye clientes cancelados y archivados."
+                  ? "Mensualidades y señas cobradas durante el mes seleccionado."
                   : incomeType === "extra_work"
-                    ? "Extras pagados asignados a su fecha correspondiente. Excluye clientes cancelados y archivados."
-                    : "Mensualidades, señas y extras pagados, con el mismo período y clientes que Agenda. Excluye cancelados y archivados."}
+                    ? "Solo trabajos extra cobrados."
+                    : "Todos los pagos cobrados, incluidas mensualidades, señas y extras."}
             </p>
           </div>
           <div className="dashboard-income-controls">
