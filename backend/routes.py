@@ -984,6 +984,42 @@ def actions_generate(client_id):
     client = Client.query.get_or_404(client_id); count = generate_schedule(client); db.session.commit(); return ok({"created": count}, f"Se crearon {count} acciones")
 
 
+@api.get("/agenda/collections")
+def agenda_recorded_collections():
+    """Read saved payments only; never generate monthly payments or projections."""
+    try:
+        month_start = date.fromisoformat(f'{request.args.get("month", "")}-01')
+        month_end = add_calendar_months(month_start, 1)
+    except (ValueError, TypeError):
+        return error("Mes inválido", 422)
+    paid_start = datetime.combine(month_start, datetime.min.time())
+    paid_end = datetime.combine(month_end, datetime.min.time())
+    payments = Payment.query.join(Client).filter(
+        Client.archived_at.is_(None),
+        or_(
+            (Payment.status == "paid") & (Payment.paid_at >= paid_start) & (Payment.paid_at < paid_end),
+            (Client.status != "cancelled") & Payment.status.in_(("pending", "partial", "overdue"))
+            & (Payment.due_date >= month_start) & (Payment.due_date < month_end),
+        ),
+    ).all()
+    result = []
+    for payment in payments:
+        calendar_date = payment.paid_at.date() if payment.status == "paid" else payment.due_date
+        result.append({
+            **payment_collection_item(payment),
+            "projected": False,
+            "recorded_payment": True,
+            "status": payment.status,
+            "title": f'{"Cobro realizado" if payment.status == "paid" else "Cobro pendiente"} · {payment.client.name}',
+            "description": payment.notes,
+            "calendar_date": iso(calendar_date),
+            "paid_at": iso(payment.paid_at),
+            "payment_type": payment.payment_type,
+        })
+    result.sort(key=lambda item: (item["calendar_date"], item["client_name"], item["payment_id"]))
+    return ok(result)
+
+
 @api.get("/actions")
 def actions_list():
     requested_view = request.args.get("view")

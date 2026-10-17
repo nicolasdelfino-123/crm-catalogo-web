@@ -12,6 +12,7 @@ export function createAgendaPage(dependencies) {
     const [agendaDisplay, setAgendaDisplay] = useState("list");
     const [actionStatus, setActionStatus] = useState("pending");
     const [agendaTypeFilter, setAgendaTypeFilter] = useState("all");
+    const isCollectionFilter = ["collections_paid", "collections_pending"].includes(agendaTypeFilter);
     const [items, setItems] = useState([]);
     const [collectionsMonthLoaded, setCollectionsMonthLoaded] = useState(null);
     const [agendaLoadError, setAgendaLoadError] = useState("");
@@ -31,12 +32,13 @@ export function createAgendaPage(dependencies) {
         const requestId = ++agendaRequestId.current;
         setCollectionsMonthLoaded(null); setAgendaLoadError("");
         const calendarQuery = agendaDisplay === "calendar"
-          ? `view=calendar&scope=${view}&month=${calendarMonth}${agendaTypeFilter === "collections" ? "&collections=all" : ""}`
+          ? `view=calendar&scope=${view}&month=${calendarMonth}`
           : `view=${view}`;
-        return api(`/actions?${calendarQuery}&status=${actionStatus}`).then((nextItems) => {
+        const endpoint = isCollectionFilter ? `/agenda/collections?month=${calendarMonth}` : `/actions?${calendarQuery}&status=${actionStatus}`;
+        return api(endpoint).then((nextItems) => {
           if (requestId === agendaRequestId.current) {
             setItems(nextItems);
-            if (agendaDisplay === "calendar" && agendaTypeFilter === "collections") setCollectionsMonthLoaded(calendarMonth);
+            if (isCollectionFilter) setCollectionsMonthLoaded(calendarMonth);
           }
           return nextItems;
         }).catch((error) => {
@@ -44,7 +46,7 @@ export function createAgendaPage(dependencies) {
           return [];
         });
       },
-      [view, agendaDisplay, actionStatus, calendarMonth, agendaTypeFilter],
+      [view, agendaDisplay, actionStatus, calendarMonth, agendaTypeFilter, isCollectionFilter],
     );
     useEffect(() => {
       load();
@@ -87,11 +89,12 @@ export function createAgendaPage(dependencies) {
     const filteredAgendaItems = useMemo(() => items.filter((item) => {
       const isCollection = ["collection_payment", "collection_projection"].includes(item.action_type)
         || Boolean(item.payment_id);
-      if (agendaTypeFilter === "collections") return isCollection;
+      if (agendaTypeFilter === "collections_paid") return isCollection && item.status === "paid";
+      if (agendaTypeFilter === "collections_pending") return isCollection && ["pending", "partial", "overdue"].includes(item.status);
       if (agendaTypeFilter === "actions") return !isCollection;
       return true;
     }), [items, agendaTypeFilter]);
-    const collectionSummary = useMemo(() => summarizeCollections(items, calendarMonth), [items, calendarMonth]);
+    const collectionSummary = useMemo(() => summarizeCollections(filteredAgendaItems, calendarMonth), [filteredAgendaItems, calendarMonth]);
     const collectionMoney = (value, currency) => `${currency} ${new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
     const calendarDays = useMemo(() => {
       const [year, month] = calendarMonth.split("-").map(Number);
@@ -99,7 +102,8 @@ export function createAgendaPage(dependencies) {
       const mondayOffset = (firstDay.getUTCDay() + 6) % 7;
       const gridStart = new Date(Date.UTC(year, month - 1, 1 - mondayOffset));
       const counts = filteredAgendaItems.reduce((result, action) => {
-        if (action.due_date) result[action.due_date] = (result[action.due_date] || 0) + 1;
+        const key = action.calendar_date || action.due_date;
+        if (key) result[key] = (result[key] || 0) + 1;
         return result;
       }, {});
       return Array.from({ length: 42 }, (_, index) => {
@@ -110,13 +114,13 @@ export function createAgendaPage(dependencies) {
       });
     }, [calendarMonth, filteredAgendaItems]);
     const selectedDayItems = selectedCalendarDate
-      ? filteredAgendaItems.filter((action) => action.due_date === selectedCalendarDate)
+      ? filteredAgendaItems.filter((action) => (action.calendar_date || action.due_date) === selectedCalendarDate)
       : [];
     const sortedAgendaItems = useMemo(() => [...filteredAgendaItems].sort((first, second) => {
-      if (!first.due_date && !second.due_date) return String(first.id).localeCompare(String(second.id));
-      if (!first.due_date) return 1;
-      if (!second.due_date) return -1;
-      const dateComparison = first.due_date.localeCompare(second.due_date);
+      if (!(first.calendar_date || first.due_date) && !(second.calendar_date || second.due_date)) return String(first.id).localeCompare(String(second.id));
+      if (!(first.calendar_date || first.due_date)) return 1;
+      if (!(second.calendar_date || second.due_date)) return -1;
+      const dateComparison = (first.calendar_date || first.due_date).localeCompare(second.calendar_date || second.due_date);
       const titleComparison = first.title.localeCompare(second.title, "es", { sensitivity: "base" });
       return (agendaDateOrder === "asc" ? dateComparison : -dateComparison) || titleComparison;
     }), [filteredAgendaItems, agendaDateOrder]);
@@ -140,7 +144,7 @@ export function createAgendaPage(dependencies) {
             Agregar acción
           </button>
         </div>
-        <div className="segmented">
+        {!isCollectionFilter && <div className="segmented">
           {[
             ["today", "Hoy"],
             ["week", "Próximos 7 días"],
@@ -160,7 +164,7 @@ export function createAgendaPage(dependencies) {
               {label}
             </button>
           ))}
-        </div>
+        </div>}
         <div className="agenda-display-switch" aria-label="Cambiar vista de la agenda">
           <button
             type="button"
@@ -191,10 +195,10 @@ export function createAgendaPage(dependencies) {
         </div>
         <p className="agenda-total" aria-live="polite">
           <strong>{filteredAgendaItems.length}</strong>{" "}
-          {filteredAgendaItems.length === 1 ? "acción" : "acciones"}
+          {isCollectionFilter ? filteredAgendaItems.length === 1 ? "cobro" : "cobros" : filteredAgendaItems.length === 1 ? "acción" : "acciones"}
           {agendaDisplay === "calendar" ? ` en ${calendarTitle}` : " en total"}
         </p>
-        <div className="segmented action-status-tabs" aria-label="Filtrar acciones por estado">
+        {!isCollectionFilter && <div className="segmented action-status-tabs" aria-label="Filtrar acciones por estado">
           {[
             ["pending", "Pendientes"],
             ["completed", "Completadas"],
@@ -207,7 +211,7 @@ export function createAgendaPage(dependencies) {
               {label}
             </button>
           ))}
-        </div>
+        </div>}
         <div className="agenda-type-filter">
           <label className="dashboard-status-filter">
             Mostrar
@@ -215,11 +219,13 @@ export function createAgendaPage(dependencies) {
               value={agendaTypeFilter}
               onChange={(event) => {
                 setAgendaTypeFilter(event.target.value);
+                if (event.target.value.startsWith("collections_")) { setView("all"); setAgendaDisplay("calendar"); }
                 setSelectedCalendarDate(null);
               }}
             >
               <option value="all">Todos</option>
-              <option value="collections">Solo cobros</option>
+              <option value="collections_paid">Solo cobros realizados</option>
+              <option value="collections_pending">Solo cobros pendientes</option>
               <option value="actions">Solo acciones</option>
             </select>
           </label>
@@ -243,11 +249,11 @@ export function createAgendaPage(dependencies) {
               <h3>{calendarTitle}</h3>
               <button className="icon-btn" onClick={() => moveCalendarMonth(1)} aria-label="Mes siguiente"><ChevronRight /></button>
             </div>
-            {agendaTypeFilter === "collections" && <section className="agenda-collections-summary" aria-label={`Resumen de cobros de ${calendarTitle}`}>
-              <h3>Cobros de {calendarTitle}</h3>
+            {isCollectionFilter && <section className="agenda-collections-summary" aria-label={`Resumen de cobros de ${calendarTitle}`}>
+              <h3>{agendaTypeFilter === "collections_paid" ? "Cobros realizados" : "Cobros pendientes"} · {calendarTitle}</h3>
               {agendaLoadError ? <p role="alert">{agendaLoadError}</p> : collectionsMonthLoaded !== calendarMonth ? <p role="status">Calculando cobros del mes…</p> : <>
-                <div className="agenda-collections-currencies">{Object.entries(collectionSummary.totals).map(([currency, amounts]) => <article key={currency}><h4>{currency === "ARS" ? "Pesos argentinos · ARS" : currency === "USD" ? "Dólares · USD" : currency}</h4><dl><div><dt>Total del mes a cobrar</dt><dd>{collectionMoney(amounts.total, currency)}</dd></div><div className="collections-paid"><dt>Ya cobrado</dt><dd>{collectionMoney(amounts.paid, currency)}</dd></div><div className="collections-pending"><dt>Falta cobrar</dt><dd>{collectionMoney(amounts.pending, currency)}</dd></div></dl></article>)}</div>
-                <p>Mensualidades con vencimiento en este mes, incluidos cobros proyectados. “Ya cobrado” suma las marcadas como pagadas, aunque se hayan abonado antes o después. El resumen abarca todo el mes y no cambia con los filtros de acciones.</p>
+                <div className="agenda-collections-currencies">{Object.entries(collectionSummary.totals).map(([currency, amounts]) => <article key={currency}><h4>{currency === "ARS" ? "Pesos argentinos · ARS" : currency === "USD" ? "Dólares · USD" : currency}</h4><dl><div className={agendaTypeFilter === "collections_paid" ? "collections-paid" : "collections-pending"}><dt>{agendaTypeFilter === "collections_paid" ? "Total cobrado" : "Total pendiente de cobrar"}</dt><dd>{collectionMoney(amounts.total, currency)}</dd></div></dl></article>)}</div>
+                <p>{agendaTypeFilter === "collections_paid" ? "Pagos registrados como pagados, según su fecha real de cobro en este mes. Incluye mensualidades, señas y otros pagos, aunque correspondan a otro vencimiento." : "Pagos registrados como pendientes, vencidos o parciales, con vencimiento en este mes. No incluye mensualidades proyectadas ni importes estimados."}</p>
                 {collectionSummary.partialCount > 0 && <p>Hay {collectionSummary.partialCount} pagos parciales: su importe registrado se incluye en “Falta cobrar”, porque no hay un desglose del monto ya abonado.</p>}
               </>}
             </section>}
@@ -264,18 +270,18 @@ export function createAgendaPage(dependencies) {
                   onClick={() => setSelectedCalendarDate(day.iso)}
                 >
                   <time>{day.day}</time>
-                  {day.count > 0 && <strong className="calendar-count-marker"><span>{day.count}</span><span className="calendar-count-marker-label"> {day.count === 1 ? "acción" : "acciones"}</span></strong>}
+                  {day.count > 0 && <strong className="calendar-count-marker"><span>{day.count}</span><span className="calendar-count-marker-label"> {isCollectionFilter ? day.count === 1 ? "cobro" : "cobros" : day.count === 1 ? "acción" : "acciones"}</span></strong>}
                 </button>
               ))}
             </div>
             {selectedCalendarDate && (
               <div className="calendar-selection">
-                <h3>Acciones del {fmtDate(selectedCalendarDate)}</h3>
+                <h3>{isCollectionFilter ? "Cobros" : "Acciones"} del {fmtDate(selectedCalendarDate)}</h3>
                 <div className="agenda-list">
                   {selectedDayItems.map((a) => (
                     <AgendaItem key={a.id} action={a} onStatus={setAgendaStatus} onComplete={setCompletingAction} onEdit={setEditingAgendaAction} onOpenClient={setSelectedAgendaClient} />
                   ))}
-                  {!selectedDayItems.length && <p>Sin acciones para este día.</p>}
+                  {!selectedDayItems.length && <p>{isCollectionFilter ? "Sin cobros para este día." : "Sin acciones para este día."}</p>}
                 </div>
               </div>
             )}
@@ -679,16 +685,17 @@ export function createAgendaPage(dependencies) {
       >
         <div className={`priority ${a.priority}`} />
         <div>
-          <time>Prevista: {fmtDate(a.due_date)}</time>
+          <time>{a.recorded_payment && a.status === "paid" ? "Cobrado el" : "Vencimiento"}: {fmtDate(a.calendar_date || a.due_date)}</time>
           <h3>{a.title}</h3>
           {a.client_id && <p>{a.client_name} · {a.business_name}</p>}
+          {a.recorded_payment && <p><strong>{a.currency} {new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(a.amount)}</strong>{a.payment_type ? ` · ${a.payment_type === "monthly" ? "Mensualidad" : a.payment_type === "deposit" ? "Seña" : "Otro pago"}` : ""}</p>}
           {(a.description || !a.client_id || a.projected) && (
             <p>{a.description || `${a.client_name} · ${a.business_name}`}{a.projected ? " · Cobro previsto" : ""}</p>
           )}
         </div>
         {badge(a.status)}
-        {!a.projected && <IconButton label={`Editar ${a.title}`} onClick={(event) => { event.stopPropagation(); onEdit(a); }}><Edit3 /></IconButton>}
-        {a.status !== "completed" && !a.projected && (
+        {!a.projected && !a.payment_id && <IconButton label={`Editar ${a.title}`} onClick={(event) => { event.stopPropagation(); onEdit(a); }}><Edit3 /></IconButton>}
+        {a.status !== "completed" && !a.projected && !a.payment_id && (
           <button
             className="secondary small"
             onClick={(event) => { event.stopPropagation(); onComplete(a); }}
@@ -697,7 +704,7 @@ export function createAgendaPage(dependencies) {
             Completar
           </button>
         )}
-        {a.status === "completed" && !a.projected && (
+        {a.status === "completed" && !a.projected && !a.payment_id && (
           <button className="secondary small" onClick={(event) => { event.stopPropagation(); onStatus(a, "pending"); }}><RotateCcw size={16} />Reabrir</button>
         )}
       </article>
