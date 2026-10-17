@@ -305,11 +305,25 @@ class ProspectingGoal(db.Model):
     weekday = db.Column(db.Integer, nullable=False, index=True)
     channel = db.Column(db.String(60), nullable=False, index=True)
     target = db.Column(db.Integer, nullable=False, default=0)
+    configured = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     __table_args__ = (UniqueConstraint("weekday", "channel", name="uq_prospecting_goal_day_channel"),)
 
     def to_dict(self):
-        return {"id": self.id, "weekday": self.weekday, "channel": self.channel, "target": self.target}
+        return {"id": self.id, "weekday": self.weekday, "channel": self.channel, "target": self.target, "configured": self.configured}
+
+
+class ProspectingWeekGoal(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    week_start = db.Column(db.Date, nullable=False, index=True)
+    weekday = db.Column(db.Integer, nullable=False)
+    channel = db.Column(db.String(60), nullable=False)
+    target = db.Column(db.Integer, nullable=False, default=0)
+    __table_args__ = (UniqueConstraint("week_start", "weekday", "channel", name="uq_prospecting_week_goal"),)
+
+    def to_dict(self):
+        return {"id": self.id, "week_start": iso(self.week_start), "weekday": self.weekday,
+                "channel": self.channel, "target": self.target, "configured": True}
 
 
 class ProspectingLog(db.Model):
@@ -340,7 +354,7 @@ class ProspectingOutcome(db.Model):
     def to_dict(self):
         return {
             "id": self.id, "activity_date": iso(self.activity_date),
-            "channel": self.channel, "demos": self.demos, "sales": self.sales,
+            "channel": self.channel, "demos": self.demos, "prices_sent": self.demos, "sales": self.sales,
         }
 
 

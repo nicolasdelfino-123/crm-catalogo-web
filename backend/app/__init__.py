@@ -90,6 +90,11 @@ def create_app(test_config=None):
     with app.app_context():
         db.create_all()
         inspector = inspect(db.engine)
+        if "prospecting_goal" in inspector.get_table_names():
+            goal_columns = {column["name"] for column in inspector.get_columns("prospecting_goal")}
+            if "configured" not in goal_columns:
+                db.session.execute(text("ALTER TABLE prospecting_goal ADD COLUMN configured BOOLEAN DEFAULT FALSE NOT NULL"))
+                db.session.commit()
         if "message_log" in inspector.get_table_names():
             message_columns = {column["name"] for column in inspector.get_columns("message_log")}
             if "entry_type" not in message_columns:

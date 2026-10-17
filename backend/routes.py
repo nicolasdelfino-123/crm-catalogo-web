@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, request, Response, current_app
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Integer, case, cast, func, or_
-from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, VpsAssignment, ClientMetric, ClientNote, ClientCredential, MessageLog, WorkLog, ProspectingGoal, ProspectingLog, ProspectingOutcome, ActionTemplate, SellingDay, MonthlySalesActivity
+from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Expense, VpsAssignment, ClientMetric, ClientNote, ClientCredential, MessageLog, WorkLog, ProspectingWeekGoal, ProspectingGoal, ProspectingLog, ProspectingOutcome, ActionTemplate, SellingDay, MonthlySalesActivity
 
 api = Blueprint("api", __name__)
 
@@ -707,19 +707,72 @@ def work_logs_delete(work_log_id):
 PROSPECTING_CHANNELS = {
     "facebook_marketplace", "business_instagram", "instagram_nicodelfino",
     "instagram_nicod123", "business_whatsapp", "personal_whatsapp",
+    "facebook_group", "footer", "recommended",
 }
 
 
 @api.get("/prospecting")
 def prospecting_list():
     goals = ProspectingGoal.query.order_by(ProspectingGoal.weekday, ProspectingGoal.channel).all()
-    logs = ProspectingLog.query.order_by(ProspectingLog.activity_date.desc(), ProspectingLog.id.desc()).limit(3000).all()
-    outcomes = ProspectingOutcome.query.order_by(ProspectingOutcome.activity_date.desc(), ProspectingOutcome.channel).limit(3000).all()
+    logs = ProspectingLog.query.order_by(ProspectingLog.activity_date.desc(), ProspectingLog.id.desc()).all()
+    outcomes = ProspectingOutcome.query.order_by(ProspectingOutcome.activity_date.desc(), ProspectingOutcome.channel).all()
     return ok({
         "goals": [item.to_dict() for item in goals],
+        "weekly_goals": [item.to_dict() for item in ProspectingWeekGoal.query.order_by(ProspectingWeekGoal.week_start, ProspectingWeekGoal.weekday).all()],
         "logs": [item.to_dict() for item in logs],
         "outcomes": [item.to_dict() for item in outcomes],
     })
+
+
+@api.put("/prospecting/daily")
+def prospecting_daily_save():
+    data = request.get_json(silent=True) or {}
+    try:
+        activity_date = parse_date(data.get("activity_date"))
+        rows = data.get("channels")
+        if not activity_date or not isinstance(rows, list) or not rows:
+            raise ValueError()
+        validated = []
+        seen = set()
+        for row in rows:
+            channel = row.get("channel")
+            values = [row.get(key, 0) for key in ("contacts", "prices_sent", "sales")]
+            if channel not in PROSPECTING_CHANNELS or channel in seen:
+                raise ValueError()
+            if any(type(value) is not int or value < 0 for value in values):
+                raise ValueError()
+            seen.add(channel)
+            validated.append((channel, *values))
+    except (ValueError, TypeError, AttributeError):
+        return error("Revisá la fecha, los canales y las cantidades enteras", 422)
+    for channel, contacts, prices_sent, sales in validated:
+        logs = ProspectingLog.query.filter_by(activity_date=activity_date, channel=channel).order_by(ProspectingLog.id.desc()).all()
+        difference = contacts - sum(item.quantity for item in logs)
+        if difference > 0:
+            db.session.add(ProspectingLog(activity_date=activity_date, channel=channel, quantity=difference, notes="Registro diario"))
+        elif difference < 0:
+            remaining = -difference
+            for item in logs:
+                removed = min(remaining, item.quantity)
+                item.quantity -= removed
+                remaining -= removed
+                if item.quantity == 0:
+                    db.session.delete(item)
+                if remaining == 0:
+                    break
+        outcome = ProspectingOutcome.query.filter_by(activity_date=activity_date, channel=channel).first()
+        if outcome is None:
+            outcome = ProspectingOutcome(activity_date=activity_date, channel=channel)
+            db.session.add(outcome)
+        # Keep the existing storage column so historical values remain available.
+        outcome.demos = prices_sent
+        outcome.sales = sales
+    db.session.commit()
+    return ok({
+        "activity_date": activity_date.isoformat(),
+        "logs": [item.to_dict() for item in ProspectingLog.query.filter_by(activity_date=activity_date).all()],
+        "outcomes": [item.to_dict() for item in ProspectingOutcome.query.filter_by(activity_date=activity_date).all()],
+    }, "Día guardado")
 
 
 @api.put("/prospecting/goals")
@@ -728,6 +781,31 @@ def prospecting_goals_save():
     goals = data.get("goals")
     if not isinstance(goals, list):
         return error("La planificación semanal es inválida", 422)
+    if "week_start" in data:
+        try:
+            week_start = parse_date(data["week_start"])
+            if not week_start or week_start.weekday() != 0 or not goals:
+                raise ValueError()
+            validated = []
+            seen = set()
+            for value in goals:
+                weekday, channel, target = value.get("weekday"), value.get("channel"), value.get("target")
+                if type(weekday) is not int or weekday not in range(7) or channel not in PROSPECTING_CHANNELS:
+                    raise ValueError()
+                if type(target) is not int or target < 0 or (weekday, channel) in seen:
+                    raise ValueError()
+                seen.add((weekday, channel))
+                validated.append((weekday, channel, target))
+        except (ValueError, TypeError, AttributeError):
+            return error("Revisá la semana y las cantidades. La semana debe comenzar un lunes.", 422)
+        for weekday, channel, target in validated:
+            goal = ProspectingWeekGoal.query.filter_by(week_start=week_start, weekday=weekday, channel=channel).first()
+            if goal is None:
+                goal = ProspectingWeekGoal(week_start=week_start, weekday=weekday, channel=channel)
+                db.session.add(goal)
+            goal.target = target
+        db.session.commit()
+        return ok([item.to_dict() for item in ProspectingWeekGoal.query.filter_by(week_start=week_start).all()], "Semana guardada")
     for value in goals:
         try:
             weekday = int(value.get("weekday"))
@@ -742,6 +820,7 @@ def prospecting_goals_save():
             goal = ProspectingGoal(weekday=weekday, channel=channel)
             db.session.add(goal)
         goal.target = target
+        goal.configured = True
     db.session.commit()
     return ok([item.to_dict() for item in ProspectingGoal.query.all()], "Planificación guardada")
 
@@ -805,18 +884,18 @@ def prospecting_outcomes_save():
     channel = str(data.get("channel") or "").strip()
     try:
         activity_date = parse_date(data.get("activity_date"))
-        demos = int(data.get("demos") or 0)
+        demos = int(data.get("prices_sent", data.get("demos")) or 0)
         sales = int(data.get("sales") or 0)
     except (ValueError, TypeError):
-        return error("Revisá la fecha, las demos y las ventas", 422)
+        return error("Revisá la fecha, los precios enviados y las ventas", 422)
     if not activity_date:
         return error("Elegí una fecha válida", 422)
     if channel not in PROSPECTING_CHANNELS:
         return error("Elegí un canal válido", 422)
     if demos < 0 or sales < 0:
-        return error("Las demos y las ventas no pueden ser negativas", 422)
+        return error("Los precios enviados y las ventas no pueden ser negativas", 422)
     if sales > demos:
-        return error("Las ventas no pueden superar las demos enviadas", 422)
+        return error("Las ventas no pueden superar los precios enviados", 422)
     item = ProspectingOutcome.query.filter_by(activity_date=activity_date, channel=channel).first()
     if item is None:
         item = ProspectingOutcome(activity_date=activity_date, channel=channel)
@@ -2024,7 +2103,7 @@ def build_business_master_export():
         ["Gastos históricos ARS", sum(float(expense.amount) for expense in expenses)],
         ["Mensajes enviados", sum(message.quantity or 0 for message in messages)],
         ["Contactos de prospección", sum(log.quantity or 0 for log in prospecting_logs)],
-        ["Demos registradas", sum(outcome.demos or 0 for outcome in prospecting_outcomes)],
+        ["Precios enviados", sum(outcome.demos or 0 for outcome in prospecting_outcomes)],
         ["Ventas de prospección", sum(outcome.sales or 0 for outcome in prospecting_outcomes)],
         ["Horas trabajadas", sum(float(log.hours or 0) for log in work_logs)],
     ]
@@ -2114,6 +2193,11 @@ def build_business_master_export():
         for goal in prospecting_goals
     ]
 
+    prospecting_rows.extend([
+        ["Objetivo semanal con fecha", iso(goal.week_start + timedelta(days=goal.weekday)), weekday_labels[goal.weekday], goal.channel, "", goal.target, "", "", ""]
+        for goal in ProspectingWeekGoal.query.order_by(ProspectingWeekGoal.week_start, ProspectingWeekGoal.weekday).all()
+    ])
+
     content = simple_xlsx_workbook([
         ("Base maestra clientes", [
             "ID", "Cliente", "Negocio", "Estado", "Es churn", "Fecha de venta",
@@ -2139,7 +2223,7 @@ def build_business_master_export():
         ], action_rows),
         ("Prospección", [
             "Tipo", "Fecha", "Día", "Canal", "Cantidad", "Objetivo",
-            "Demos", "Ventas", "Notas",
+            "Precios enviados", "Ventas", "Notas",
         ], prospecting_rows),
         ("Mensajes", ["Fecha", "Canal", "Cantidad", "Tipo", "Notas"], [
             [iso(item.sent_date), item.channel, item.quantity, item.entry_type, item.notes]

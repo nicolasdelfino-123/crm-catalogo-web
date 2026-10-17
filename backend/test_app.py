@@ -1553,3 +1553,183 @@ def test_dashboard_monthly_cancellations_use_recorded_date(client, app):
         db.session.commit()
     summary = client.get("/api/dashboard/summary").get_json()["data"]
     assert summary["cancelled_clients_month"] == 1
+
+
+def test_prospecting_daily_totals_are_idempotent_and_preserve_other_days(client):
+    client.post('/api/prospecting/logs', json={
+        'activity_date': '2026-10-16', 'channel': 'business_instagram', 'quantity': 8,
+    })
+    payload = {'activity_date': '2026-10-17', 'channels': [
+        {'channel': 'business_instagram', 'contacts': 25, 'prices_sent': 4, 'sales': 2},
+        {'channel': 'facebook_group', 'contacts': 10, 'prices_sent': 0, 'sales': 1},
+        {'channel': 'footer', 'contacts': 0, 'prices_sent': 1, 'sales': 0},
+        {'channel': 'recommended', 'contacts': 1, 'prices_sent': 1, 'sales': 1},
+    ]}
+    assert client.put('/api/prospecting/daily', json=payload).status_code == 200
+    assert client.put('/api/prospecting/daily', json=payload).status_code == 200
+    data = client.get('/api/prospecting').get_json()['data']
+    assert sum(row['quantity'] for row in data['logs'] if row['activity_date'] == '2026-10-17') == 36
+    assert len(data['outcomes']) == 4
+    assert next(row for row in data['outcomes'] if row['channel'] == 'business_instagram')['prices_sent'] == 4
+    payload['channels'] = [{'channel': 'business_instagram', 'contacts': 0, 'prices_sent': 0, 'sales': 3}]
+    assert client.put('/api/prospecting/daily', json=payload).status_code == 200
+    data = client.get('/api/prospecting').get_json()['data']
+    assert sum(row['quantity'] for row in data['logs'] if row['channel'] == 'business_instagram') == 8
+    assert next(row for row in data['outcomes'] if row['channel'] == 'business_instagram')['sales'] == 3
+
+
+def test_prospecting_daily_validation_is_atomic(client):
+    for invalid in [-1, 1.5, '2', True]:
+        response = client.put('/api/prospecting/daily', json={
+            'activity_date': '2026-10-17', 'channels': [
+                {'channel': 'business_instagram', 'contacts': 10, 'prices_sent': 3, 'sales': 0},
+                {'channel': 'facebook_group', 'contacts': invalid},
+            ],
+        })
+        assert response.status_code == 422
+    data = client.get('/api/prospecting').get_json()['data']
+    assert data['logs'] == []
+    assert data['outcomes'] == []
+
+
+def test_prospecting_save_day_returns_persisted_snapshot_and_edits_without_duplicates(client, app):
+    from models import ProspectingLog, ProspectingOutcome
+
+    payload = {'activity_date': '2026-10-17', 'channels': [
+        {'channel': 'business_instagram', 'contacts': 20, 'prices_sent': 5, 'sales': 2},
+        {'channel': 'personal_whatsapp', 'contacts': 0, 'prices_sent': 0, 'sales': 0},
+    ]}
+    response = client.put('/api/prospecting/daily', json=payload)
+    assert response.status_code == 200
+    saved = response.get_json()['data']
+    assert saved['activity_date'] == '2026-10-17'
+    assert sum(row['quantity'] for row in saved['logs']) == 20
+    assert len(saved['outcomes']) == 2
+    with app.app_context():
+        db.session.remove()
+        assert ProspectingLog.query.filter_by(activity_date=date(2026, 10, 17)).one().quantity == 20
+        assert ProspectingOutcome.query.filter_by(activity_date=date(2026, 10, 17), channel='business_instagram').one().demos == 5
+    reloaded = client.get('/api/prospecting').get_json()['data']
+    assert reloaded['logs'] == saved['logs']
+    assert reloaded['outcomes'] == saved['outcomes']
+    payload['channels'][0].update(contacts=12, prices_sent=3, sales=1)
+    edited = client.put('/api/prospecting/daily', json=payload).get_json()['data']
+    assert sum(row['quantity'] for row in edited['logs']) == 12
+    assert next(row for row in edited['outcomes'] if row['channel'] == 'business_instagram')['prices_sent'] == 3
+    assert len(edited['outcomes']) == 2
+
+
+def test_prospecting_save_empty_day_still_has_persistent_saved_state(client):
+    response = client.put('/api/prospecting/daily', json={
+        'activity_date': '2026-10-18', 'channels': [
+            {'channel': 'business_instagram', 'contacts': 0, 'prices_sent': 0, 'sales': 0},
+        ],
+    })
+    assert response.status_code == 200
+    assert response.get_json()['data']['logs'] == []
+    assert response.get_json()['data']['outcomes'][0]['activity_date'] == '2026-10-18'
+    reloaded = client.get('/api/prospecting').get_json()['data']
+    assert reloaded['outcomes'][0]['activity_date'] == '2026-10-18'
+
+
+@pytest.mark.parametrize('channel', [
+    'business_whatsapp', 'personal_whatsapp', 'facebook_marketplace', 'facebook_group',
+    'instagram_nicodelfino', 'instagram_nicod123', 'business_instagram', 'footer', 'recommended',
+])
+def test_prospecting_week_plan_saves_only_selected_dropdown_channel(client, channel):
+    other = 'business_instagram' if channel != 'business_instagram' else 'personal_whatsapp'
+    other_goals = [{'weekday': day, 'channel': other, 'target': 9} for day in range(7)]
+    assert client.put('/api/prospecting/goals', json={'goals': other_goals}).status_code == 200
+    selected_goals = [{'weekday': day, 'channel': channel, 'target': day * 5} for day in range(7)]
+    saved = client.put('/api/prospecting/goals', json={'goals': selected_goals})
+    assert saved.status_code == 200
+    confirmed = saved.get_json()['data']
+    assert {row['weekday']: row['target'] for row in confirmed if row['channel'] == channel} == {day: day * 5 for day in range(7)}
+    assert all(row['target'] == 9 for row in confirmed if row['channel'] == other)
+    selected_goals[0]['target'] = 30
+    assert client.put('/api/prospecting/goals', json={'goals': selected_goals}).status_code == 200
+    reloaded = client.get('/api/prospecting').get_json()['data']['goals']
+    assert len(reloaded) == 14
+    assert next(row['target'] for row in reloaded if row['channel'] == channel and row['weekday'] == 0) == 30
+    assert all(row['target'] == 9 for row in reloaded if row['channel'] == other)
+
+
+def test_prospecting_default_goals_are_unconfigured_until_explicit_save(client, app):
+    from models import ProspectingGoal
+    with app.app_context():
+        for channel in ('business_instagram', 'personal_whatsapp'):
+            for weekday in range(7):
+                db.session.add(ProspectingGoal(weekday=weekday, channel=channel, target=0))
+        db.session.commit()
+    initial = client.get('/api/prospecting').get_json()['data']['goals']
+    assert all(row['configured'] is False for row in initial)
+    response = client.put('/api/prospecting/goals', json={'goals': [
+        {'weekday': weekday, 'channel': 'business_instagram', 'target': 10}
+        for weekday in range(7)
+    ]})
+    assert response.status_code == 200
+    reloaded = client.get('/api/prospecting').get_json()['data']['goals']
+    assert all(row['configured'] is True for row in reloaded if row['channel'] == 'business_instagram')
+    assert all(row['configured'] is False for row in reloaded if row['channel'] == 'personal_whatsapp')
+
+
+def test_prospecting_dated_plan_is_independent_per_week_and_channel(client):
+    def save(week, channel, target):
+        return client.put('/api/prospecting/goals', json={
+            'week_start': week,
+            'goals': [{'weekday': day, 'channel': channel, 'target': target} for day in range(7)],
+        })
+    assert save('2026-10-12', 'business_instagram', 10).status_code == 200
+    assert save('2026-10-19', 'business_instagram', 30).status_code == 200
+    assert save('2026-10-12', 'personal_whatsapp', 5).status_code == 200
+    edited = save('2026-10-12', 'business_instagram', 15)
+    assert edited.status_code == 200
+    assert all(row['week_start'] == '2026-10-12' for row in edited.get_json()['data'])
+    goals = client.get('/api/prospecting').get_json()['data']['weekly_goals']
+    assert len(goals) == 21
+    for row in goals:
+        expected = 30 if row['week_start'] == '2026-10-19' else 5 if row['channel'] == 'personal_whatsapp' else 15
+        assert row['target'] == expected
+    assert not any(row['week_start'] == '2026-10-26' for row in goals)
+
+
+def test_prospecting_dated_plan_does_not_inherit_old_goals_or_change_real_activity(client):
+    assert client.put('/api/prospecting/goals', json={'goals': [
+        {'weekday': 0, 'channel': 'business_instagram', 'target': 85},
+    ]}).status_code == 200
+    assert client.post('/api/prospecting/logs', json={
+        'activity_date': '2026-10-12', 'channel': 'business_instagram', 'quantity': 25,
+    }).status_code == 201
+    data = client.get('/api/prospecting').get_json()['data']
+    assert data['weekly_goals'] == []
+    assert data['logs'][0]['quantity'] == 25
+    response = client.put('/api/prospecting/goals', json={
+        'week_start': '2026-10-12', 'goals': [
+            {'weekday': 0, 'channel': 'business_instagram', 'target': 10},
+        ],
+    })
+    assert response.status_code == 200
+    data = client.get('/api/prospecting').get_json()['data']
+    assert data['weekly_goals'][0]['target'] == 10
+    assert data['logs'][0]['quantity'] == 25
+    assert data['goals'][0]['target'] == 85
+
+
+@pytest.mark.parametrize('week_start', ['2026-10-13', 'invalid', None])
+def test_prospecting_dated_plan_rejects_invalid_week(client, week_start):
+    response = client.put('/api/prospecting/goals', json={
+        'week_start': week_start, 'goals': [{'weekday': 0, 'channel': 'business_instagram', 'target': 10}],
+    })
+    assert response.status_code == 422
+    assert client.get('/api/prospecting').get_json()['data']['weekly_goals'] == []
+
+
+def test_prospecting_dated_plan_validation_is_atomic(client):
+    response = client.put('/api/prospecting/goals', json={
+        'week_start': '2026-10-12', 'goals': [
+            {'weekday': 0, 'channel': 'business_instagram', 'target': 10},
+            {'weekday': 1, 'channel': 'business_instagram', 'target': -5},
+        ],
+    })
+    assert response.status_code == 422
+    assert client.get('/api/prospecting').get_json()['data']['weekly_goals'] == []

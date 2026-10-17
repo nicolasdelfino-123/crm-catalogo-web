@@ -1,430 +1,248 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, SlidersHorizontal, X, ChevronLeft, ChevronRight, Edit3, Check, RotateCcw, Save, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Save, SlidersHorizontal, Edit3, X, Info } from "lucide-react";
 
 export function createProspectingPage(dependencies) {
-  const { api, acquisitionLabel, fmtDate, fmtMonth, dateKey, fromDateKey, addDays, startOfWeek, useEscapeClose, IconButton } = dependencies;
-
-  const PROSPECTING_CHANNELS = [
-    ["facebook_marketplace", "Marketplace"],
-    ["business_instagram", "Instagram negocio"],
-    ["instagram_nicodelfino", "Instagram nicodelfino__"],
-    ["instagram_nicod123", "Instagram nicod_123"],
-    ["business_whatsapp", "WhatsApp negocio"],
-    ["personal_whatsapp", "WhatsApp personal"],
+  const { api, ACQUISITION_OPTIONS: channels, fmtDate, fmtMonth, dateKey, fromDateKey, addDays, startOfWeek, IconButton } = dependencies;
+  const weekdays = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+  const goalKey = (weekday, channel, weekStart) => `${weekStart}:${weekday}:${channel}`;
+  const metrics = [
+    { key: "contacts", label: "Contactados registrados", unit: "contactos", source: "Son los contactos que guardaste en el registro real de este día, sumados por canal." },
+    { key: "target", label: "Objetivo del día", unit: "contactos planificados", source: "Es lo que planificaste para esta fecha en Mi semana ideal, sumando los objetivos de cada canal. No es actividad realizada." },
+    { key: "prices_sent", label: "Precios enviados", unit: "precios enviados", source: "Son los precios enviados que guardaste para este día, sumados por canal." },
+    { key: "sales", label: "Ventas registradas", unit: "ventas", source: "Son las ventas que guardaste para este día, sumadas por canal. Pueden venir de contactos de días anteriores." },
   ];
-  const WEEKDAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
-  const prospectingKey = (weekday, channel) => `${weekday}:${channel}`;
-  const prospectingOutcomeKey = (activityDate, channel) => `${activityDate}:${channel}`;
-  const balanceText = (actual, planned) => {
-    const difference = actual - planned;
-    if (difference > 0) return { label: `+${difference} sobre el plan`, tone: "ahead" };
-    if (difference < 0) return { label: `${Math.abs(difference)} pendientes`, tone: "behind" };
-    return { label: planned ? "Objetivo cumplido" : "Sin diferencia", tone: "done" };
-  };
+  const weekdayFor = (key) => (fromDateKey(key).getDay() + 6) % 7;
 
   function Prospecting() {
     const today = dateKey();
+    const [data, setData] = useState({ logs: [], outcomes: [] });
     const [goals, setGoals] = useState({});
-    const [logs, setLogs] = useState([]);
-    const [outcomes, setOutcomes] = useState([]);
-    const [weekCursor, setWeekCursor] = useState(startOfWeek(fromDateKey(today)));
+    const [savedGoals, setSavedGoals] = useState({});
+    const [configuredGoals, setConfiguredGoals] = useState({});
+    const [editingPlans, setEditingPlans] = useState({});
+    const [planNotice, setPlanNotice] = useState(null);
     const [selectedDate, setSelectedDate] = useState(today);
-    const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
-    const [detailFilter, setDetailFilter] = useState("day");
-    const [form, setForm] = useState({ activity_date: today, channel: "facebook_marketplace", quantity: "", notes: "" });
-    const [quickEntry, setQuickEntry] = useState(null);
-    const [editingLog, setEditingLog] = useState(null);
-    const [editingGoal, setEditingGoal] = useState(null);
+    const [week, setWeek] = useState(startOfWeek(fromDateKey(today)));
+    const weekStart = dateKey(week);
+    const [draft, setDraft] = useState({});
+    const [editingDate, setEditingDate] = useState(null);
+    const [detailDate, setDetailDate] = useState(null);
+    const dayDialog = useRef(null);
+    const [selectedMetric, setSelectedMetric] = useState(null);
+    const metricDialog = useRef(null);
+    const [view, setView] = useState("day");
+    const [planChannel, setPlanChannel] = useState(channels[0][0]);
+    const [period, setPeriod] = useState("day");
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
     const [savingPlan, setSavingPlan] = useState(false);
-    const [savingLog, setSavingLog] = useState(false);
-    useEscapeClose(() => {
-      setQuickEntry(null);
-      setEditingLog(null);
-      setEditingGoal(null);
-    }, Boolean(quickEntry || editingLog || editingGoal));
-    const load = useCallback(() => api("/prospecting").then((data) => {
-      setLogs(data.logs);
-      setOutcomes(data.outcomes || []);
-      setGoals(data.goals.reduce((result, item) => ({ ...result, [prospectingKey(item.weekday, item.channel)]: item.target }), {}));
-    }), [setLogs, setOutcomes, setGoals]);
-    useEffect(() => { load(); }, [load]);
-
-    const actualByDayChannel = useMemo(() => logs.reduce((result, item) => {
-      const key = `${item.activity_date}:${item.channel}`;
-      return { ...result, [key]: (result[key] || 0) + item.quantity };
-    }, {}), [logs]);
-    const outcomesByDayChannel = useMemo(() => outcomes.reduce((result, item) => ({
-      ...result,
-      [prospectingOutcomeKey(item.activity_date, item.channel)]: item,
-    }), {}), [outcomes]);
-    const plannedForDate = useCallback((key) => {
-      const weekday = (fromDateKey(key).getDay() + 6) % 7;
-      return PROSPECTING_CHANNELS.reduce((total, [channel]) => total + (Number(goals[prospectingKey(weekday, channel)]) || 0), 0);
-    }, [goals]);
-    const actualForDate = useCallback((key) => PROSPECTING_CHANNELS.reduce(
-      (total, [channel]) => total + (actualByDayChannel[`${key}:${channel}`] || 0), 0,
-    ), [actualByDayChannel]);
-    const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekCursor, index));
-    const weekPlanned = weekDays.reduce((total, day) => total + plannedForDate(dateKey(day)), 0);
-    const weekActual = weekDays.reduce((total, day) => total + actualForDate(dateKey(day)), 0);
-    const [monthYear, monthNumber] = selectedMonth.split("-").map(Number);
-    const daysInMonth = new Date(monthYear, monthNumber, 0).getDate();
-    const monthDays = Array.from({ length: daysInMonth }, (_, index) => new Date(monthYear, monthNumber - 1, index + 1));
-    const monthPlanned = monthDays.reduce((total, day) => total + plannedForDate(dateKey(day)), 0);
-    const monthActual = monthDays.reduce((total, day) => total + actualForDate(dateKey(day)), 0);
-    const dayPlanned = plannedForDate(selectedDate);
-    const dayActual = actualForDate(selectedDate);
-    const detailDays = detailFilter === "week"
-      ? Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(fromDateKey(today)), index))
-      : detailFilter.startsWith("month-")
-        ? (() => {
-            const [year, month] = detailFilter.slice(6).split("-").map(Number);
-            return Array.from({ length: new Date(year, month, 0).getDate() }, (_, index) => new Date(year, month - 1, index + 1));
-          })()
-        : [fromDateKey(selectedDate)];
-    const detailDateKeys = new Set(detailDays.map((day) => dateKey(day)));
-    const detailLogs = logs.filter((item) => detailDateKeys.has(item.activity_date));
-    const detailLabel = detailFilter === "week"
-      ? `Esta semana · ${fmtDate(dateKey(detailDays[0]))} — ${fmtDate(dateKey(detailDays[6]))}`
-      : detailFilter.startsWith("month-")
-        ? fmtMonth(detailFilter.slice(6))
-        : fmtDate(selectedDate);
-    const filterYear = Number(selectedDate.slice(0, 4));
-    const resultsByChannel = PROSPECTING_CHANNELS.map(([channel, label]) => {
-      const totals = detailDays.reduce((result, day) => {
-        const item = outcomesByDayChannel[prospectingOutcomeKey(dateKey(day), channel)];
-        return {
-          demos: result.demos + (item?.demos || 0),
-          sales: result.sales + (item?.sales || 0),
-        };
-      }, { demos: 0, sales: 0 });
-      return { channel, label, ...totals };
-    });
-    const detailDemos = resultsByChannel.reduce((total, item) => total + item.demos, 0);
-    const detailSales = resultsByChannel.reduce((total, item) => total + item.sales, 0);
-
-    async function savePlan() {
-      setSavingPlan(true);
-      try {
-        const payload = [];
-        PROSPECTING_CHANNELS.forEach(([channel]) => WEEKDAY_NAMES.forEach((_, weekday) => {
-          payload.push({ weekday, channel, target: Number(goals[prospectingKey(weekday, channel)]) || 0 });
-        }));
-        await api("/prospecting/goals", { method: "PUT", body: JSON.stringify({ goals: payload }) });
-        await load();
-      } finally { setSavingPlan(false); }
-    }
-    async function submitGoalEdit(event) {
-      event.preventDefault();
-      setSavingPlan(true);
-      try {
-        const nextGoals = {
-          ...goals,
-          [prospectingKey(editingGoal.weekday, editingGoal.channel)]: Number(editingGoal.target) || 0,
-        };
-        const payload = [];
-        PROSPECTING_CHANNELS.forEach(([channel]) => WEEKDAY_NAMES.forEach((_, weekday) => {
-          payload.push({ weekday, channel, target: Number(nextGoals[prospectingKey(weekday, channel)]) || 0 });
-        }));
-        await api("/prospecting/goals", { method: "PUT", body: JSON.stringify({ goals: payload }) });
-        await api("/prospecting/outcomes", {
-          method: "PUT",
-          body: JSON.stringify({
-            activity_date: selectedDate,
-            channel: editingGoal.channel,
-            demos: Number(editingGoal.demos) || 0,
-            sales: Number(editingGoal.sales) || 0,
-          }),
-        });
-        setGoals(nextGoals);
-        setEditingGoal(null);
-        await load();
-      } finally { setSavingPlan(false); }
-    }
-    async function submitLog(event) {
-      event.preventDefault(); setSavingLog(true);
-      try {
-        await api("/prospecting/logs", { method: "POST", body: JSON.stringify(form) });
-        const chosen = fromDateKey(form.activity_date);
-        setSelectedDate(form.activity_date); setWeekCursor(startOfWeek(chosen)); setSelectedMonth(form.activity_date.slice(0, 7));
-        setForm({ ...form, quantity: "", notes: "" });
-        await load();
-      } finally { setSavingLog(false); }
-    }
-    async function removeLog(item) {
-      if (!window.confirm(`¿Eliminar la carga de ${item.quantity} mensajes?`)) return;
-      await api(`/prospecting/logs/${item.id}`, { method: "DELETE" });
-      await load();
-    }
-    async function completeChannel(channel, actual, planned) {
-      const pending = planned - actual;
-      if (pending <= 0) return;
-      await api("/prospecting/logs", {
-        method: "POST",
-        body: JSON.stringify({
-          activity_date: selectedDate, channel, quantity: pending,
-          notes: "Objetivo marcado como completado",
-        }),
-      });
-      await load();
-    }
-    async function undoCompleteChannel(item) {
-      await api(`/prospecting/logs/${item.id}`, { method: "DELETE" });
-      await load();
-    }
-    async function submitQuickEntry(event) {
-      event.preventDefault();
-      setSavingLog(true);
-      try {
-        await api("/prospecting/logs", {
-          method: "POST",
-          body: JSON.stringify({
-            activity_date: selectedDate,
-            channel: quickEntry.channel,
-            quantity: quickEntry.quantity,
-            notes: quickEntry.notes,
-          }),
-        });
-        setQuickEntry(null);
-        await load();
-      } finally { setSavingLog(false); }
-    }
-    async function submitLogEdit(event) {
-      event.preventDefault();
-      setSavingLog(true);
-      try {
-        await api(`/prospecting/logs/${editingLog.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            activity_date: editingLog.activity_date,
-            channel: editingLog.channel,
-            quantity: editingLog.quantity,
-            notes: editingLog.notes,
-          }),
-        });
-        const chosen = fromDateKey(editingLog.activity_date);
-        setSelectedDate(editingLog.activity_date);
-        setWeekCursor(startOfWeek(chosen));
-        setSelectedMonth(editingLog.activity_date.slice(0, 7));
-        setForm((current) => ({ ...current, activity_date: editingLog.activity_date }));
-        setEditingLog(null);
-        await load();
-      } finally { setSavingLog(false); }
-    }
-    function selectDay(day) {
-      const key = dateKey(day);
-      setSelectedDate(key); setSelectedMonth(key.slice(0, 7));
-      setDetailFilter("day");
-      setForm((current) => ({ ...current, activity_date: key }));
-    }
-    function changeDetailFilter(value) {
-      setDetailFilter(value);
-      if (value === "day") return;
-      if (value === "week") {
-        setWeekCursor(startOfWeek(fromDateKey(today)));
-        return;
+    const [message, setMessage] = useState("");
+    const [error, setError] = useState("");
+    const load = useCallback(async (refreshGoals = true) => {
+      const next = await api("/prospecting");
+      setData({ logs: next.logs, outcomes: next.outcomes || [] });
+      if (refreshGoals) {
+        const loadedGoals = Object.fromEntries((next.weekly_goals || []).map((item) => [goalKey(item.weekday, item.channel, item.week_start), item.target]));
+        setGoals(loadedGoals); setSavedGoals(loadedGoals);
+        setConfiguredGoals(Object.fromEntries((next.weekly_goals || []).map((item) => [goalKey(item.weekday, item.channel, item.week_start), true])));
       }
-      const month = value.slice(6);
-      setSelectedMonth(month);
+    }, []);
+    useEffect(() => {
+      load().catch((err) => setError(err.message || "No se pudo cargar la prospección.")).finally(() => setLoading(false));
+    }, [load]);
+
+    useEffect(() => {
+      if (detailDate && dayDialog.current && !dayDialog.current.open) dayDialog.current.showModal();
+    }, [detailDate]);
+
+    useEffect(() => {
+      if (selectedMetric && metricDialog.current && !metricDialog.current.open) metricDialog.current.showModal();
+    }, [selectedMetric]);
+
+    function savedRow(key, channel) {
+      const outcome = data.outcomes.find((item) => item.activity_date === key && item.channel === channel);
+      return {
+        contacts: data.logs.filter((item) => item.activity_date === key && item.channel === channel).reduce((sum, item) => sum + item.quantity, 0),
+        prices_sent: outcome?.prices_sent ?? outcome?.demos ?? 0,
+        sales: outcome?.sales || 0,
+      };
     }
-    const dayBalance = balanceText(dayActual, dayPlanned);
-    const weekBalance = balanceText(weekActual, weekPlanned);
-    const monthBalance = balanceText(monthActual, monthPlanned);
+    const accumulatedRow = (channel) => ({
+      contacts: data.logs.filter((item) => item.channel === channel).reduce((sum, item) => sum + item.quantity, 0),
+      prices_sent: data.outcomes.filter((item) => item.channel === channel).reduce((sum, item) => sum + (item.prices_sent ?? item.demos ?? 0), 0),
+      sales: data.outcomes.filter((item) => item.channel === channel).reduce((sum, item) => sum + item.sales, 0),
+    });
+    const rowFor = (channel) => view === "total" ? accumulatedRow(channel) : draft[channel] || savedRow(selectedDate, channel);
+    const dirty = Object.keys(draft).length > 0;
+    const daySaved = data.logs.some((item) => item.activity_date === selectedDate) || data.outcomes.some((item) => item.activity_date === selectedDate);
+    const dayLocked = daySaved && editingDate !== selectedDate;
+    const channelConfigured = (channel) => weekdays.every((_, weekday) => configuredGoals[goalKey(weekday, channel, weekStart)] === true);
+    const planSaved = channelConfigured(planChannel);
+    const planLocked = planSaved && !editingPlans[`${weekStart}:${planChannel}`];
+    const totalFor = (key) => channels.reduce((sum, [channel]) => sum + savedRow(key, channel).contacts, 0);
+    const planFor = (key) => channels.reduce((sum, [channel]) => sum + (Number(savedGoals[goalKey(weekdayFor(key), channel, dateKey(startOfWeek(fromDateKey(key))))]) || 0), 0);
+    const days = Array.from({ length: 7 }, (_, index) => dateKey(addDays(week, index)));
+    const month = selectedDate.slice(0, 7);
+    const [year, monthNumber] = month.split("-").map(Number);
+    const monthDays = Array.from({ length: new Date(year, monthNumber, 0).getDate() }, (_, index) => dateKey(new Date(year, monthNumber - 1, index + 1)));
+    const reportDays = period === "week" ? days : period === "month" ? monthDays : [selectedDate];
+    const summary = channels.map(([channel, label]) => ({ channel, label, ...(period === "all" ? accumulatedRow(channel) : reportDays.reduce((sum, key) => {
+      const row = savedRow(key, channel);
+      return { contacts: sum.contacts + row.contacts, prices_sent: sum.prices_sent + row.prices_sent, sales: sum.sales + row.sales };
+    }, { contacts: 0, prices_sent: 0, sales: 0 })) }));
+    const totals = summary.reduce((sum, row) => ({ contacts: sum.contacts + row.contacts, prices_sent: sum.prices_sent + row.prices_sent, sales: sum.sales + row.sales }), { contacts: 0, prices_sent: 0, sales: 0 });
+    const dailyTotals = channels.reduce((sum, [channel]) => {
+      const row = rowFor(channel);
+      return { contacts: sum.contacts + Number(row.contacts), prices_sent: sum.prices_sent + Number(row.prices_sent), sales: sum.sales + Number(row.sales) };
+    }, { contacts: 0, prices_sent: 0, sales: 0 });
 
-    return (
-      <section className="page prospecting-page">
-        <div className="page-intro"><div><h2>Prospección</h2><p>Planificá tus mensajes semanales y comparalos con lo que realmente enviaste.</p></div></div>
-        <div className="prospecting-balances">
-          {[
-            ["Día seleccionado", dayActual, dayPlanned, dayBalance],
-            ["Semana visible", weekActual, weekPlanned, weekBalance],
-            [fmtMonth(selectedMonth), monthActual, monthPlanned, monthBalance],
-          ].map(([title, actual, planned, balance]) => <article key={title}>
-            <small>{title}</small><strong>{actual} <span>/ {planned} planificados</span></strong>
-            <em className={balance.tone}>{balance.label}</em>
-          </article>)}
-        </div>
+    function selectDate(key) {
+      if (!key) return false;
+      if (key === selectedDate) return true;
+      if (dirty && !window.confirm("Tenés cambios sin guardar. ¿Querés cambiar de día y descartarlos?")) return false;
+      setSelectedDate(key); setWeek(startOfWeek(fromDateKey(key))); setDraft({}); setEditingDate(null); setMessage(""); setError("");
+      return true;
+    }
+    async function saveDay(event) {
+      event.preventDefault();
+      if (view !== "day" || dayLocked || saving) return;
+      const entries = channels.map(([channel]) => {
+        const row = draft[channel] || savedRow(selectedDate, channel);
+        return { channel, contacts: Number(row.contacts), prices_sent: Number(row.prices_sent), sales: Number(row.sales) };
+      });
+      if (entries.some((row) => [row.contacts, row.prices_sent, row.sales].some((value) => !Number.isInteger(value) || value < 0))) {
+        setError("Usá cantidades enteras y positivas o dejá el campo vacío."); return;
+      }
+      setSaving(true); setError(""); setMessage("");
+      try {
+        const saved = await api("/prospecting/daily", { method: "PUT", body: JSON.stringify({ activity_date: selectedDate, channels: entries }) });
+        if (!saved || saved.activity_date !== selectedDate || !Array.isArray(saved.logs) || !Array.isArray(saved.outcomes)) {
+          throw new Error("El servidor no confirmó los datos guardados. Reiniciá el backend y volvé a intentar.");
+        }
+        setData((current) => ({
+          logs: [...current.logs.filter((item) => item.activity_date !== selectedDate), ...saved.logs],
+          outcomes: [...current.outcomes.filter((item) => item.activity_date !== selectedDate), ...saved.outcomes],
+        }));
+        setDraft({}); setEditingDate(null); setMessage("Día guardado. Para modificarlo, tocá Editar día.");
+      } catch (err) { setError(err.message || "No se pudo guardar. Tus cambios siguen en pantalla."); }
+      finally { setSaving(false); }
+    }
+    async function savePlan(event) {
+      event.preventDefault();
+      if (planLocked || savingPlan) return;
+      const channel = planChannel;
+      const payload = weekdays.map((_, weekday) => ({ weekday, channel, target: Number(goals[goalKey(weekday, channel, weekStart)]) || 0 }));
+      if (payload.some(({ target }) => !Number.isInteger(target) || target < 0)) {
+        setPlanNotice({ channel, weekStart, error: true, text: "Usá cantidades enteras y positivas o dejá el campo vacío." }); return;
+      }
+      setSavingPlan(true); setPlanNotice(null);
+      try {
+        const saved = await api("/prospecting/goals", { method: "PUT", body: JSON.stringify({ week_start: weekStart, goals: payload }) });
+        if (!Array.isArray(saved)) throw new Error("El servidor no confirmó la semana ideal.");
+        const confirmed = saved.filter((item) => item.channel === channel && item.week_start === weekStart);
+        if (confirmed.length !== 7 || payload.some((item) => !confirmed.some((row) => row.weekday === item.weekday && row.target === item.target))) {
+          throw new Error("El servidor no confirmó todos los objetivos del canal.");
+        }
+        const updates = Object.fromEntries(confirmed.map((item) => [goalKey(item.weekday, channel, weekStart), item.target]));
+        setSavedGoals((current) => ({ ...current, ...updates }));
+        setConfiguredGoals((current) => ({ ...current, ...Object.fromEntries(confirmed.map((item) => [goalKey(item.weekday, channel, weekStart), true])) }));
+        setGoals((current) => ({ ...current, ...updates }));
+        setEditingPlans((current) => ({ ...current, [`${weekStart}:${channel}`]: false }));
+        setPlanNotice({ channel, weekStart, text: `Semana de ${fmtDate(weekStart)} de ${channels.find(([id]) => id === channel)?.[1]} guardada.` });
+      } catch (err) {
+        setPlanNotice({ channel, weekStart, error: true, text: err.message || "No se pudo guardar. Tus cambios siguen en pantalla." });
+      } finally { setSavingPlan(false); }
+    }
+    const detailRows = detailDate ? channels.map(([channel, label]) => ({
+      channel, label, ...savedRow(detailDate, channel),
+      target: Number(savedGoals[goalKey(weekdayFor(detailDate), channel, dateKey(startOfWeek(fromDateKey(detailDate))))]) || 0,
+    })) : [];
+    const detailTotals = detailRows.reduce((sum, row) => ({ contacts: sum.contacts + row.contacts, target: sum.target + row.target, prices_sent: sum.prices_sent + row.prices_sent, sales: sum.sales + row.sales }), { contacts: 0, target: 0, prices_sent: 0, sales: 0 });
+    const activeMetric = metrics.find((metric) => metric.key === selectedMetric);
+    const metricRows = activeMetric ? detailRows.filter((row) => row[activeMetric.key] > 0) : [];
+    const detailHasRecords = detailDate && (data.logs.some((item) => item.activity_date === detailDate) || data.outcomes.some((item) => item.activity_date === detailDate));
+    const dayActions = view === "day" && <div className="prospecting-day-actions">
+      <button key="save" type="submit" className="primary" disabled={dayLocked || saving || savingPlan}><Save size={16} />{saving ? "Guardando…" : "Guardar día"}</button>
+      <button key="edit" type="button" className="secondary" disabled={!dayLocked || saving} onClick={() => { setEditingDate(selectedDate); setMessage(""); }}><Edit3 size={16} />Editar día</button>
+      {daySaved && !dayLocked && <button type="button" className="secondary" disabled={saving} onClick={() => { setDraft({}); setEditingDate(null); setError(""); }}>Cancelar edición</button>}
+    </div>;
 
-        <details className="prospecting-plan">
-          <summary><div><span className="eyebrow">Objetivos</span><strong>Armar semana promedio</strong><small>Definí cuántos mensajes querés enviar por canal cada día.</small></div><SlidersHorizontal /></summary>
-          <div className="prospecting-plan-scroll">
-            <div className="prospecting-plan-grid">
-              <strong>Canal</strong>{WEEKDAY_NAMES.map((day) => <strong key={day}>{day.slice(0, 3)}</strong>)}
-              {PROSPECTING_CHANNELS.map(([channel, label]) => [
-                <span key={`${channel}-label`}>{label}</span>,
-                ...WEEKDAY_NAMES.map((_, weekday) => <input key={prospectingKey(weekday, channel)} type="number" min="0" value={goals[prospectingKey(weekday, channel)] ?? ""} onChange={(event) => setGoals({ ...goals, [prospectingKey(weekday, channel)]: event.target.value })} aria-label={`${label}, ${WEEKDAY_NAMES[weekday]}`} placeholder="0" />),
-              ])}
-            </div>
+    return <section className="page prospecting-page">
+      <div className="page-intro"><div><h2>Prospección</h2><p>Registrá lo que hiciste y planificá tus objetivos para una semana con fechas.</p></div></div>
+      {error && <p role="alert" className="prospecting-error">{error}</p>}
+      {message && <p role="status" className="prospecting-success">{message}</p>}
+      {loading ? <p role="status">Cargando prospección…</p> : <>
+        <form className="prospecting-daily" onSubmit={saveDay}>
+          <div className="prospecting-daily-head"><div><span className="eyebrow">{view === "day" ? "Registro real del día" : "Resultados reales guardados"}</span><h3>{view === "day" ? `Lo que registraste · ${fmtDate(selectedDate)}` : "Total acumulado por canal"}</h3><p>{view === "day" ? (dayLocked ? "Día guardado. Tocá Editar día para cambiar las cantidades." : "Ingresá el total del día. Al guardar se actualiza, sin duplicarlo.") : "Todos los días registrados. Para cargar o corregir cantidades, elegí Día seleccionado."}</p></div><label>Ver<select value={view} disabled={saving} onChange={(event) => setView(event.target.value)}><option value="day">Día seleccionado</option><option value="total">Total acumulado</option></select></label><label>Fecha<input type="date" required value={selectedDate} disabled={saving || savingPlan || view === "total"} onChange={(event) => selectDate(event.target.value)} /></label><button type="button" className="secondary small" disabled={saving || savingPlan} onClick={() => { setView("day"); selectDate(today); }}>Hoy</button>{dayActions}</div>
+          <div className="prospecting-entry-table"><div className="prospecting-entry-row prospecting-entry-heading"><span>Canal</span><span>Contactados</span><span>Precios enviados</span><span>Ventas</span></div>
+            {channels.map(([channel, label]) => {
+              const row = rowFor(channel);
+              return <div className="prospecting-entry-row" key={channel}><div><strong>{label}</strong><small>{view === "total" ? "Todos los días registrados" : "Contactos, precios enviados y ventas reales"}</small></div>{[["contacts", "Contactados"], ["prices_sent", "Precios enviados"], ["sales", "Ventas"]].map(([field, title]) => <label key={field}><span>{title}</span><input aria-label={`${label}: ${title}`} type="number" min="0" step="1" inputMode="numeric" value={row[field] || ""} readOnly={view === "total" || dayLocked} disabled={saving} onFocus={(event) => event.target.select()} onChange={(event) => { setDraft((current) => ({ ...current, [channel]: { ...row, [field]: event.target.value } })); setMessage(""); }} /></label>)}</div>;
+            })}
           </div>
-          <div className="prospecting-plan-actions"><span>Objetivo semanal: <strong>{PROSPECTING_CHANNELS.reduce((total, [channel]) => total + WEEKDAY_NAMES.reduce((sum, _, weekday) => sum + (Number(goals[prospectingKey(weekday, channel)]) || 0), 0), 0)} mensajes</strong></span><button className="primary" onClick={savePlan} disabled={savingPlan}><Save size={16} />{savingPlan ? "Guardando..." : "Guardar planificación"}</button></div>
-        </details>
-
-        <form className="prospecting-form" onSubmit={submitLog}>
-          <div><span className="eyebrow">Avance real</span><h3>Registrar mensajes enviados</h3><p>Podés hacer varias cargas; se acumulan en el día.</p></div>
-          <label>Fecha<input type="date" value={form.activity_date} onChange={(event) => setForm({ ...form, activity_date: event.target.value })} required /></label>
-          <label>Canal<select value={form.channel} onChange={(event) => setForm({ ...form, channel: event.target.value })}>{PROSPECTING_CHANNELS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label>Cantidad<input type="number" min="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} required /></label>
-          <label>Nota<input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Opcional" /></label>
-          <button className="primary" disabled={savingLog}><Plus size={16} />{savingLog ? "Guardando..." : "Registrar"}</button>
+          <div className="prospecting-daily-footer"><div><strong>{dailyTotals.contacts}</strong> contactados <b>·</b> <strong>{dailyTotals.prices_sent}</strong> precios enviados <b>·</b> <strong>{dailyTotals.sales}</strong> ventas</div></div>
+          <p className="prospecting-entry-note">{view === "day" ? "Solo completá los canales que usaste. Las ventas pueden venir de contactos de días anteriores." : "El acumulado incluye únicamente datos guardados, sin importar la fecha seleccionada."}</p>
         </form>
 
-        <div className="prospecting-week">
-          <div className="prospecting-week-head">
-            <IconButton label="Semana anterior" onClick={() => setWeekCursor(addDays(weekCursor, -7))}><ChevronLeft /></IconButton>
-            <h3>Lunes {fmtDate(dateKey(weekCursor))} — Domingo {fmtDate(dateKey(weekDays[6]))}</h3>
-            <IconButton label="Semana siguiente" onClick={() => setWeekCursor(addDays(weekCursor, 7))}><ChevronRight /></IconButton>
-            <button className="secondary small" onClick={() => setWeekCursor(startOfWeek(fromDateKey(today)))}>Esta semana</button>
+        <details className="prospecting-plan"><summary><div><span className="eyebrow">Planificación</span><strong>Mi semana ideal · {fmtDate(days[0])} — {fmtDate(days[6])}</strong><small>Objetivos para estas fechas. Cada semana se configura por separado.</small></div><SlidersHorizontal /></summary>
+          <div className="prospecting-plan-week-picker"><IconButton label="Planificar semana anterior" disabled={savingPlan} onClick={() => setWeek(addDays(week, -7))}><ChevronLeft /></IconButton><strong>Semana del {fmtDate(days[0])} al {fmtDate(days[6])}</strong><IconButton label="Planificar semana siguiente" disabled={savingPlan} onClick={() => setWeek(addDays(week, 7))}><ChevronRight /></IconButton><button type="button" className="secondary small" disabled={savingPlan} onClick={() => setWeek(startOfWeek(fromDateKey(today)))}>Esta semana</button></div>
+          <form onSubmit={savePlan}>
+          <div className="prospecting-plan-editor">
+            <div className="prospecting-plan-toolbar">
+            <label className="prospecting-plan-channel">Canal<select className={channelConfigured(planChannel) ? "is-configured" : ""} value={planChannel} disabled={savingPlan || saving} onChange={(event) => setPlanChannel(event.target.value)}>{channels.map(([channel, label]) => <option key={channel} value={channel} className={channelConfigured(channel) ? "is-configured" : ""}>{channelConfigured(channel) ? `✓ ${label} · Configurado` : label}</option>)}</select></label>
+              <div className="prospecting-day-actions">
+                <button type="submit" className="primary" disabled={planLocked || savingPlan || saving}><Save size={16} />{savingPlan ? "Guardando…" : "Guardar canal"}</button>
+                <button type="button" className="secondary" disabled={!planLocked || savingPlan || saving} onClick={() => { setEditingPlans((current) => ({ ...current, [`${weekStart}:${planChannel}`]: true })); setPlanNotice(null); }}><Edit3 size={16} />Editar</button>
+                {planSaved && !planLocked && <button type="button" className="secondary" disabled={savingPlan} onClick={() => {
+                  setGoals((current) => ({ ...current, ...Object.fromEntries(weekdays.map((_, weekday) => [goalKey(weekday, planChannel, weekStart), savedGoals[goalKey(weekday, planChannel, weekStart)] || 0])) }));
+                  setEditingPlans((current) => ({ ...current, [`${weekStart}:${planChannel}`]: false })); setPlanNotice(null);
+                }}>Cancelar edición</button>}
+              </div>
+            </div>
+            {planNotice?.channel === planChannel && planNotice.weekStart === weekStart && <p role={planNotice.error ? "alert" : "status"} className={planNotice.error ? "prospecting-error" : "prospecting-success"}>{planNotice.text}</p>}
+            <p className="prospecting-entry-note">Elegí un canal y definí cuántos mensajes querés enviar cada día. Se guarda solo para las fechas de esta semana y el canal seleccionado.</p>
+            <div className="prospecting-plan-days">{weekdays.map((day, weekday) => <label key={day}>{day}<small>{fmtDate(days[weekday])}</small><input aria-label={`${channels.find(([channel]) => channel === planChannel)?.[1]}, ${day} ${fmtDate(days[weekday])}`} type="number" min="0" step="1" inputMode="numeric" disabled={savingPlan || saving} readOnly={planLocked} value={goals[goalKey(weekday, planChannel, weekStart)] || ""} onChange={(event) => setGoals((current) => ({ ...current, [goalKey(weekday, planChannel, weekStart)]: event.target.value }))} /></label>)}</div>
+            <p className="prospecting-entry-note">Este canal: <strong>{weekdays.reduce((sum, _, weekday) => sum + Number(goals[goalKey(weekday, planChannel, weekStart)] || 0), 0)} mensajes por semana</strong></p>
           </div>
-          <div className="prospecting-week-grid">
-            {weekDays.map((day) => {
-              const key = dateKey(day);
-              const actual = actualForDate(key);
-              const planned = plannedForDate(key);
-              const balance = balanceText(actual, planned);
-              return <button key={key} className={`${key === selectedDate ? "selected" : ""} ${key === today ? "today" : ""}`} onClick={() => selectDay(day)}>
-                <span>{WEEKDAY_NAMES[(day.getDay() + 6) % 7]}</span><time>{day.getDate()}</time>
-                <strong>{actual} / {planned}</strong><em className={balance.tone}>{balance.label}</em>
-              </button>;
-            })}
-          </div>
-          <div className="prospecting-week-total">
-            <div><span>Balance del día</span><small>{fmtDate(selectedDate)}</small></div>
-            <div className="prospecting-total-values"><small>Cumplido / esperado</small><strong>{dayActual} / {dayPlanned}</strong></div>
-            <em className={dayBalance.tone}>{dayBalance.label}</em>
-            <div className="prospecting-week-summary"><span>Total semanal</span><strong>{weekActual} / {weekPlanned}</strong><em className={weekBalance.tone}>{weekBalance.label}</em></div>
-          </div>
-        </div>
+          <div className="prospecting-plan-actions"><span>Objetivo guardado para estas fechas, entre todos los canales: <strong>{Object.entries(savedGoals).filter(([key]) => key.startsWith(`${weekStart}:`)).reduce((sum, [, value]) => sum + Number(value || 0), 0)} mensajes</strong></span></div>
+          </form>
+        </details>
 
-        <div className="prospecting-month-selector">
-          <label>Balance mensual<input type="month" value={selectedMonth} onChange={(event) => event.target.value && setSelectedMonth(event.target.value)} /></label>
-          <div><span>Realizados</span><strong>{monthActual}</strong></div><div><span>Planificados</span><strong>{monthPlanned}</strong></div>
-          <em className={monthBalance.tone}>{monthBalance.label}</em>
-        </div>
+        <div className="prospecting-week"><h3 className="prospecting-comparison-title">Registro real vs. objetivos de esta semana</h3><p className="prospecting-entry-note">Los contactos salen de tus registros guardados. Los objetivos salen de la planificación de estas fechas.</p><div className="prospecting-week-head"><IconButton label="Semana anterior" disabled={savingPlan} onClick={() => setWeek(addDays(week, -7))}><ChevronLeft /></IconButton><h3>{fmtDate(days[0])} — {fmtDate(days[6])}</h3><IconButton label="Semana siguiente" disabled={savingPlan} onClick={() => setWeek(addDays(week, 7))}><ChevronRight /></IconButton><button className="secondary small" disabled={savingPlan} onClick={() => setWeek(startOfWeek(fromDateKey(today)))}>Esta semana</button></div><div className="prospecting-week-grid">{days.map((key, index) => {
+          const actual = totalFor(key), planned = planFor(key);
+          return <button key={key} disabled={saving} className={`${key === selectedDate ? "selected" : ""} ${key === today ? "today" : ""}`} aria-label={`Ver detalle del ${fmtDate(key)}: ${actual} contactos registrados, objetivo ${planned}`} aria-haspopup="dialog" onClick={() => setDetailDate(key)}><span>{weekdays[index]}</span><time dateTime={key}>{fmtDate(key)}</time><strong>{actual} <small>contactados</small></strong><span className="prospecting-card-target">Objetivo: {planned}</span><em className={actual >= planned ? "done" : "behind"}>{planned ? actual >= planned ? "Objetivo cumplido" : `${planned - actual} pendientes` : "Sin objetivo"}</em><span className="prospecting-card-hint"><Info size={12} />Ver detalle</span></button>;
+        })}</div><p className="prospecting-entry-note">Contactados / objetivo de la semana: {days.reduce((sum, key) => sum + totalFor(key), 0)} / {days.reduce((sum, key) => sum + planFor(key), 0)}</p></div>
 
-        <div className="prospecting-detail">
-          <div className="prospecting-detail-head">
-            <div><span className="eyebrow">Detalle de prospección</span><h3>{detailLabel}</h3></div>
-            <label>Período<select value={detailFilter} onChange={(event) => changeDetailFilter(event.target.value)}>
-              <option value="day">Este día</option>
-              <option value="week">Esta semana</option>
-              {Array.from({ length: 12 }, (_, index) => {
-                const month = `${filterYear}-${String(index + 1).padStart(2, "0")}`;
-                return <option key={month} value={`month-${month}`}>{fmtMonth(month)}</option>;
-              })}
-            </select></label>
-          </div>
-          <div className="prospecting-channel-list">
-            {PROSPECTING_CHANNELS.map(([channel, label]) => {
-              const actual = detailDays.reduce((total, day) => total + (actualByDayChannel[`${dateKey(day)}:${channel}`] || 0), 0);
-              const weekday = (fromDateKey(selectedDate).getDay() + 6) % 7;
-              const completionLog = detailFilter === "day"
-                ? logs.find((item) => item.activity_date === selectedDate && item.channel === channel && item.notes === "Objetivo marcado como completado")
-                : null;
-              const planned = detailDays.reduce((total, day) => {
-                const dayWeekday = (day.getDay() + 6) % 7;
-                return total + (Number(goals[prospectingKey(dayWeekday, channel)]) || 0);
-              }, 0);
-              const balance = balanceText(actual, planned);
-              const channelResults = resultsByChannel.find((item) => item.channel === channel);
-              const dailyOutcome = outcomesByDayChannel[prospectingOutcomeKey(selectedDate, channel)] || { demos: 0, sales: 0 };
-              return <article
-                key={channel}
-                className="prospecting-channel-card"
-                role="button"
-                tabIndex={0}
-                onClick={() => setQuickEntry({ channel, label, quantity: "", notes: "" })}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    setQuickEntry({ channel, label, quantity: "", notes: "" });
-                  }
-                }}
-              >
-                <div className="prospecting-channel-head"><span>{label}</span>{detailFilter === "day" && <IconButton label={`Editar objetivo de ${label}`} onClick={(event) => {
-                  event.stopPropagation();
-                  setEditingGoal({
-                    channel,
-                    label,
-                    weekday,
-                    target: planned || "",
-                    demos: dailyOutcome.id ? dailyOutcome.demos : "",
-                    sales: dailyOutcome.id ? dailyOutcome.sales : "",
-                  });
-                }}><Edit3 /></IconButton>}</div>
-                <strong>{actual} / {planned}</strong><em className={balance.tone}>{balance.label}</em>
-                <div className="prospecting-channel-results"><span>Demos <b>{channelResults.demos}</b></span><span>Ventas <b>{channelResults.sales}</b></span></div>
-                {completionLog
-                  ? <button className="secondary small prospecting-undo" onClick={(event) => { event.stopPropagation(); undoCompleteChannel(completionLog); }}><RotateCcw size={14} />Deshacer completado</button>
-                  : detailFilter === "day" && planned > actual && <button className="secondary small" onClick={(event) => { event.stopPropagation(); completeChannel(channel, actual, planned); }}><Check size={14} />Marcar completado</button>}
-              </article>;
-            })}
-          </div>
-          <div className="prospecting-results-summary">
-            <div className="prospecting-results-title"><div><span className="eyebrow">Resultados comerciales</span><h3>{detailLabel}</h3></div><div><small>Demos enviadas</small><strong>{detailDemos}</strong></div><div><small>Ventas concretadas</small><strong>{detailSales}</strong></div></div>
-            <div className="prospecting-sales-channels">
-              {resultsByChannel.map((item) => <div key={item.channel}><span>{item.label}</span><strong>{item.sales} {item.sales === 1 ? "venta" : "ventas"}</strong><small>{item.demos} {item.demos === 1 ? "demo" : "demos"}</small></div>)}
-            </div>
-          </div>
-          {detailLogs.length > 0 && <div className="prospecting-log-list">{detailLogs.map((item) => <div key={item.id}><span><strong>+{item.quantity} · {acquisitionLabel(item.channel)}</strong><small>{detailFilter === "day" ? (item.notes || "Sin nota") : `${fmtDate(item.activity_date)} · ${item.notes || "Sin nota"}`}</small></span><div className="prospecting-log-actions"><IconButton label="Editar carga" onClick={() => setEditingLog({ ...item })}><Edit3 /></IconButton><IconButton label="Eliminar carga" onClick={() => removeLog(item)}><Trash2 /></IconButton></div></div>)}</div>}
-        </div>
-        {quickEntry && (
-          <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && setQuickEntry(null)}>
-            <div className="form-modal prospecting-quick-modal">
-              <div className="modal-head">
-                <div><span className="eyebrow">Carga rápida · {fmtDate(selectedDate)}</span><h2>{quickEntry.label}</h2></div>
-                <IconButton label="Cerrar" onClick={() => setQuickEntry(null)}><X /></IconButton>
+        <details className="prospecting-report"><summary>Ver resultados por día, semana, mes o todo el historial</summary><div className="prospecting-detail"><div className="prospecting-detail-head"><h3>{period === "all" ? "Total acumulado · Todos los registros" : period === "month" ? fmtMonth(month) : period === "week" ? `${fmtDate(days[0])} — ${fmtDate(days[6])}` : fmtDate(selectedDate)}</h3><label>Período<select value={period} onChange={(event) => setPeriod(event.target.value)}><option value="day">Día seleccionado</option><option value="week">Semana visible</option><option value="month">Mes seleccionado</option><option value="all">Ver todo · Total acumulado</option></select></label></div><div className="prospecting-balances">{[["Contactados", totals.contacts], ["Precios enviados", totals.prices_sent], ["Ventas", totals.sales]].map(([label, value]) => <article key={label}><small>{label}</small><strong>{value}</strong></article>)}</div><div className="prospecting-report-scroll"><table><thead><tr><th>Canal</th><th>Contactados</th><th>Precios enviados</th><th>Ventas</th></tr></thead><tbody>{summary.map((row) => <tr key={row.channel}><th>{row.label}</th><td>{row.contacts}</td><td>{row.prices_sent}</td><td>{row.sales}</td></tr>)}</tbody></table></div></div></details>
+        {detailDate && <dialog ref={dayDialog} className="prospecting-day-dialog" aria-labelledby="prospecting-day-title" onClose={() => { setDetailDate(null); setSelectedMetric(null); }} onClick={(event) => { if (event.target === event.currentTarget) dayDialog.current.close(); }}>
+          <div className="prospecting-day-dialog-content">
+            <div className="modal-head"><div><span className="eyebrow">Detalle de prospección</span><h2 id="prospecting-day-title">{weekdays[weekdayFor(detailDate)]} · {fmtDate(detailDate)}</h2></div><IconButton label="Cerrar detalle del día" onClick={() => dayDialog.current.close()}><X /></IconButton></div>
+            <div className="prospecting-day-dialog-body">
+              <div className="prospecting-day-explanation"><h3>¿Qué significa {detailTotals.contacts} / {detailTotals.target}?</h3><p><strong>{detailTotals.contacts}</strong> es la cantidad de contactos guardados en tu registro real para este día. <strong>{detailTotals.target}</strong> es tu objetivo, sumando los canales de tu semana ideal para esta fecha.</p>
+                <p>{detailTotals.target > 0 ? detailTotals.contacts > detailTotals.target ? `Superaste el objetivo por ${detailTotals.contacts - detailTotals.target} contactos. Completaste el ${Math.round(detailTotals.contacts / detailTotals.target * 100)}% de lo planificado.` : detailTotals.contacts === detailTotals.target ? "Alcanzaste exactamente el objetivo del día: 100% cumplido." : `Te faltan ${detailTotals.target - detailTotals.contacts} contactos para llegar al objetivo. Llevás el ${Math.round(detailTotals.contacts / detailTotals.target * 100)}% de lo planificado.` : "No tenés un objetivo para este día. Podés definirlo por canal en Mi semana ideal."}</p>
               </div>
-              <form onSubmit={submitQuickEntry}>
-                <div className="form-grid">
-                  <label>Cantidad enviada<input type="number" min="1" value={quickEntry.quantity} onChange={(event) => setQuickEntry({ ...quickEntry, quantity: event.target.value })} placeholder="Ej.: 20" required autoFocus /></label>
-                  <label>Nota opcional<input value={quickEntry.notes} onChange={(event) => setQuickEntry({ ...quickEntry, notes: event.target.value })} placeholder="Ej.: tanda de la mañana" /></label>
-                </div>
-                <div className="form-actions"><button type="button" className="secondary" onClick={() => setQuickEntry(null)}>Cancelar</button><button className="primary" disabled={savingLog}><Plus size={16} />{savingLog ? "Guardando..." : "Sumar mensajes"}</button></div>
-              </form>
+              {!detailHasRecords && <p className="prospecting-entry-note">Todavía no hay un registro guardado para esta fecha. El cero indica que no cargaste contactos; no confirma que no hayas trabajado ese día.</p>}
+              <div className="prospecting-day-metrics">{metrics.map((metric) => <button type="button" key={metric.key} aria-haspopup="dialog" aria-label={`${metric.label}: ${detailTotals[metric.key]}. Ver desglose por canal`} onClick={() => setSelectedMetric(metric.key)}><small>{metric.label}</small><strong>{detailTotals[metric.key]}</strong><span><Info size={12} />Ver por canal</span></button>)}</div>
+              <h3>De dónde sale cada número</h3>
+              <div className="prospecting-report-scroll"><table className="prospecting-day-breakdown"><thead><tr><th>Canal</th><th>Contactados</th><th>Objetivo</th><th>Balance</th><th>Precios enviados</th><th>Ventas</th></tr></thead><tbody>{detailRows.map((row) => <tr key={row.channel}><th scope="row">{row.label}</th><td>{row.contacts}</td><td>{row.target}</td><td>{row.target ? row.contacts > row.target ? `+${row.contacts - row.target} sobre el objetivo` : row.contacts === row.target ? "Cumplido" : `${row.target - row.contacts} pendientes` : "Sin objetivo"}</td><td>{row.prices_sent}</td><td>{row.sales}</td></tr>)}</tbody><tfoot><tr><th scope="row">Total del día</th><td>{detailTotals.contacts}</td><td>{detailTotals.target}</td><td>Todos los canales</td><td>{detailTotals.prices_sent}</td><td>{detailTotals.sales}</td></tr></tfoot></table></div>
+              <p className="prospecting-entry-note">El objetivo mide contactos. Los precios enviados y las ventas se muestran aparte y no se suman a ese avance. Las ventas pueden venir de contactos de días anteriores.</p>
+              <p className="prospecting-entry-note">Se muestran solo datos guardados. El objetivo corresponde a la semana de esta fecha. Los objetivos de otras semanas no se aplican acá.</p>
+              {detailDate === selectedDate && dirty && <p className="prospecting-entry-note">Tenés cambios sin guardar en este día. Aparecerán acá cuando guardes el registro.</p>}
+              <div className="prospecting-day-dialog-actions"><button type="button" className="secondary" onClick={() => dayDialog.current.close()}>Cerrar</button><button type="button" className="primary" onClick={() => { if (selectDate(detailDate)) { setView("day"); dayDialog.current.close(); } }}>{detailHasRecords ? "Ir al registro del día" : "Cargar este día"}</button></div>
             </div>
           </div>
-        )}
-        {editingLog && (
-          <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && setEditingLog(null)}>
-            <div className="form-modal prospecting-quick-modal">
-              <div className="modal-head">
-                <div><span className="eyebrow">Detalle diario</span><h2>Editar carga</h2></div>
-                <IconButton label="Cerrar" onClick={() => setEditingLog(null)}><X /></IconButton>
-              </div>
-              <form onSubmit={submitLogEdit}>
-                <div className="form-grid">
-                  <label>Fecha<input type="date" value={editingLog.activity_date} onChange={(event) => setEditingLog({ ...editingLog, activity_date: event.target.value })} required /></label>
-                  <label>Canal<select value={editingLog.channel} onChange={(event) => setEditingLog({ ...editingLog, channel: event.target.value })}>{PROSPECTING_CHANNELS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                  <label>Cantidad enviada<input type="number" min="1" value={editingLog.quantity} onChange={(event) => setEditingLog({ ...editingLog, quantity: event.target.value })} required autoFocus /></label>
-                  <label>Nota opcional<input value={editingLog.notes || ""} onChange={(event) => setEditingLog({ ...editingLog, notes: event.target.value })} placeholder="Ej.: tanda de la mañana" /></label>
-                </div>
-                <div className="form-actions"><button type="button" className="secondary" onClick={() => setEditingLog(null)}>Cancelar</button><button className="primary" disabled={savingLog}><Save size={16} />{savingLog ? "Guardando..." : "Guardar cambios"}</button></div>
-              </form>
-            </div>
+        </dialog>}
+        {detailDate && activeMetric && <dialog ref={metricDialog} className="prospecting-day-dialog prospecting-metric-dialog" aria-labelledby="prospecting-metric-title" onClose={() => setSelectedMetric(null)} onClick={(event) => { if (event.target === event.currentTarget) metricDialog.current.close(); }}>
+          <div className="modal-head"><div><span className="eyebrow">{fmtDate(detailDate)} · Resumen por canal</span><h2 id="prospecting-metric-title">{activeMetric.label}</h2></div><IconButton label="Cerrar resumen por canal" onClick={() => metricDialog.current.close()}><X /></IconButton></div>
+          <div className="prospecting-day-dialog-body">
+            <div className="prospecting-metric-total"><strong>{detailTotals[activeMetric.key]}</strong><span>{activeMetric.unit} en total</span></div>
+            <p className="prospecting-metric-source">{activeMetric.source}</p>
+            {metricRows.length > 0 ? <><h3>Este número se compone de:</h3><ul className="prospecting-metric-channels">{metricRows.map((row) => <li key={row.channel}><span>{row.label}</span><strong>{row[activeMetric.key]}</strong></li>)}</ul><p className="prospecting-metric-equation">{metricRows.map((row) => row[activeMetric.key]).join(" + ")} = <strong>{detailTotals[activeMetric.key]}</strong></p><p className="prospecting-entry-note">Los demás canales tienen cero para este dato.</p></> : <p className="prospecting-metric-empty">{activeMetric.key === "target" ? "No hay contactos planificados para esta fecha en ningún canal." : `No registraste ${activeMetric.unit} para esta fecha en ningún canal.`}</p>}
+            <div className="prospecting-day-dialog-actions"><button type="button" className="primary" onClick={() => metricDialog.current.close()}>Volver al detalle del día</button></div>
           </div>
-        )}
-        {editingGoal && (
-          <div className="modal-layer" onMouseDown={(event) => event.target === event.currentTarget && setEditingGoal(null)}>
-            <div className="form-modal prospecting-quick-modal">
-              <div className="modal-head">
-                <div><span className="eyebrow">{WEEKDAY_NAMES[editingGoal.weekday]} · {fmtDate(selectedDate)}</span><h2>Editar objetivo de {editingGoal.label}</h2></div>
-                <IconButton label="Cerrar" onClick={() => setEditingGoal(null)}><X /></IconButton>
-              </div>
-              <form onSubmit={submitGoalEdit}>
-                <div className="form-grid">
-                  <label>Mensajes planificados<input type="number" min="0" value={editingGoal.target} onChange={(event) => setEditingGoal({ ...editingGoal, target: event.target.value })} required autoFocus /></label>
-                  <label>Demos enviadas<input type="number" min="0" value={editingGoal.demos} onChange={(event) => setEditingGoal({ ...editingGoal, demos: event.target.value })} required /></label>
-                  <label>Ventas concretadas<input type="number" min="0" max={editingGoal.demos || undefined} value={editingGoal.sales} onChange={(event) => setEditingGoal({ ...editingGoal, sales: event.target.value })} required /></label>
-                </div>
-                <p className="prospecting-goal-note">Las demos y ventas corresponden al {fmtDate(selectedDate)}. El objetivo se aplica a todos los {WEEKDAY_NAMES[editingGoal.weekday].toLowerCase()}.</p>
-                <div className="form-actions"><button type="button" className="secondary" onClick={() => setEditingGoal(null)}>Cancelar</button><button className="primary" disabled={savingPlan}><Save size={16} />{savingPlan ? "Guardando..." : "Guardar objetivo"}</button></div>
-              </form>
-            </div>
-          </div>
-        )}
-      </section>
-    );
+        </dialog>}
+      </>}
+    </section>;
   }
-
   return { Prospecting };
 }
