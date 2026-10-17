@@ -67,3 +67,24 @@ test('concept and client filters keep original totals and records intact', async
   assert.equal(paymentBreakdown(rows, 'ARS').total, 150);
   assert.equal(JSON.stringify(rows), original);
 });
+
+test('pending and overdue modal cards separate records without changing paid totals or source data', async () => {
+  const { splitOutstandingPayments } = await import('../src/app/paymentBreakdown.js');
+  const rows = [
+    { id: 1, client_id: 1, currency: 'ARS', amount: 100, status: 'pending', due_date: '2026-10-17' },
+    { id: 2, client_id: 2, currency: 'ARS', amount: 200, status: 'pending', due_date: '2026-10-16' },
+    { id: 3, client_id: 3, currency: 'USD', amount: 30, status: 'partial', due_date: '2026-10-20' },
+    { id: 4, client_id: 4, currency: 'USD', amount: 40, status: 'overdue', due_date: '2026-10-10' },
+    { id: 5, client_id: 1, currency: 'ARS', amount: 999, status: 'paid', due_date: '2026-10-01' },
+  ];
+  const before = JSON.stringify(rows);
+  const groups = splitOutstandingPayments(rows, '2026-10-17');
+  assert.deepEqual(groups.pending.map((row) => row.id), [1, 3]);
+  assert.deepEqual(groups.overdue.map((row) => row.id), [2, 4]);
+  assert.equal(paymentBreakdown(groups.pending, 'ARS').total, 100);
+  assert.equal(paymentBreakdown(groups.overdue, 'ARS').total, 200);
+  assert.equal(paymentBreakdown(groups.pending, 'USD').total, 30);
+  assert.equal(paymentBreakdown(groups.overdue, 'USD').total, 40);
+  assert.equal(paymentBreakdown(rows.filter((row) => row.status === 'paid'), 'ARS').total, 999);
+  assert.equal(JSON.stringify(rows), before);
+});

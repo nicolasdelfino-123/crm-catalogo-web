@@ -23,3 +23,15 @@ export function filterPaymentBreakdown(rows, concept = "all", query = "") {
   return rows.filter((item) => (concept === "all" || (item.payment_type || "other") === concept)
     && `${item.client_name || ""} ${item.business_name || ""}`.toLocaleLowerCase("es").includes(search));
 }
+
+export function splitOutstandingPayments(items, today) {
+  const groups = { pending: [], overdue: [] };
+  for (const item of items) {
+    if (!["pending", "partial", "overdue"].includes(item.status)) continue;
+    const dueDate = item.due_date || item.display_date || item.calendar_date;
+    const overdue = item.status === "overdue" || (dueDate && dueDate.slice(0, 10) < today);
+    if (overdue) groups.overdue.push({ ...item, status: "overdue" });
+    else groups.pending.push(item);
+  }
+  return groups;
+}
