@@ -9,7 +9,7 @@ export function collectionRowsForMonth(items, month) {
     if (!relevantDate?.startsWith(`${month}-`) || seen.has(item.payment_id)) continue;
     seen.add(item.payment_id);
     const amount = Number(item.amount);
-    if (!Number.isFinite(amount) || amount < 0) continue;
+    if (!Number.isFinite(amount) || (amount < 0 && item.status !== "paid")) continue;
     rows.push(item);
   }
   return rows;

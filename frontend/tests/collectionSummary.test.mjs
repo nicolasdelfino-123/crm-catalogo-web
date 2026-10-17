@@ -48,3 +48,8 @@ test('uses assigned calendar period for deposits and monthly records without due
   ], '2026-10');
   assert.deepEqual(result.totals.USD, { total: 70, paid: 70, pending: 0 });
 });
+
+test('preserves signed amounts in saved paid history as original income does', () => {
+  const rows = [payment(1, 600, 'ARS', 'paid'), payment(2, -50, 'ARS', 'paid')];
+  assert.equal(summarizeCollections(rows, '2026-10').totals.ARS.total, 550);
+});

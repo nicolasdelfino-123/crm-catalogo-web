@@ -992,31 +992,31 @@ def agenda_recorded_collections():
         month_end = add_calendar_months(month_start, 1)
     except (ValueError, TypeError):
         return error("Mes inválido", 422)
-    paid_start = datetime.combine(month_start, datetime.min.time())
-    paid_end = datetime.combine(month_end, datetime.min.time())
     payments = Payment.query.join(Client).filter(
-        Client.archived_at.is_(None), Client.status != "cancelled",
-        Payment.status.in_(("paid", "pending", "partial", "overdue")),
         or_(
-            # Monthly installments belong to the due month, not the receipt date.
-            (Payment.payment_type != "deposit") & (Payment.due_date >= month_start) & (Payment.due_date < month_end),
-            (Payment.payment_type == "monthly") & Payment.due_date.is_(None)
-            & (Payment.period_year == month_start.year) & (Payment.period_month == month_start.month),
-            (Payment.payment_type == "deposit") & (Payment.paid_at >= paid_start) & (Payment.paid_at < paid_end),
-            Payment.payment_type.notin_(("monthly", "deposit")) & Payment.due_date.is_(None)
-            & (Payment.paid_at >= paid_start) & (Payment.paid_at < paid_end),
+            # Paid history uses the original Resumen scope, including customers
+            # who were cancelled or archived after a payment was recorded.
+            Payment.status == "paid",
+            Client.archived_at.is_(None) & (Client.status != "cancelled")
+            & Payment.status.in_(("pending", "partial", "overdue")) & or_(
+                (Payment.due_date >= month_start) & (Payment.due_date < month_end),
+                (Payment.payment_type == "monthly") & Payment.due_date.is_(None)
+                & (Payment.period_year == month_start.year) & (Payment.period_month == month_start.month),
+            ),
         ),
     ).all()
     result = []
     for payment in payments:
-        if payment.payment_type == "deposit":
-            calendar_date = payment.paid_at.date()
-        elif payment.due_date:
-            calendar_date = payment.due_date
-        elif payment.payment_type == "monthly":
-            calendar_date = date(payment.period_year, payment.period_month, 1)
+        if payment.status == "paid":
+            calendar_date = (
+                payment.paid_at.date()
+                if payment.payment_type == "deposit" and payment.paid_at
+                else payment.due_date or (payment.paid_at.date() if payment.paid_at else None)
+            )
         else:
-            calendar_date = payment.paid_at.date()
+            calendar_date = payment.due_date or date(payment.period_year, payment.period_month, 1)
+        if not calendar_date or not month_start <= calendar_date < month_end:
+            continue
         result.append({
             **payment_collection_item(payment),
             "projected": False,
