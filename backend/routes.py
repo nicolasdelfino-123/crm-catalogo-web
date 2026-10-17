@@ -242,7 +242,7 @@ def apply_client(client, data, partial=False):
             raise ValueError("Completá los campos obligatorios: " + ", ".join(missing))
     if data.get("status") and data["status"] not in STATUSES:
         raise ValueError("Estado inválido")
-    if data.get("traffic_light") and data["traffic_light"] not in ("red", "yellow", "green"):
+    if data.get("traffic_light") and data["traffic_light"] not in ("red", "yellow", "green", "lilac"):
         raise ValueError("Semáforo inválido")
     text_fields = ["name", "business_name", "website_url", "instagram_username", "email", "phone", "country", "city", "acquisition_source", "currency", "status", "traffic_light", "service_stage", "page_status", "link_in_bio_status", "story_status", "prices_status", "images_status", "google_analytics_status", "qr_generated_status", "carousel_installed_status", "coupon_status", "best_sellers_status", "admin_load_status", "twelve_products_status", "domain_purchased_status", "notes_summary"]
     for field in text_fields:
@@ -411,6 +411,7 @@ def clients_list():
             (Client.traffic_light == "red", 1),
             (Client.traffic_light == "yellow", 2),
             (Client.traffic_light == "green", 3),
+            (Client.traffic_light == "lilac", 4),
             else_=1,
         )
     elif sort_by == "service_stage":
@@ -1611,7 +1612,7 @@ def dashboard():
     traffic_light_clients = [c for c in clients if c.status != "cancelled"]
     traffic_light_counts = {
         color: sum(1 for client in traffic_light_clients if (client.traffic_light or "red") == color)
-        for color in ("red", "yellow", "green")
+        for color in ("red", "yellow", "green", "lilac")
     }
 
     def client_item(client):

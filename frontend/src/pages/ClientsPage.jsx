@@ -1,3 +1,4 @@
+import { TRAFFIC_LIGHT_COLORS, trafficLightLabel } from "../app/trafficLights";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../saas-statistics.css";
 import { CalendarDays, WalletCards, Server, Plus, Search, SlidersHorizontal, Download, X, ChevronRight, AlertTriangle, CheckCircle2, Clock3, ArrowUp, ArrowDown, ArrowUpDown, ExternalLink, MapPin, Instagram, Mail, Phone, Edit3, Check, RotateCcw, Pin, Save, ChartNoAxesColumnIncreasing, Trash2, Eye, EyeOff, KeyRound, Copy, FileText } from "lucide-react";
@@ -2062,7 +2063,7 @@ export function createClientsPage(dependencies) {
     async function cycleTrafficLight(event, client) {
       event.stopPropagation();
       if (updatingTrafficLight.has(client.id)) return;
-      const colors = ["red", "yellow", "green"];
+      const colors = TRAFFIC_LIGHT_COLORS;
       const current = client.traffic_light || "red";
       const next = colors[(colors.indexOf(current) + 1) % colors.length];
       setUpdatingTrafficLight((ids) => new Set(ids).add(client.id));
@@ -2230,8 +2231,8 @@ export function createClientsPage(dependencies) {
                         <button
                           type="button"
                           className={`traffic-light ${c.traffic_light || "red"}`}
-                          aria-label={`Semáforo de ${c.name}. Cambiar color`}
-                          title="Hacé clic para cambiar el color"
+                          aria-label={`Semáforo de ${c.name}: ${trafficLightLabel(c.traffic_light)}. Cambiar color`}
+                          title={`${trafficLightLabel(c.traffic_light)}. Clic para cambiar: rojo, amarillo, verde, lila (excelente)`}
                           disabled={updatingTrafficLight.has(c.id)}
                           onClick={(event) => cycleTrafficLight(event, c)}
                         />
@@ -2308,7 +2309,8 @@ export function createClientsPage(dependencies) {
                     <button
                       type="button"
                       className={`traffic-light ${c.traffic_light || "red"}`}
-                      aria-label={`Semáforo de ${c.name}. Cambiar color`}
+                      aria-label={`Semáforo de ${c.name}: ${trafficLightLabel(c.traffic_light)}. Cambiar color`}
+                      title={trafficLightLabel(c.traffic_light)}
                       disabled={updatingTrafficLight.has(c.id)}
                       onClick={(event) => cycleTrafficLight(event, c)}
                     />

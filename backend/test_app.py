@@ -289,7 +289,7 @@ def test_dashboard_includes_traffic_light_counts_and_clients(client, app):
         ])
         db.session.commit()
     summary = client.get("/api/dashboard/summary").get_json()["data"]
-    assert summary["traffic_lights"] == {"red": 1, "yellow": 1, "green": 1}
+    assert summary["traffic_lights"] == {"red": 1, "yellow": 1, "green": 1, "lilac": 0}
     assert {item["traffic_light"] for item in summary["details"]["traffic_lights"]} == {"red", "yellow", "green"}
     assert {item["name"] for item in summary["details"]["traffic_lights"]} == {"Rojo", "Amarillo", "Verde"}
     assert next(item for item in summary["details"]["traffic_lights"] if item["name"] == "Rojo")["website_url"] == "https://uno.example.com"
@@ -1803,3 +1803,39 @@ def test_prospecting_totals_invalid_values_do_not_apply_partial_changes(client, 
     data = client.get('/api/prospecting').get_json()['data']
     assert data['logs'] == []
     assert data['outcomes'] == []
+
+
+def test_lilac_traffic_light_persists_and_appears_in_summary_without_changing_client_data(client, app):
+    with app.app_context():
+        customer = Client(name='Cliente excelente', business_name='Negocio excelente', country='Argentina', currency='ARS', payment_amount=12345, status='active', traffic_light='green', sale_date=date(2026, 8, 1), signup_date=date(2026, 8, 2))
+        cancelled = Client(name='Excelente cancelado', business_name='Baja', country='Argentina', currency='ARS', status='cancelled', traffic_light='lilac')
+        db.session.add_all([customer, cancelled])
+        db.session.commit()
+        customer_id = customer.id
+    response = client.patch(f'/api/clients/{customer_id}', json={'traffic_light': 'lilac'})
+    assert response.status_code == 200
+    assert response.get_json()['data']['traffic_light'] == 'lilac'
+    with app.app_context():
+        db.session.remove()
+        saved = db.session.get(Client, customer_id)
+        assert saved.traffic_light == 'lilac'
+        assert saved.name == 'Cliente excelente'
+        assert saved.payment_amount == 12345
+        assert saved.status == 'active'
+        assert saved.sale_date == date(2026, 8, 1)
+        assert saved.signup_date == date(2026, 8, 2)
+    summary = client.get('/api/dashboard/summary').get_json()['data']
+    assert summary['traffic_lights']['lilac'] == 1
+    assert [row['id'] for row in summary['details']['traffic_lights'] if row['traffic_light'] == 'lilac'] == [customer_id]
+    assert client.patch(f'/api/clients/{customer_id}', json={'traffic_light': 'invalid'}).status_code == 422
+    assert client.patch(f'/api/clients/{customer_id}', json={'traffic_light': 'red'}).status_code == 200
+    assert client.get('/api/dashboard/summary').get_json()['data']['traffic_lights']['lilac'] == 0
+
+
+def test_clients_can_be_sorted_by_traffic_light_including_lilac(client, app):
+    with app.app_context():
+        db.session.add_all([Client(name=color, business_name=color, country='Argentina', currency='ARS', traffic_light=color) for color in ['lilac', 'green', 'yellow', 'red']])
+        db.session.commit()
+    response = client.get('/api/clients?sort_by=traffic_light&sort_dir=asc')
+    assert response.status_code == 200
+    assert [row['traffic_light'] for row in response.get_json()['data']['items']] == ['red', 'yellow', 'green', 'lilac']

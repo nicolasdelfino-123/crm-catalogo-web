@@ -1,3 +1,4 @@
+import { TRAFFIC_LIGHT_COLORS, trafficLightLabel } from "../app/trafficLights";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Users, CalendarDays, WalletCards, ReceiptText, Plus, Search, Download, X, ChevronLeft, ChevronRight, AlertTriangle, Check, Clock3, ArrowUpDown, TrendingUp, Timer, List, Columns3, GripVertical } from "lucide-react";
 
@@ -108,7 +109,8 @@ export function createDashboardPage(dependencies) {
             <div><small>Semáforo</small><strong className="traffic-summary-counts">
               <span><i className="traffic-dot red" />{data.traffic_lights?.red || 0}</span>
               <span><i className="traffic-dot yellow" />{data.traffic_lights?.yellow || 0}</span>
-              <span><i className="traffic-dot green" />{data.traffic_lights?.green || 0}</span>
+              <span title="Verde"><i className="traffic-dot green" />{data.traffic_lights?.green || 0}</span>
+              <span title="Lila · Clientes excelentes" aria-label={`${data.traffic_lights?.lilac || 0} clientes excelentes`}><i className="traffic-dot lilac" />{data.traffic_lights?.lilac || 0}</span>
             </strong></div>
           </button>
           <button type="button" className="metric metric-button" onClick={() => setShowPaymentCalendar(true)} aria-label="Abrir calendario visual de pagos">
@@ -404,7 +406,7 @@ export function createDashboardPage(dependencies) {
     const [clients, setClients] = useState(items);
     const [updating, setUpdating] = useState(new Set());
     useEscapeClose(onClose);
-    const colorRank = order === "green_first" ? { green: 1, yellow: 2, red: 3 } : { red: 1, yellow: 2, green: 3 };
+    const colorRank = order === "green_first" ? { lilac: 1, green: 2, yellow: 3, red: 4 } : { red: 1, yellow: 2, green: 3, lilac: 4 };
     const visibleClients = clients.filter((client) => {
       const matchesQuery = `${client.name} ${client.business_name || ""}`
         .toLocaleLowerCase("es")
@@ -418,7 +420,7 @@ export function createDashboardPage(dependencies) {
     async function cycleTrafficLight(event, client) {
       event.stopPropagation();
       if (updating.has(client.id)) return;
-      const colors = ["red", "yellow", "green"];
+      const colors = TRAFFIC_LIGHT_COLORS;
       const current = client.traffic_light || "red";
       const next = colors[(colors.indexOf(current) + 1) % colors.length];
       setUpdating((ids) => new Set(ids).add(client.id));
@@ -434,16 +436,17 @@ export function createDashboardPage(dependencies) {
       }
     }
     return <div className="modal-layer"><section className="dashboard-metric-modal traffic-modal" role="dialog" aria-modal="true" aria-labelledby="traffic-modal-title">
-      <div className="modal-head"><div><span className="eyebrow">Resumen por color</span><h2 id="traffic-modal-title">Semáforo de clientes</h2></div><IconButton label="Cerrar" onClick={onClose}><X /></IconButton></div>
+      <div className="modal-head"><div><span className="eyebrow">Resumen por color · Lila: clientes excelentes</span><h2 id="traffic-modal-title">Semáforo de clientes</h2></div><IconButton label="Cerrar" onClick={onClose}><X /></IconButton></div>
       <div className="traffic-modal-toolbar">
         <label className="search"><Search size={17} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente o negocio…" autoFocus /></label>
-        <label className="filter"><ArrowUpDown size={17} /><select value={order} onChange={(event) => setOrder(event.target.value)}><option value="green_first">Verde → amarillo → rojo</option><option value="red_first">Rojo → amarillo → verde</option></select></label>
+        <label className="filter"><ArrowUpDown size={17} /><select value={order} onChange={(event) => setOrder(event.target.value)}><option value="green_first">Lila (excelentes) → verde → amarillo → rojo</option><option value="red_first">Rojo → amarillo → verde → lila (excelentes)</option></select></label>
       </div>
       <div className="traffic-color-filter-row">
         <label className="dashboard-status-filter">
           Color
           <select value={colorFilter} onChange={(event) => setColorFilter(event.target.value)}>
             <option value="all">Todos los colores</option>
+            <option value="lilac">Lilas · Clientes excelentes</option>
             <option value="green">Solo verdes</option>
             <option value="yellow">Solo amarillos</option>
             <option value="red">Solo rojos</option>
@@ -454,7 +457,7 @@ export function createDashboardPage(dependencies) {
         </span>
       </div>
       <div className="traffic-client-list">{visibleClients.map((client) => <article key={client.id} tabIndex={0} role="button" onClick={() => onClient(client.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClient(client.id); } }}>
-        <button type="button" className={`traffic-light ${client.traffic_light || "red"}`} aria-label={`Cambiar semáforo de ${client.name}`} title="Cambiar color" disabled={updating.has(client.id)} onClick={(event) => cycleTrafficLight(event, client)} />
+        <button type="button" className={`traffic-light ${client.traffic_light || "red"}`} aria-label={`Semáforo de ${client.name}: ${trafficLightLabel(client.traffic_light)}. Cambiar color`} title={`${trafficLightLabel(client.traffic_light)}. Clic para cambiar el color`} disabled={updating.has(client.id)} onClick={(event) => cycleTrafficLight(event, client)} />
         <div><strong>{client.name}</strong><span>{client.business_name}</span></div><ChevronRight size={18} />
       </article>)}{!visibleClients.length && <div className="empty"><Search size={28} /><h3>No se encontraron clientes</h3><p>Probá con otra palabra.</p></div>}</div>
     </section></div>;
