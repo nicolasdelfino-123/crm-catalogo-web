@@ -2067,3 +2067,46 @@ def test_agenda_monthly_calendar_always_uses_due_date_not_paid_date(client, app)
     assert {row['amount'] for row in november} == {50}
     with app.app_context():
         assert [row.to_dict() for row in Payment.query.order_by(Payment.id).all()] == before
+
+
+def test_billing_day_indicator_only_counts_current_month_monthly_payments_and_never_resets_history():
+    customer = Client(name='Indicador', business_name='Indicador', status='active', signup_date=date(2026, 8, 5))
+    paid = Payment(amount=100, currency='ARS', payment_type='monthly', status='paid', due_date=date(2026, 10, 5), paid_at=datetime(2026, 9, 25))
+    customer.payments.append(paid)
+    assert customer.monthly_payment_indicator(date(2026, 10, 17))['status'] == 'paid'
+    assert customer.monthly_payment_indicator(date(2026, 11, 1))['status'] == 'pending'
+    assert customer.monthly_payment_indicator(date(2026, 11, 6))['status'] == 'overdue'
+    assert paid.status == 'paid'
+    assert paid.due_date == date(2026, 10, 5)
+    assert paid.paid_at == datetime(2026, 9, 25)
+
+
+def test_billing_day_indicator_ignores_deposits_extras_and_payments_for_other_months():
+    customer = Client(name='Otros conceptos', business_name='Otros', status='active', signup_date=date(2026, 8, 20))
+    customer.payments.extend([
+        Payment(amount=50, currency='ARS', payment_type='deposit', status='paid', paid_at=datetime(2026, 10, 10)),
+        Payment(amount=50, currency='ARS', payment_type='extra_work', status='paid', due_date=date(2026, 10, 10)),
+        Payment(amount=100, currency='ARS', payment_type='monthly', status='paid', due_date=date(2026, 9, 20), paid_at=datetime(2026, 10, 10)),
+        Payment(amount=100, currency='ARS', payment_type='monthly', status='paid', due_date=date(2026, 11, 20), paid_at=datetime(2026, 10, 10)),
+    ])
+    assert customer.monthly_payment_indicator(date(2026, 10, 17))['status'] == 'pending'
+    assert customer.monthly_payment_indicator(date(2026, 10, 21))['status'] == 'overdue'
+    assert customer.monthly_payment_indicator(date(2026, 11, 1))['status'] == 'paid'
+
+
+def test_billing_day_indicator_uses_actual_due_date_and_handles_partial_and_duplicate_rows():
+    customer = Client(name='Fechas', business_name='Fechas', status='active', signup_date=date(2026, 8, 1))
+    customer.payments.append(Payment(amount=100, currency='ARS', payment_type='monthly', status='partial', due_date=date(2026, 10, 20)))
+    assert customer.monthly_payment_indicator(date(2026, 10, 20))['status'] == 'pending'
+    assert customer.monthly_payment_indicator(date(2026, 10, 21))['status'] == 'overdue'
+    customer.payments.append(Payment(amount=100, currency='ARS', payment_type='monthly', status='paid', due_date=date(2026, 10, 20)))
+    assert customer.monthly_payment_indicator(date(2026, 10, 21))['status'] == 'paid'
+
+
+def test_billing_day_indicator_clamps_short_months_and_keeps_semáforo_independent():
+    customer = Client(name='Fin de mes', business_name='Mes', status='active', signup_date=date(2026, 1, 31), traffic_light='lilac')
+    indicator = customer.monthly_payment_indicator(date(2026, 2, 27))
+    assert indicator == {'month': '2026-02', 'status': 'pending', 'due_date': '2026-02-28'}
+    assert customer.traffic_light == 'lilac'
+    customer.status = 'cancelled'
+    assert customer.monthly_payment_indicator(date(2026, 2, 27))['status'] == 'not_applicable'

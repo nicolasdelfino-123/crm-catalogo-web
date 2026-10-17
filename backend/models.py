@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from calendar import monthrange
 from decimal import Decimal
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import UniqueConstraint
@@ -81,6 +82,22 @@ class Client(db.Model):
         lazy=True,
     )
 
+    def monthly_payment_indicator(self, today=None):
+        today = today or date.today()
+        month = today.strftime("%Y-%m")
+        if not self.signup_date or self.status in ("cancelled", "no_signup") or self.signup_date > today:
+            return {"month": month, "status": "not_applicable", "due_date": None}
+        payments = [payment for payment in self.payments if payment.payment_type == "monthly" and (
+            payment.due_date and payment.due_date.strftime("%Y-%m") == month
+            or not payment.due_date and payment.period_year == today.year and payment.period_month == today.month
+        )]
+        paid = next((payment for payment in payments if payment.status == "paid"), None)
+        scheduled = [payment.due_date for payment in payments if payment.due_date and payment.status in ("paid", "pending", "partial", "overdue")]
+        due_date = paid.due_date if paid and paid.due_date else min(scheduled) if scheduled else date(today.year, today.month, min(self.signup_date.day, monthrange(today.year, today.month)[1]))
+        if self.status not in ("active", "at_risk") and not payments:
+            return {"month": month, "status": "not_applicable", "due_date": iso(due_date)}
+        return {"month": month, "status": "paid" if paid else "overdue" if due_date < today else "pending", "due_date": iso(due_date)}
+
     def summary(self):
         today = date.today()
         pending = sorted([a for a in self.actions if a.status in ("pending", "in_progress")], key=lambda a: a.due_date or date.max)
@@ -94,6 +111,7 @@ class Client(db.Model):
             "next_renewal_date": iso(self.next_renewal_date), "status": self.status,
             "cancelled_date": iso(self.cancelled_date),
             "traffic_light": self.traffic_light or "red",
+            "monthly_payment_indicator": self.monthly_payment_indicator(today),
             "service_stage": self.service_stage, "link_in_bio_status": self.link_in_bio_status,
             "story_status": self.story_status or "no",
             "service_stage_manual": bool(self.service_stage_manual),

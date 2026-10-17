@@ -50,3 +50,20 @@ test('Agenda modal rows sum to the same currency total as the clicked card', () 
 test('empty detail has zero clients, payments and sum', () => {
   assert.deepEqual(paymentBreakdown([], 'USD'), { rows: [], clientCount: 0, paymentCount: 0, total: 0 });
 });
+
+test('concept and client filters keep original totals and records intact', async () => {
+  const { filterPaymentBreakdown } = await import('../src/app/paymentBreakdown.js');
+  const rows = [
+    { id: 1, client_id: 1, client_name: 'Ana', currency: 'ARS', amount: 100, payment_type: 'monthly' },
+    { id: 2, client_id: 1, client_name: 'Ana', currency: 'ARS', amount: 20, payment_type: 'deposit' },
+    { id: 3, client_id: 2, client_name: 'Beatriz', currency: 'ARS', amount: 30, payment_type: 'extra_work' },
+  ];
+  const original = JSON.stringify(rows);
+  assert.equal(paymentBreakdown(filterPaymentBreakdown(rows, 'monthly'), 'ARS').total, 100);
+  assert.equal(paymentBreakdown(filterPaymentBreakdown(rows, 'deposit'), 'ARS').total, 20);
+  assert.equal(paymentBreakdown(filterPaymentBreakdown(rows, 'extra_work'), 'ARS').total, 30);
+  assert.equal(filterPaymentBreakdown(rows, 'extra_work', 'ana').length, 0);
+  assert.equal(filterPaymentBreakdown(rows, 'all', 'ANA').length, 2);
+  assert.equal(paymentBreakdown(rows, 'ARS').total, 150);
+  assert.equal(JSON.stringify(rows), original);
+});

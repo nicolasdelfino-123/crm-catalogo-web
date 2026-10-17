@@ -7,6 +7,13 @@ export function createClientsPage(dependencies) {
   const { api, downloadApiFile, LABEL, ACQUISITION_OPTIONS, ACTION_PRESETS, acquisitionLabel, instagramUrl, externalUrl, fmtDate, billingDay, fmtMoney, addCalendarMonth, stageForDates, stageLabel, badge, dateKey, useEscapeClose, IconButton, Toast, Loading, Empty } = dependencies;
   const RICH_TEXT_PREFIX = "__RICH_TEXT__";
 
+  function billingIndicatorTitle(client) {
+    const indicator = client.monthly_payment_indicator;
+    if (!indicator || indicator.status === "not_applicable") return "Sin mensualidad exigible para este mes";
+    const label = { paid: "Pagada", pending: "Pendiente", overdue: "Vencida" }[indicator.status];
+    return `Mensualidad ${indicator.month}: ${label}. Vencimiento: ${fmtDate(indicator.due_date)}`;
+  }
+
   function plainTextToHtml(value) {
     const element = document.createElement("div");
     element.textContent = value || "";
@@ -2029,6 +2036,21 @@ export function createClientsPage(dependencies) {
       return () => clearTimeout(id);
     }, [load]);
     useEffect(() => {
+      let lastDate = dateKey();
+      const refresh = () => { load(); };
+      const timer = window.setInterval(() => {
+        const currentDate = dateKey();
+        if (currentDate !== lastDate) { lastDate = currentDate; load(); }
+      }, 60000);
+      window.addEventListener("crm-payments-updated", refresh);
+      window.addEventListener("focus", refresh);
+      return () => {
+        window.clearInterval(timer);
+        window.removeEventListener("crm-payments-updated", refresh);
+        window.removeEventListener("focus", refresh);
+      };
+    }, [load]);
+    useEffect(() => {
       if (!renewalCurrency) return undefined;
       document.body.classList.add("locked");
       const closeOnEscape = (event) => {
@@ -2148,6 +2170,7 @@ export function createClientsPage(dependencies) {
             </button>
           </div>
         </div>
+        <p className="billing-day-legend">Mensualidad de {new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric" }).format(new Date())}: <span className="paid">Verde: pagada</span><span className="pending">Crema: pendiente</span><span className="overdue">Rojo: vencida</span></p>
         <div className="toolbar">
           <ClientsFilters query={query} setQuery={setQuery} status={status} setStatus={setStatus} acquisition={acquisition} setAcquisition={setAcquisition} stageMonth={stageMonth} setStageMonth={setStageMonth} customStageMonth={customStageMonth} setCustomStageMonth={setCustomStageMonth} />
           <div className={`client-renewal-totals${loading ? " loading-totals" : ""}`} aria-live="polite">
@@ -2221,7 +2244,7 @@ export function createClientsPage(dependencies) {
                   {data.items.map((c) => (
                     <tr key={c.id} onClick={() => setSelected(c.id)}>
                       <td className="billing-day-cell">
-                        <strong>{c.status === "no_signup" ? "—" : billingDay(c.signup_date)}</strong>
+                        <strong className={`billing-day-number ${c.monthly_payment_indicator?.status || "not_applicable"}`} title={billingIndicatorTitle(c)} aria-label={`${c.status === "no_signup" ? "Sin alta" : `Día de cobro ${billingDay(c.signup_date)}`}. ${billingIndicatorTitle(c)}`}>{c.status === "no_signup" ? "—" : billingDay(c.signup_date)}</strong>
                       </td>
                       <td>
                         <strong>{c.name}</strong>
@@ -2331,7 +2354,7 @@ export function createClientsPage(dependencies) {
                     )}
                     <div>
                       <dt>Día de cobro</dt>
-                      <dd>{c.status === "no_signup" ? "Sin alta" : billingDay(c.signup_date)}</dd>
+                      <dd><span className={`billing-day-number ${c.monthly_payment_indicator?.status || "not_applicable"}`} title={billingIndicatorTitle(c)}>{c.status === "no_signup" ? "Sin alta" : billingDay(c.signup_date)}</span></dd>
                     </div>
                     <div>
                       <dt>Renueva</dt>

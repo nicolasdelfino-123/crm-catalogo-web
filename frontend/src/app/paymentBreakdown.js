@@ -17,3 +17,9 @@ export function paymentBreakdown(items, currency) {
     total: rows.reduce((sum, item) => sum + Number(item.amount || 0), 0),
   };
 }
+
+export function filterPaymentBreakdown(rows, concept = "all", query = "") {
+  const search = query.trim().toLocaleLowerCase("es");
+  return rows.filter((item) => (concept === "all" || (item.payment_type || "other") === concept)
+    && `${item.client_name || ""} ${item.business_name || ""}`.toLocaleLowerCase("es").includes(search));
+}

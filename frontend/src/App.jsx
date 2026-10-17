@@ -60,6 +60,9 @@ async function api(path, options = {}) {
   }
   if (!response.ok)
     throw new Error(body.error?.message || "No se pudo completar la operación");
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(options.method?.toUpperCase()) && /^\/(?:payments(?:\/|$)|clients\/\d+\/(?:payments|monthly-payments)(?:\/|$))/.test(path)) {
+    window.dispatchEvent(new Event("crm-payments-updated"));
+  }
   return body.data;
 }
 async function downloadApiFile(path, filename) {
