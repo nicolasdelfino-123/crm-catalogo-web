@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { createSaasPage } from "./pages/SaasPage";
 import "./saas-analysis.css";
+import PendingNotesPage from "./pages/PendingNotesPage";
 import AppShell from "./app/AppShell";
 import TabPages from "./app/TabPages";
 import "./expenses.css";
@@ -389,7 +390,8 @@ export default function App() {
   if (!session.user) return <Login onAuthenticated={(user) => setSession({ checking: false, user })} />;
   const logout = () => { clearSession(); setSession({ checking: false, user: null }); };
   const pages = {
-    dashboard: <Dashboard goClients={() => navigate("clients")} />,
+    dashboard: <Dashboard goClients={() => navigate("clients")} goPendingNotes={() => navigate("pending-notes")} />,
+    "pending-notes": <PendingNotesPage api={api} />,
     clients: <Clients />,
     agenda: <Agenda />,
     payments: <Payments />,

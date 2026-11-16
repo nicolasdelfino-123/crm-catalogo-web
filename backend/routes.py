@@ -14,6 +14,76 @@ from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Exp
 
 api = Blueprint("api", __name__)
 
+
+@api.route("/pending-notes", methods=["GET", "POST"])
+def pending_notes():
+    from models import PendingNote
+    if request.method == "GET":
+        return ok([note.to_dict() for note in PendingNote.query.order_by(
+            PendingNote.completed.asc(), PendingNote.position.asc(), PendingNote.id.asc()
+        ).all()])
+    return save_pending_note(PendingNote(), creating=True)
+
+
+@api.put("/pending-notes/order")
+def reorder_pending_notes():
+    from models import PendingNote
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("completed"), bool):
+        return error("Enviá un grupo de notas válido.", 422)
+    ids = data.get("ids")
+    if not isinstance(ids, list) or any(type(value) is not int for value in ids) or len(set(ids)) != len(ids):
+        return error("Enviá una lista de notas sin duplicados.", 422)
+    notes = PendingNote.query.filter_by(completed=data["completed"]).all()
+    if set(ids) != {note.id for note in notes}:
+        return error("La lista cambió. Volvé a cargarla antes de ordenar.", 409)
+    positions = {note_id: position for position, note_id in enumerate(ids)}
+    for note in notes:
+        note.position = positions[note.id]
+    db.session.commit()
+    return ok([note.to_dict() for note in PendingNote.query.order_by(
+        PendingNote.completed.asc(), PendingNote.position.asc(), PendingNote.id.asc()
+    ).all()])
+
+
+@api.route("/pending-notes/<int:note_id>", methods=["PATCH", "DELETE"])
+def pending_note_detail(note_id):
+    from models import PendingNote
+    note = db.session.get(PendingNote, note_id)
+    if note is None:
+        return error("La nota ya no existe.", 404)
+    if request.method == "DELETE":
+        db.session.delete(note)
+        db.session.commit()
+        return ok()
+    return save_pending_note(note)
+
+
+def save_pending_note(note, creating=False):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return error("Enviá una nota válida.", 422)
+    if creating or "text" in data:
+        value = data.get("text")
+        if not isinstance(value, str) or not value.strip() or len(value.strip()) > 10000:
+            return error("La nota debe tener entre 1 y 10.000 caracteres.", 422)
+    if "color" in data and data["color"] not in ("none", "yellow", "green", "blue", "pink"):
+        return error("Elegí un color válido.", 422)
+    if "completed" in data and not isinstance(data["completed"], bool):
+        return error("El estado debe ser verdadero o falso.", 422)
+    if creating or "text" in data:
+        note.text = data["text"].strip()
+    if creating:
+        from models import PendingNote
+        last = db.session.query(func.max(PendingNote.position)).scalar()
+        note.position = (last if last is not None else -1) + 1
+    for field in ("color", "completed"):
+        if field in data:
+            setattr(note, field, data[field])
+    db.session.add(note)
+    db.session.commit()
+    return ok(note.to_dict(), status=201 if creating else 200)
+
 STATUSES = {"lead", "active", "at_risk", "paused", "cancelled", "no_signup"}
 
 

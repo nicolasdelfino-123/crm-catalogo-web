@@ -7,7 +7,7 @@ import { Users, CalendarDays, WalletCards, ReceiptText, Plus, Search, Download, 
 export function createDashboardPage(dependencies) {
   const { api, downloadApiFile, LABEL, fmtDate, fmtMonth, monthKey, nextMonthKey, fmtMoney, dateKey, fromDateKey, addDays, startOfWeek, clientBillingDateInMonth, badge, useEscapeClose, IconButton, Loading, Empty, ClientForm, DetailModal, AgendaNewAction, AgendaActionEditor } = dependencies;
 
-  function Dashboard({ goClients }) {
+  function Dashboard({ goClients, goPendingNotes }) {
     const currentMonth = monthKey();
     const nextMonth = nextMonthKey();
     const [data, setData] = useState(null);
@@ -107,6 +107,10 @@ export function createDashboardPage(dependencies) {
           </div>
         </div>
         <div className="metrics-grid">
+          <button type="button" className="metric metric-button" onClick={goPendingNotes}>
+            <span className="metric-icon green"><List size={20} /></span>
+            <div><small>Pendientes</small><strong>Mi cuaderno</strong><small>Anotar, resaltar y completar</small></div>
+          </button>
           <button type="button" className="metric metric-button traffic-summary-card" onClick={() => setShowTrafficLights(true)} aria-label="Abrir resumen de semáforos">
             <span className="traffic-summary-icon"><List size={20} /></span>
             <div><small>Semáforo</small><strong className="traffic-summary-counts">

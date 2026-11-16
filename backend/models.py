@@ -7,6 +7,19 @@ from sqlalchemy import UniqueConstraint
 db = SQLAlchemy()
 
 
+class PendingNote(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    text = db.Column(db.Text, nullable=False)
+    color = db.Column(db.String(20), nullable=False, default="none")
+    completed = db.Column(db.Boolean, nullable=False, default=False)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {"id": self.id, "text": self.text, "color": self.color,
+                "completed": self.completed, "position": self.position, "created_at": self.created_at.isoformat()}
+
+
 def iso(value):
     return value.isoformat() if value else None
 

@@ -90,6 +90,9 @@ def create_app(test_config=None):
     with app.app_context():
         db.create_all()
         inspector = inspect(db.engine)
+        if "position" not in {column["name"] for column in inspector.get_columns("pending_note")}:
+            db.session.execute(text("ALTER TABLE pending_note ADD COLUMN position INTEGER DEFAULT 0 NOT NULL"))
+            db.session.commit()
         if "prospecting_goal" in inspector.get_table_names():
             goal_columns = {column["name"] for column in inspector.get_columns("prospecting_goal")}
             if "configured" not in goal_columns:

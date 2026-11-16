@@ -255,6 +255,68 @@ def client(app):
 def test_health(client): assert client.get("/api/health").status_code == 200
 
 
+def test_pending_notes_lifecycle_and_order(client):
+    first = client.post("/api/pending-notes", json={"text": "  Hablar con Luisa  ", "color": "yellow"})
+    assert first.status_code == 201
+    note = first.get_json()["data"]
+    assert note["text"] == "Hablar con Luisa"
+    second = client.post("/api/pending-notes", json={"text": "Renovar dominio"}).get_json()["data"]
+    path = f'/api/pending-notes/{note["id"]}'
+    assert client.patch(path, json={"completed": True}).status_code == 200
+    notes = client.get("/api/pending-notes").get_json()["data"]
+    assert [row["id"] for row in notes] == [second["id"], note["id"]]
+    edited = client.patch(path, json={"text": "Llamar mañana", "color": "pink", "completed": False}).get_json()["data"]
+    assert edited["text"] == "Llamar mañana" and edited["color"] == "pink"
+    assert client.get("/api/pending-notes").get_json()["data"][0] == edited
+    assert client.delete(path).status_code == 200
+    assert client.patch(path, json={"completed": True}).status_code == 404
+    assert len(client.get("/api/pending-notes").get_json()["data"]) == 1
+
+
+@pytest.mark.parametrize("payload", [None, [], {"text": " "}, {"text": 123}, {"text": "a" * 10001},
+    {"text": "Nota", "color": "red"}, {"text": "Nota", "color": []}, {"text": "Nota", "completed": "true"}])
+def test_pending_notes_validate_input(client, payload):
+    assert client.post("/api/pending-notes", json=payload).status_code == 422
+    assert client.get("/api/pending-notes").get_json()["data"] == []
+
+
+def test_pending_notes_invalid_edit_does_not_change_text(client):
+    note = client.post("/api/pending-notes", json={"text": "Original"}).get_json()["data"]
+    assert client.patch(f'/api/pending-notes/{note["id"]}', json={"text": "Cambio", "completed": 1}).status_code == 422
+    assert client.get("/api/pending-notes").get_json()["data"][0]["text"] == "Original"
+
+
+def test_pending_notes_manual_order_is_persistent_and_preserves_groups(client):
+    notes = [client.post("/api/pending-notes", json={"text": text}).get_json()["data"] for text in ("Uno", "Dos", "Tres")]
+    ids = [note["id"] for note in notes]
+    response = client.put("/api/pending-notes/order", json={"completed": False, "ids": ids[::-1]})
+    assert response.status_code == 200
+    assert [note["id"] for note in client.get("/api/pending-notes").get_json()["data"]] == ids[::-1]
+    new = client.post("/api/pending-notes", json={"text": "Cuatro"}).get_json()["data"]
+    assert client.get("/api/pending-notes").get_json()["data"][-1]["id"] == new["id"]
+    for note_id in ids[:2]:
+        client.patch(f"/api/pending-notes/{note_id}", json={"completed": True})
+    assert client.put("/api/pending-notes/order", json={"completed": True, "ids": ids[:2]}).status_code == 200
+    saved = client.get("/api/pending-notes").get_json()["data"]
+    assert [note["id"] for note in saved] == [ids[2], new["id"], *ids[:2]]
+    assert [note["completed"] for note in saved] == [False, False, True, True]
+
+
+@pytest.mark.parametrize("payload, status", [
+    ({"completed": False, "ids": []}, 409),
+    ({"completed": False, "ids": [999]}, 409),
+    ({"completed": False, "ids": [1, 1]}, 422),
+    ({"completed": False, "ids": [True]}, 422),
+    ({"completed": False, "ids": "1"}, 422),
+    ({"completed": "false", "ids": [1]}, 422),
+])
+def test_pending_notes_invalid_order_is_atomic(client, payload, status):
+    client.post("/api/pending-notes", json={"text": "Original"})
+    before = client.get("/api/pending-notes").get_json()["data"]
+    assert client.put("/api/pending-notes/order", json=payload).status_code == status
+    assert client.get("/api/pending-notes").get_json()["data"] == before
+
+
 def test_cancelled_clients_are_excluded_from_weekly_renewals(client, app):
     monday = date.today() - timedelta(days=date.today().weekday())
     renewal_date = monday + timedelta(days=2)
