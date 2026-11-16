@@ -1,5 +1,11 @@
 .notes-notebook{max-width:1000px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 8px 30px #17211d06}
 .notes-count{color:var(--muted);font-size:12px;white-space:nowrap}
+.notes-search-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:16px 24px;border-bottom:1px solid var(--line);background:#f8faf8}
+.notes-search-field{display:flex;align-items:center;gap:10px;flex:1;min-width:180px;border:1px solid #cbd5cf;border-radius:7px;background:#fff;padding:0 12px;color:var(--muted)}
+.notes-search-field:focus-within{outline:2px solid var(--green);outline-offset:2px}
+.notes-search-field input{width:100%;min-width:0;height:42px;border:0;background:transparent;outline:none;font:inherit;font-size:13px;color:var(--ink)}
+.notes-search-field input::-webkit-search-cancel-button{-webkit-appearance:none}
+.notes-search-count{font-size:11px;color:var(--muted)}
 .note-drag-handle{display:grid;place-items:center;flex-shrink:0;width:30px;height:40px;margin:-6px 0 0 -10px;padding:0;border:0;border-radius:6px;background:transparent;color:#87958b;cursor:grab;touch-action:none;user-select:none}
 .note-drag-handle:hover{background:#17211d0c;color:var(--green)}
 .note-drag-handle:focus-visible{outline:2px solid var(--green);outline-offset:2px}

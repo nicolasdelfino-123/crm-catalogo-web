@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { ListTodo, Plus, Pencil, Trash2, Save, X, GripVertical } from "lucide-react";
+import { ListTodo, Plus, Pencil, Trash2, Save, X, GripVertical, Search } from "lucide-react";
 import "../pending-notes.css";
 
 const COLORS = [["none", "Sin resaltar"], ["yellow", "Amarillo"], ["green", "Verde"], ["blue", "Azul"], ["pink", "Rosa"]];
+const normalizeSearch = value => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
 
 function ColorPicker({ value, onChange, disabled }) {
   return <div className="note-colors" role="group" aria-label="Color de resaltado">
@@ -15,6 +16,7 @@ function ColorPicker({ value, onChange, disabled }) {
 
 export default function PendingNotesPage({ api }) {
   const [notes, setNotes] = useState([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -57,6 +59,13 @@ export default function PendingNotesPage({ api }) {
   });
   const pending = notes.filter(note => !note.completed).length;
   const ordered = [...notes].sort((a, b) => Number(a.completed) - Number(b.completed) || a.position - b.position || a.id - b.id);
+  const query = normalizeSearch(search.trim());
+  const visibleNotes = ordered.filter(note => normalizeSearch(note.text).includes(query));
+
+  function changeSearch(value) {
+    setSearch(value);
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }
 
   async function saveOrder(next, original, note) {
     setBusy(true);
@@ -137,14 +146,26 @@ export default function PendingNotesPage({ api }) {
         <div className="note-composer-actions"><ColorPicker value={color} onChange={setColor} disabled={busy} />
           <button className="primary" disabled={busy || loading || !text.trim()}><Plus size={17} />Agregar nota</button></div>
       </form>
+      <div className="notes-search-toolbar">
+        <label className="notes-search-field" htmlFor="pending-notes-search">
+          <Search size={18} aria-hidden="true" />
+          <input id="pending-notes-search" type="search" placeholder="Buscar en las tarjetas…"
+            aria-label="Buscar por texto en pendientes y completadas" value={search}
+            disabled={dragging !== null} onChange={event => changeSearch(event.target.value)} />
+          {search && <button type="button" className="icon-btn" title="Limpiar búsqueda" aria-label="Limpiar búsqueda"
+            disabled={dragging !== null} onClick={() => changeSearch("")}><X size={16} /></button>}
+        </label>
+        <span className="notes-search-count" role="status">{query ? `${visibleNotes.length} de ${notes.length} notas` : "Pendientes y completadas"}</span>
+      </div>
       {error && <div className="notes-error" role="alert">{error} <button type="button" className="secondary" onClick={load} disabled={busy || loading}>Volver a cargar</button></div>}
       <div className="notes-list" ref={listRef} role="region" aria-label="Lista de pendientes" tabIndex={0} aria-busy={loading || busy}
         onPointerMove={event => { if (drag.current) { drag.current.y = event.clientY; drag.current.x = event.clientX; } }}
         onPointerUp={() => finishDrag()} onPointerCancel={() => finishDrag(true)}
         onLostPointerCapture={() => finishDrag(true)}>
         {loading ? <p className="notes-empty">Cargando notas…</p> : notes.length === 0 ? <div className="notes-empty"><ListTodo size={32} /><p>Tu cuaderno está listo. Agregá tu primer pendiente arriba.</p></div> :
-          ordered.map((note, index) => <div key={note.id}>
-            {note.completed && (index === 0 || !ordered[index - 1].completed) && <h3 className="notes-completed-heading">Completadas</h3>}
+          visibleNotes.length === 0 ? <p className="notes-empty">No hay notas que coincidan con “{search.trim()}”.</p> :
+          visibleNotes.map((note, index) => <div key={note.id}>
+            {note.completed && (index === 0 || !visibleNotes[index - 1].completed) && <h3 className="notes-completed-heading">Completadas</h3>}
             <article data-note-id={note.id} className={`pending-note note-${note.color} ${note.completed ? "is-completed" : ""} ${dragging === note.id ? "note-dragging" : ""}`}>
               <button type="button" className="note-drag-handle" disabled={busy || editing !== null}
                 title="Arrastrar para ordenar · También podés usar las flechas ↑ y ↓" aria-label={`Mover nota: ${note.text}`}
@@ -154,7 +175,7 @@ export default function PendingNotesPage({ api }) {
                   if (event.key === "Escape") { finishDrag(true); return; }
                   if (!["ArrowUp", "ArrowDown"].includes(event.key) || busy || dragging !== null) return;
                   event.preventDefault();
-                  const target = ordered[index + (event.key === "ArrowUp" ? -1 : 1)];
+                  const target = visibleNotes[index + (event.key === "ArrowUp" ? -1 : 1)];
                   if (!target || target.completed !== note.completed) return;
                   const next = moveNote(ordered, note.id, target.id);
                   setNotes(next); saveOrder(next, ordered, note);
