@@ -21,6 +21,7 @@ export default function PendingNotesPage({ api }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState("");
+  const [composerOpen, setComposerOpen] = useState(false);
   const [color, setColor] = useState("none");
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState("");
@@ -134,10 +135,11 @@ export default function PendingNotesPage({ api }) {
       <span className="notes-count">{pending} pendientes · {notes.length - pending} completadas</span>
     </div>
     <div className="notes-notebook">
-      <form className={`note-composer note-${color}`} onSubmit={event => {
+      <div className="note-composer-toggle"><button type="button" className="secondary" aria-expanded={composerOpen} aria-controls="pending-note-composer" onClick={() => setComposerOpen(open => !open)}>{composerOpen ? <X size={17} /> : <Plus size={17} />}{composerOpen ? "Ocultar formulario" : "Nueva nota"}</button></div>
+      <form id="pending-note-composer" hidden={!composerOpen} className={`note-composer note-${color}`} onSubmit={event => {
         event.preventDefault();
         mutate("/pending-notes", "POST", { text, color }, saved => {
-          setNotes(current => [...current, saved]); setText("");
+          setNotes(current => [...current, saved]); setText(""); setComposerOpen(false);
         });
       }}>
         <label htmlFor="new-pending-note">Nueva nota</label>
@@ -162,7 +164,7 @@ export default function PendingNotesPage({ api }) {
         onPointerMove={event => { if (drag.current) { drag.current.y = event.clientY; drag.current.x = event.clientX; } }}
         onPointerUp={() => finishDrag()} onPointerCancel={() => finishDrag(true)}
         onLostPointerCapture={() => finishDrag(true)}>
-        {loading ? <p className="notes-empty">Cargando notas…</p> : notes.length === 0 ? <div className="notes-empty"><ListTodo size={32} /><p>Tu cuaderno está listo. Agregá tu primer pendiente arriba.</p></div> :
+        {loading ? <p className="notes-empty">Cargando notas…</p> : notes.length === 0 ? <div className="notes-empty"><ListTodo size={32} /><p>Tu cuaderno está listo. Usá «Nueva nota» para agregar tu primer pendiente.</p></div> :
           visibleNotes.length === 0 ? <p className="notes-empty">No hay notas que coincidan con “{search.trim()}”.</p> :
           visibleNotes.map((note, index) => <div key={note.id}>
             {note.completed && (index === 0 || !visibleNotes[index - 1].completed) && <h3 className="notes-completed-heading">Completadas</h3>}

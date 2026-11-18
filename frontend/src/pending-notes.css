@@ -1,4 +1,5 @@
-.notes-notebook{max-width:1000px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 8px 30px #17211d06}
+.pending-notes-page{max-width:none}
+.notes-notebook{width:100%;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 8px 30px #17211d06}
 .notes-count{color:var(--muted);font-size:12px;white-space:nowrap}
 .notes-search-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:16px 24px;border-bottom:1px solid var(--line);background:#f8faf8}
 .notes-search-field{display:flex;align-items:center;gap:10px;flex:1;min-width:180px;border:1px solid #cbd5cf;border-radius:7px;background:#fff;padding:0 12px;color:var(--muted)}
@@ -33,3 +34,29 @@
 .notes-error{padding:14px 24px;color:#a52b22;background:#fff0ee;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .note-edit-actions{margin-top:8px}.note-row-tools .note-edit-actions{margin:0}.note-delete-confirm{display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:12px;margin-top:12px;color:#a52b22}
 @media(max-width:600px){.note-composer,.pending-note{padding:16px}.pending-note{gap:12px}.notes-count{white-space:normal}.note-composer-actions{flex-wrap:wrap}.note-text{font-size:14px}.note-swatch{width:26px;height:26px}.notes-list{max-height:65vh}.notes-footnote{padding:14px 16px}}
+
+/* Más espacio para la lista y filas compactas sin recortar el texto. */
+.note-composer-toggle{padding:10px 16px;border-bottom:1px solid var(--line);background:#f8faf8}
+.note-composer[hidden]{display:none}
+.notes-search-toolbar{padding:10px 16px}
+.notes-search-field input{height:36px}
+.notes-list{max-height:none;height:calc(100vh - 300px);min-height:220px}
+.pending-note{align-items:center;gap:10px;padding:6px 16px}
+.note-drag-handle{margin:0;height:36px}
+.pending-note>input{margin:0}
+.note-content{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.note-text,.note-content>form{flex:1;min-width:0}
+.note-text{line-height:1.4}
+.note-row-tools{flex-shrink:0;margin:0;gap:12px}
+.note-delete-confirm{flex-basis:100%;margin-top:0}
+.notes-completed-heading{padding:7px 16px}
+.notes-footnote{padding:8px 16px}
+@media(max-width:700px){
+  .pending-notes-page .page-intro{flex-wrap:wrap;gap:8px}
+  .notes-list{height:calc(100vh - 270px)}
+  .pending-note{padding:6px 10px;gap:7px}
+  .note-content{flex-wrap:wrap;gap:4px}
+  .note-text,.note-content>form{flex-basis:100%}
+  .note-row-tools{width:100%;justify-content:space-between}
+  .note-swatch{width:22px;height:22px}
+}
