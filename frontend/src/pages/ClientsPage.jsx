@@ -814,6 +814,12 @@ export function createClientsPage(dependencies) {
     </div>;
   }
 
+  function CompletedStories({ client }) {
+    const statuses = client.story_statuses || { "1": client.story_status || "no" };
+    const completed = Array.from({ length: 8 }, (_, index) => index + 1).filter(number => statuses[number] === "yes");
+    return completed.length ? <div className="client-story-badges">{completed.map(number => <span key={number} className="badge yes">Historia {number}</span>)}</div> : <span className="client-stories-empty">Sin historias listas</span>;
+  }
+
   function EditableNumber({ label, field, value, onSave }) {
     const [editing, setEditing] = useState(false);
     const [current, setCurrent] = useState(value || 0);
@@ -2320,7 +2326,7 @@ export function createClientsPage(dependencies) {
                         </span>
                       </td>
                       <td>
-                        <strong>{c.followers_count}</strong>
+                        <CompletedStories client={c} />
                         <span>{c.publications_count} publ.</span>
                       </td>
                       <td>
@@ -2392,6 +2398,7 @@ export function createClientsPage(dependencies) {
                       <dt>Próxima acción</dt>
                       <dd>{c.next_action?.title || "Sin pendientes"}</dd>
                     </div>
+                    <div className="mobile-client-stories"><dt>Historias listas</dt><dd><CompletedStories client={c} /></dd></div>
                   </dl>
                   {c.overdue_actions_count > 0 && (
                     <p className="mobile-alert">
