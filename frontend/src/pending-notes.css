@@ -45,6 +45,7 @@
 .notes-search-field{min-width:0}
 .notes-composer-button{flex-shrink:0;white-space:nowrap}
 .notes-search-count{white-space:nowrap;flex-shrink:0}
+.notes-month-filter{height:36px;max-width:140px;padding:0 7px;border:1px solid #cbd5cf;border-radius:6px;background:#fff;color:var(--ink);font:inherit;font-size:12px}
 .pending-note{align-items:center;gap:10px;padding:6px 16px}
 .note-drag-handle{margin:0;height:36px}
 .pending-note>input{margin:0}
@@ -59,6 +60,7 @@
 .note-client-options button,.note-client-options span{display:block;width:100%;padding:7px 9px;border:0;background:white;text-align:left;font:inherit;font-size:12px;color:var(--ink)}
 .note-client-options button:hover,.note-client-options button:focus{background:#e1f3df}
 .note-client-link{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px;border:0;background:transparent;color:var(--green);text-decoration:underline;cursor:pointer;font:inherit;font-size:12px}
+.note-client .badge{flex-shrink:0;white-space:nowrap}
 .note-priority{height:30px;max-width:90px;padding:0 4px;border:1px solid #cbd5cf;border-radius:5px;background:#fff;font:inherit;font-size:12px;color:var(--ink)}
 .note-priority.priority-urgent{color:#a52b22;border-color:#dba19b;font-weight:700}
 .note-delete-confirm{flex-basis:100%;margin-top:0}
@@ -70,6 +72,9 @@
   .notes-list{height:calc(100vh - 155px)}
   .notes-composer-button{padding:0 9px;font-size:12px}
   .notes-search-toolbar{padding:8px;gap:5px}
+  .notes-search-toolbar{flex-wrap:wrap}
+  .notes-search-field{flex-basis:100%}
+  .notes-search-count{margin-right:auto}
   .notes-search-field{padding:0 6px;gap:4px}
   .notes-search-count{font-size:10px;white-space:normal;max-width:85px}
   .pending-note{padding:6px 10px;gap:7px}

@@ -30,12 +30,14 @@ function ClientPicker({ note, clients, disabled, onChange }) {
   </div>;
 }
 
-export default function PendingNotesPage({ api, DetailModal, ClientForm }) {
+export default function PendingNotesPage({ api, DetailModal, ClientForm, badge, stageMonthNumber }) {
   const [notes, setNotes] = useState([]);
   const [clients, setClients] = useState([]);
+  const clientsById = new Map(clients.map(client => [client.id, client]));
   const [selectedClient, setSelectedClient] = useState(null);
   const [clientForm, setClientForm] = useState(null);
   const [search, setSearch] = useState("");
+  const [monthFilter, setMonthFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -82,7 +84,10 @@ export default function PendingNotesPage({ api, DetailModal, ClientForm }) {
   const ordered = [...notes].sort((a, b) => Number(a.completed) - Number(b.completed) || PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] || a.position - b.position || a.id - b.id);
   const pending = notes.filter(note => !note.completed).length;
   const query = normalizeSearch(search.trim());
-  const visibleNotes = ordered.filter(note => normalizeSearch(`${note.text} ${note.client_name || ""}`).includes(query));
+  const months = [...new Set(notes.map(note => stageMonthNumber(clientsById.get(note.client_id)?.service_stage)).filter(Boolean))];
+  if (monthFilter && !months.includes(Number(monthFilter))) months.push(Number(monthFilter));
+  months.sort((a, b) => a - b);
+  const visibleNotes = ordered.filter(note => normalizeSearch(`${note.text} ${note.client_name || ""}`).includes(query) && (!monthFilter || stageMonthNumber(clientsById.get(note.client_id)?.service_stage) === Number(monthFilter)));
 
   function changeSearch(value) {
     setSearch(value);
@@ -161,7 +166,11 @@ export default function PendingNotesPage({ api, DetailModal, ClientForm }) {
           {search && <button type="button" className="icon-btn" title="Limpiar búsqueda" aria-label="Limpiar búsqueda"
             disabled={dragging !== null} onClick={() => changeSearch("")}><X size={16} /></button>}
         </label>
-        <span className="notes-search-count" role="status">{pending} pendientes · {notes.length - pending} completadas{query ? ` · ${visibleNotes.length} encontradas` : ""}</span>
+        <span className="notes-search-count" role="status">{pending} pendientes · {notes.length - pending} completadas{query || monthFilter ? ` · ${visibleNotes.length} encontradas` : ""}</span>
+        <select className="notes-month-filter" aria-label="Filtrar por mes del cliente" value={monthFilter} disabled={dragging !== null} onChange={event => { setMonthFilter(event.target.value); if (listRef.current) listRef.current.scrollTop = 0; }}>
+          <option value="">Todos los meses</option>
+          {months.map(month => <option key={month} value={month}>Mes {month}</option>)}
+        </select>
         <button type="button" className="secondary notes-composer-button" aria-expanded={composerOpen} aria-controls="pending-note-composer" onClick={() => setComposerOpen(open => !open)}>{composerOpen ? <X size={17} /> : <Plus size={17} />}{composerOpen ? "Ocultar formulario" : "Nueva nota"}</button>
       </div>
       <form id="pending-note-composer" hidden={!composerOpen} className={`note-composer note-${color}`} onSubmit={event => {
@@ -182,7 +191,7 @@ export default function PendingNotesPage({ api, DetailModal, ClientForm }) {
         onPointerUp={() => finishDrag()} onPointerCancel={() => finishDrag(true)}
         onLostPointerCapture={() => finishDrag(true)}>
         {loading ? <p className="notes-empty">Cargando notas…</p> : notes.length === 0 ? <div className="notes-empty"><ListTodo size={32} /><p>Tu cuaderno está listo. Usá «Nueva nota» para agregar tu primer pendiente.</p></div> :
-          visibleNotes.length === 0 ? <p className="notes-empty">No hay notas que coincidan con “{search.trim()}”.</p> :
+          visibleNotes.length === 0 ? <p className="notes-empty">No hay notas que coincidan con los filtros seleccionados.</p> :
           visibleNotes.map((note, index) => <div key={note.id}>
             {note.completed && (index === 0 || !visibleNotes[index - 1].completed) && <h3 className="notes-completed-heading">Completadas</h3>}
             <article data-note-id={note.id} className={`pending-note note-${note.color} ${note.completed ? "is-completed" : ""} ${dragging === note.id ? "note-dragging" : ""}`}>
@@ -211,6 +220,7 @@ export default function PendingNotesPage({ api, DetailModal, ClientForm }) {
                 <div className="note-client">
                   <ClientPicker note={note} clients={clients} disabled={busy} onChange={client_id => update(note, { client_id })} />
                   {note.client_id && <button type="button" className="note-client-link" title={`Abrir ficha de ${note.client_name}`} onClick={() => setSelectedClient(note.client_id)}>{note.client_name}</button>}
+                  {clientsById.get(note.client_id)?.service_stage && badge(clientsById.get(note.client_id).service_stage)}
                 </div>
                 <select className={`note-priority priority-${note.priority}`} aria-label={`Prioridad de: ${note.text}`} value={note.priority} disabled={busy} onChange={event => update(note, { priority: event.target.value })}>
                   <option value="urgent">Urgente</option><option value="medium">Media</option><option value="low">Baja</option>

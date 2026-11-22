@@ -18,7 +18,8 @@ api = Blueprint("api", __name__)
 @api.get("/pending-notes/clients")
 def pending_note_clients():
     clients = Client.query.filter(Client.archived_at.is_(None)).order_by(Client.name.asc(), Client.id.asc()).all()
-    return ok([{"id": client.id, "name": client.name, "business_name": client.business_name} for client in clients])
+    sync_service_stages(clients)
+    return ok([{"id": client.id, "name": client.name, "business_name": client.business_name, "service_stage": client.service_stage} for client in clients])
 
 
 @api.route("/pending-notes", methods=["GET", "POST"])

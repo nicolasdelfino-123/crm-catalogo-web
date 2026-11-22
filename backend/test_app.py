@@ -273,7 +273,9 @@ def test_pending_notes_client_assignment(client, app):
         db.session.add_all(customers)
         db.session.commit()
         active_id, cancelled_id, archived_id = [customer.id for customer in customers]
-    assert {row["id"] for row in client.get("/api/pending-notes/clients").get_json()["data"]} == {active_id, cancelled_id}
+    options = client.get("/api/pending-notes/clients").get_json()["data"]
+    assert {row["id"] for row in options} == {active_id, cancelled_id}
+    assert next(row for row in options if row["id"] == active_id)["service_stage"] == client.get(f"/api/clients/{active_id}").get_json()["data"]["service_stage"]
     note = client.post("/api/pending-notes", json={"text": "Llamar"}).get_json()["data"]
     path = f'/api/pending-notes/{note["id"]}'
     saved = client.patch(path, json={"client_id": cancelled_id}).get_json()["data"]
