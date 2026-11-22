@@ -1,4 +1,4 @@
-.pending-notes-page{max-width:none}
+.pending-notes-page{max-width:none;padding-top:8px}
 .notes-notebook{width:100%;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 8px 30px #17211d06}
 .notes-count{color:var(--muted);font-size:12px;white-space:nowrap}
 .notes-search-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:16px 24px;border-bottom:1px solid var(--line);background:#f8faf8}
@@ -40,7 +40,11 @@
 .note-composer[hidden]{display:none}
 .notes-search-toolbar{padding:10px 16px}
 .notes-search-field input{height:36px}
-.notes-list{max-height:none;height:calc(100vh - 300px);min-height:220px}
+.notes-list{max-height:none;height:calc(100vh - 165px);min-height:220px}
+.notes-search-toolbar{flex-wrap:nowrap;gap:8px}
+.notes-search-field{min-width:0}
+.notes-composer-button{flex-shrink:0;white-space:nowrap}
+.notes-search-count{white-space:nowrap;flex-shrink:0}
 .pending-note{align-items:center;gap:10px;padding:6px 16px}
 .note-drag-handle{margin:0;height:36px}
 .pending-note>input{margin:0}
@@ -48,15 +52,31 @@
 .note-text,.note-content>form{flex:1;min-width:0}
 .note-text{line-height:1.4}
 .note-row-tools{flex-shrink:0;margin:0;gap:12px}
+.note-client{display:flex;align-items:center;gap:6px;min-width:0;flex:0 1 300px}
+.note-client-picker{position:relative;min-width:85px;max-width:150px;width:50%}
+.note-client-picker input{width:100%;height:30px;padding:0 6px;border:1px solid #cbd5cf;border-radius:5px;background:#fff;color:var(--ink);font:inherit;font-size:12px}
+.note-client-options{position:absolute;z-index:10;top:100%;left:0;width:max-content;min-width:100%;max-width:280px;max-height:200px;overflow:auto;border:1px solid #cbd5cf;border-radius:5px;background:white;box-shadow:0 4px 12px #17211d24}
+.note-client-options button,.note-client-options span{display:block;width:100%;padding:7px 9px;border:0;background:white;text-align:left;font:inherit;font-size:12px;color:var(--ink)}
+.note-client-options button:hover,.note-client-options button:focus{background:#e1f3df}
+.note-client-link{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px;border:0;background:transparent;color:var(--green);text-decoration:underline;cursor:pointer;font:inherit;font-size:12px}
+.note-priority{height:30px;max-width:90px;padding:0 4px;border:1px solid #cbd5cf;border-radius:5px;background:#fff;font:inherit;font-size:12px;color:var(--ink)}
+.note-priority.priority-urgent{color:#a52b22;border-color:#dba19b;font-weight:700}
 .note-delete-confirm{flex-basis:100%;margin-top:0}
 .notes-completed-heading{padding:7px 16px}
 .notes-footnote{padding:8px 16px}
 @media(max-width:700px){
   .pending-notes-page .page-intro{flex-wrap:wrap;gap:8px}
-  .notes-list{height:calc(100vh - 270px)}
+  .pending-notes-page{padding-top:8px}
+  .notes-list{height:calc(100vh - 155px)}
+  .notes-composer-button{padding:0 9px;font-size:12px}
+  .notes-search-toolbar{padding:8px;gap:5px}
+  .notes-search-field{padding:0 6px;gap:4px}
+  .notes-search-count{font-size:10px;white-space:normal;max-width:85px}
   .pending-note{padding:6px 10px;gap:7px}
   .note-content{flex-wrap:wrap;gap:4px}
   .note-text,.note-content>form{flex-basis:100%}
   .note-row-tools{width:100%;justify-content:space-between}
   .note-swatch{width:22px;height:22px}
+  .note-client{flex:1;min-width:0}
+  .note-row-tools{width:auto;justify-content:flex-end}
 }

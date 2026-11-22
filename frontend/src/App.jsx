@@ -391,7 +391,7 @@ export default function App() {
   const logout = () => { clearSession(); setSession({ checking: false, user: null }); };
   const pages = {
     dashboard: <Dashboard goClients={() => navigate("clients")} goPendingNotes={() => navigate("pending-notes")} />,
-    "pending-notes": <PendingNotesPage api={api} />,
+    "pending-notes": <PendingNotesPage api={api} DetailModal={DetailModal} ClientForm={ClientForm} />,
     clients: <Clients />,
     agenda: <Agenda />,
     payments: <Payments />,

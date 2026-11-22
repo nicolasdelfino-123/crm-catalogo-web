@@ -3,6 +3,7 @@ import { ListTodo, Plus, Pencil, Trash2, Save, X, GripVertical, Search } from "l
 import "../pending-notes.css";
 
 const COLORS = [["none", "Sin resaltar"], ["yellow", "Amarillo"], ["green", "Verde"], ["blue", "Azul"], ["pink", "Rosa"]];
+const PRIORITY_ORDER = { urgent: 0, medium: 1, low: 2 };
 const normalizeSearch = value => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
 
 function ColorPicker({ value, onChange, disabled }) {
@@ -14,8 +15,26 @@ function ColorPicker({ value, onChange, disabled }) {
   </div>;
 }
 
-export default function PendingNotesPage({ api }) {
+function ClientPicker({ note, clients, disabled, onChange }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const matches = clients.filter(client => normalizeSearch(`${client.name} ${client.business_name || ""}`).includes(normalizeSearch(query.trim())));
+  return <div className="note-client-picker" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
+    <input aria-label={`Buscar cliente para: ${note.text}`} aria-expanded={open} aria-controls={`note-clients-${note.id}`} role="combobox" autoComplete="off" placeholder="Buscar cliente…" value={query} disabled={disabled}
+      onFocus={() => setOpen(true)} onChange={event => { setQuery(event.target.value); setOpen(true); }} onKeyDown={event => { if (event.key === "Escape") setOpen(false); }} />
+    {open && <div className="note-client-options" id={`note-clients-${note.id}`} role="listbox">
+      {note.client_id && <button type="button" role="option" aria-selected="false" onClick={() => { onChange(null); setQuery(""); setOpen(false); }}>Quitar cliente</button>}
+      {matches.map(client => <button type="button" role="option" aria-selected={client.id === note.client_id} key={client.id} onClick={() => { onChange(client.id); setQuery(""); setOpen(false); }}>{client.name}{client.business_name && client.business_name !== client.name ? ` · ${client.business_name}` : ""}</button>)}
+      {!matches.length && <span>Sin resultados</span>}
+    </div>}
+  </div>;
+}
+
+export default function PendingNotesPage({ api, DetailModal, ClientForm }) {
   const [notes, setNotes] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [clientForm, setClientForm] = useState(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -36,12 +55,14 @@ export default function PendingNotesPage({ api }) {
     setLoading(true);
     setError("");
     api("/pending-notes").then(setNotes).catch(e => setError(e.message)).finally(() => setLoading(false));
+    api("/pending-notes/clients").then(setClients).catch(e => setError(e.message));
   };
   useEffect(() => {
     let active = true;
     api("/pending-notes").then(data => { if (active) setNotes(data); })
       .catch(e => { if (active) setError(e.message); })
       .finally(() => { if (active) setLoading(false); });
+    api("/pending-notes/clients").then(data => { if (active) setClients(data); }).catch(e => { if (active) setError(e.message); });
     return () => { active = false; };
   }, [api]);
 
@@ -58,10 +79,10 @@ export default function PendingNotesPage({ api }) {
     setNotes(current => current.map(item => item.id === saved.id ? saved : item));
     after?.();
   });
+  const ordered = [...notes].sort((a, b) => Number(a.completed) - Number(b.completed) || PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] || a.position - b.position || a.id - b.id);
   const pending = notes.filter(note => !note.completed).length;
-  const ordered = [...notes].sort((a, b) => Number(a.completed) - Number(b.completed) || a.position - b.position || a.id - b.id);
   const query = normalizeSearch(search.trim());
-  const visibleNotes = ordered.filter(note => normalizeSearch(note.text).includes(query));
+  const visibleNotes = ordered.filter(note => normalizeSearch(`${note.text} ${note.client_name || ""}`).includes(query));
 
   function changeSearch(value) {
     setSearch(value);
@@ -84,7 +105,7 @@ export default function PendingNotesPage({ api }) {
     const next = [...items];
     const source = next.findIndex(item => item.id === sourceId);
     const target = next.findIndex(item => item.id === targetId);
-    if (source === target || target < 0 || next[source].completed !== next[target].completed) return items;
+    if (source < 0 || target < 0 || source === target || next[source].completed !== next[target].completed || next[source].priority !== next[target].priority) return items;
     next.splice(target, 0, next.splice(source, 1)[0]);
     return next.map((item, position) => ({ ...item, position }));
   }
@@ -130,12 +151,19 @@ export default function PendingNotesPage({ api }) {
   }
 
   return <section className="page pending-notes-page">
-    <div className="page-intro"><div><h2>Tu cuaderno de pendientes</h2>
-      <p>Anotá lo que tenés que hacer. Resaltá lo importante y tachá lo que ya terminaste.</p></div>
-      <span className="notes-count">{pending} pendientes · {notes.length - pending} completadas</span>
-    </div>
     <div className="notes-notebook">
-      <div className="note-composer-toggle"><button type="button" className="secondary" aria-expanded={composerOpen} aria-controls="pending-note-composer" onClick={() => setComposerOpen(open => !open)}>{composerOpen ? <X size={17} /> : <Plus size={17} />}{composerOpen ? "Ocultar formulario" : "Nueva nota"}</button></div>
+      <div className="notes-search-toolbar">
+        <label className="notes-search-field" htmlFor="pending-notes-search">
+          <Search size={18} aria-hidden="true" />
+          <input id="pending-notes-search" type="search" placeholder="Buscar en las tarjetas…"
+            aria-label="Buscar en pendientes y completadas" value={search}
+            disabled={dragging !== null} onChange={event => changeSearch(event.target.value)} />
+          {search && <button type="button" className="icon-btn" title="Limpiar búsqueda" aria-label="Limpiar búsqueda"
+            disabled={dragging !== null} onClick={() => changeSearch("")}><X size={16} /></button>}
+        </label>
+        <span className="notes-search-count" role="status">{pending} pendientes · {notes.length - pending} completadas{query ? ` · ${visibleNotes.length} encontradas` : ""}</span>
+        <button type="button" className="secondary notes-composer-button" aria-expanded={composerOpen} aria-controls="pending-note-composer" onClick={() => setComposerOpen(open => !open)}>{composerOpen ? <X size={17} /> : <Plus size={17} />}{composerOpen ? "Ocultar formulario" : "Nueva nota"}</button>
+      </div>
       <form id="pending-note-composer" hidden={!composerOpen} className={`note-composer note-${color}`} onSubmit={event => {
         event.preventDefault();
         mutate("/pending-notes", "POST", { text, color }, saved => {
@@ -148,17 +176,6 @@ export default function PendingNotesPage({ api }) {
         <div className="note-composer-actions"><ColorPicker value={color} onChange={setColor} disabled={busy} />
           <button className="primary" disabled={busy || loading || !text.trim()}><Plus size={17} />Agregar nota</button></div>
       </form>
-      <div className="notes-search-toolbar">
-        <label className="notes-search-field" htmlFor="pending-notes-search">
-          <Search size={18} aria-hidden="true" />
-          <input id="pending-notes-search" type="search" placeholder="Buscar en las tarjetas…"
-            aria-label="Buscar por texto en pendientes y completadas" value={search}
-            disabled={dragging !== null} onChange={event => changeSearch(event.target.value)} />
-          {search && <button type="button" className="icon-btn" title="Limpiar búsqueda" aria-label="Limpiar búsqueda"
-            disabled={dragging !== null} onClick={() => changeSearch("")}><X size={16} /></button>}
-        </label>
-        <span className="notes-search-count" role="status">{query ? `${visibleNotes.length} de ${notes.length} notas` : "Pendientes y completadas"}</span>
-      </div>
       {error && <div className="notes-error" role="alert">{error} <button type="button" className="secondary" onClick={load} disabled={busy || loading}>Volver a cargar</button></div>}
       <div className="notes-list" ref={listRef} role="region" aria-label="Lista de pendientes" tabIndex={0} aria-busy={loading || busy}
         onPointerMove={event => { if (drag.current) { drag.current.y = event.clientY; drag.current.x = event.clientX; } }}
@@ -178,7 +195,7 @@ export default function PendingNotesPage({ api }) {
                   if (!["ArrowUp", "ArrowDown"].includes(event.key) || busy || dragging !== null) return;
                   event.preventDefault();
                   const target = visibleNotes[index + (event.key === "ArrowUp" ? -1 : 1)];
-                  if (!target || target.completed !== note.completed) return;
+                  if (!target || target.completed !== note.completed || target.priority !== note.priority) return;
                   const next = moveNote(ordered, note.id, target.id);
                   setNotes(next); saveOrder(next, ordered, note);
                 }}><GripVertical size={20} /></button>
@@ -191,6 +208,13 @@ export default function PendingNotesPage({ api }) {
                   <div className="note-edit-actions"><button className="primary" disabled={busy || !draft.trim()}><Save size={15} />Guardar</button>
                     <button type="button" className="secondary" disabled={busy} onClick={() => setEditing(null)}><X size={15} />Cancelar</button></div>
                 </form> : <p className="note-text">{note.text}</p>}
+                <div className="note-client">
+                  <ClientPicker note={note} clients={clients} disabled={busy} onChange={client_id => update(note, { client_id })} />
+                  {note.client_id && <button type="button" className="note-client-link" title={`Abrir ficha de ${note.client_name}`} onClick={() => setSelectedClient(note.client_id)}>{note.client_name}</button>}
+                </div>
+                <select className={`note-priority priority-${note.priority}`} aria-label={`Prioridad de: ${note.text}`} value={note.priority} disabled={busy} onChange={event => update(note, { priority: event.target.value })}>
+                  <option value="urgent">Urgente</option><option value="medium">Media</option><option value="low">Baja</option>
+                </select>
                 <div className="note-row-tools"><ColorPicker value={note.color} disabled={busy} onChange={value => update(note, { color: value })} />
                   <div className="note-edit-actions"><button type="button" className="icon-btn" title="Editar nota" aria-label="Editar nota" disabled={busy} onClick={() => { setEditing(note.id); setDraft(note.text); }}><Pencil size={16} /></button>
                     <button type="button" className="icon-btn" title="Eliminar nota" aria-label="Eliminar nota" disabled={busy} onClick={() => setDeleting(note.id)}><Trash2 size={16} /></button></div>
@@ -204,8 +228,10 @@ export default function PendingNotesPage({ api }) {
             </article>
           </div>)}
       </div>
-      <p className="notes-footnote" id="notes-drag-help">Arrastrá desde los puntos para cambiar el orden, o usá las flechas ↑ y ↓ con la manija seleccionada. Las completadas siguen al final.</p>
+      <span className="notes-live" id="notes-drag-help">Arrastrá o usá las flechas para ordenar dentro de la misma prioridad. Las completadas siguen al final.</span>
       <span className="notes-live" role="status">{announcement}</span>
     </div>
+    {selectedClient && !clientForm && <DetailModal clientId={selectedClient} onClose={() => setSelectedClient(null)} onRefresh={load} onEdit={client => setClientForm(client)} />}
+    {clientForm && <ClientForm client={clientForm} onClose={() => setClientForm(null)} onSaved={() => { setClientForm(null); load(); }} />}
   </section>;
 }

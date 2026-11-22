@@ -15,12 +15,18 @@ from models import db, iso, Client, ClientAction, StandaloneAction, Payment, Exp
 api = Blueprint("api", __name__)
 
 
+@api.get("/pending-notes/clients")
+def pending_note_clients():
+    clients = Client.query.filter(Client.archived_at.is_(None)).order_by(Client.name.asc(), Client.id.asc()).all()
+    return ok([{"id": client.id, "name": client.name, "business_name": client.business_name} for client in clients])
+
+
 @api.route("/pending-notes", methods=["GET", "POST"])
 def pending_notes():
     from models import PendingNote
     if request.method == "GET":
         return ok([note.to_dict() for note in PendingNote.query.order_by(
-            PendingNote.completed.asc(), PendingNote.position.asc(), PendingNote.id.asc()
+            PendingNote.completed.asc(), case((PendingNote.priority == "urgent", 0), (PendingNote.priority == "medium", 1), else_=2), PendingNote.position.asc(), PendingNote.id.asc()
         ).all()])
     return save_pending_note(PendingNote(), creating=True)
 
@@ -42,7 +48,7 @@ def reorder_pending_notes():
         note.position = positions[note.id]
     db.session.commit()
     return ok([note.to_dict() for note in PendingNote.query.order_by(
-        PendingNote.completed.asc(), PendingNote.position.asc(), PendingNote.id.asc()
+        PendingNote.completed.asc(), case((PendingNote.priority == "urgent", 0), (PendingNote.priority == "medium", 1), else_=2), PendingNote.position.asc(), PendingNote.id.asc()
     ).all()])
 
 
@@ -71,13 +77,20 @@ def save_pending_note(note, creating=False):
         return error("Elegí un color válido.", 422)
     if "completed" in data and not isinstance(data["completed"], bool):
         return error("El estado debe ser verdadero o falso.", 422)
+    if "priority" in data and data["priority"] not in ("urgent", "medium", "low"):
+        return error("Elegí una prioridad válida.", 422)
+    if "client_id" in data and data["client_id"] is not None:
+        client_id = data["client_id"]
+        client = db.session.get(Client, client_id) if type(client_id) is int else None
+        if not client or client.archived_at is not None:
+            return error("Elegí un cliente disponible válido.", 422)
     if creating or "text" in data:
         note.text = data["text"].strip()
     if creating:
         from models import PendingNote
         last = db.session.query(func.max(PendingNote.position)).scalar()
         note.position = (last if last is not None else -1) + 1
-    for field in ("color", "completed"):
+    for field in ("color", "completed", "client_id", "priority"):
         if field in data:
             setattr(note, field, data[field])
     db.session.add(note)

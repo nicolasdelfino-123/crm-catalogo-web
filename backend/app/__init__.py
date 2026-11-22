@@ -93,6 +93,12 @@ def create_app(test_config=None):
         if "position" not in {column["name"] for column in inspector.get_columns("pending_note")}:
             db.session.execute(text("ALTER TABLE pending_note ADD COLUMN position INTEGER DEFAULT 0 NOT NULL"))
             db.session.commit()
+        if "client_id" not in {column["name"] for column in inspector.get_columns("pending_note")}:
+            db.session.execute(text("ALTER TABLE pending_note ADD COLUMN client_id INTEGER REFERENCES client(id) ON DELETE SET NULL"))
+            db.session.commit()
+        if "priority" not in {column["name"] for column in inspector.get_columns("pending_note")}:
+            db.session.execute(text("ALTER TABLE pending_note ADD COLUMN priority VARCHAR(10) DEFAULT 'medium' NOT NULL"))
+            db.session.commit()
         if "prospecting_goal" in inspector.get_table_names():
             goal_columns = {column["name"] for column in inspector.get_columns("prospecting_goal")}
             if "configured" not in goal_columns:

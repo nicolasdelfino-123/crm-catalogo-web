@@ -255,6 +255,34 @@ def client(app):
 def test_health(client): assert client.get("/api/health").status_code == 200
 
 
+def test_pending_notes_priority_order_and_validation(client):
+    low = client.post("/api/pending-notes", json={"text": "Baja", "priority": "low"}).get_json()["data"]
+    medium = client.post("/api/pending-notes", json={"text": "Media"}).get_json()["data"]
+    urgent = client.post("/api/pending-notes", json={"text": "Urgente", "priority": "urgent"}).get_json()["data"]
+    assert medium["priority"] == "medium"
+    assert [note["id"] for note in client.get("/api/pending-notes").get_json()["data"]] == [urgent["id"], medium["id"], low["id"]]
+    assert client.patch(f'/api/pending-notes/{low["id"]}', json={"priority": "invalid"}).status_code == 422
+    client.patch(f'/api/pending-notes/{urgent["id"]}', json={"completed": True})
+    assert [note["id"] for note in client.get("/api/pending-notes").get_json()["data"]] == [medium["id"], low["id"], urgent["id"]]
+
+
+def test_pending_notes_client_assignment(client, app):
+    with app.app_context():
+        customers = [Client(name=name, business_name=name, status=status) for name, status in [("Activo", "active"), ("Cancelado", "cancelled"), ("Archivado", "active")]]
+        customers[2].archived_at = datetime.utcnow()
+        db.session.add_all(customers)
+        db.session.commit()
+        active_id, cancelled_id, archived_id = [customer.id for customer in customers]
+    assert {row["id"] for row in client.get("/api/pending-notes/clients").get_json()["data"]} == {active_id, cancelled_id}
+    note = client.post("/api/pending-notes", json={"text": "Llamar"}).get_json()["data"]
+    path = f'/api/pending-notes/{note["id"]}'
+    saved = client.patch(path, json={"client_id": cancelled_id}).get_json()["data"]
+    assert saved["client_name"] == "Cancelado"
+    assert client.get("/api/pending-notes").get_json()["data"][0]["client_id"] == cancelled_id
+    assert client.patch(path, json={"client_id": archived_id}).status_code == 422
+    assert client.patch(path, json={"client_id": None}).get_json()["data"]["client_id"] is None
+
+
 def test_pending_notes_lifecycle_and_order(client):
     first = client.post("/api/pending-notes", json={"text": "  Hablar con Luisa  ", "color": "yellow"})
     assert first.status_code == 201

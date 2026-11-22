@@ -13,11 +13,15 @@ class PendingNote(db.Model):
     color = db.Column(db.String(20), nullable=False, default="none")
     completed = db.Column(db.Boolean, nullable=False, default=False)
     position = db.Column(db.Integer, nullable=False, default=0)
+    priority = db.Column(db.String(10), nullable=False, default="medium")
+    client_id = db.Column(db.Integer, db.ForeignKey("client.id", ondelete="SET NULL"), nullable=True)
+    client = db.relationship("Client")
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     def to_dict(self):
         return {"id": self.id, "text": self.text, "color": self.color,
-                "completed": self.completed, "position": self.position, "created_at": self.created_at.isoformat()}
+                "completed": self.completed, "position": self.position, "priority": self.priority, "created_at": self.created_at.isoformat(),
+                "client_id": self.client_id, "client_name": self.client.name if self.client else None}
 
 
 def iso(value):
