@@ -120,7 +120,7 @@ export default function PendingNotesPage({ api, DetailModal, ClientForm, badge, 
     // La lista permanece en el DOM cuando React mueve la tarjeta. Capturar en
     // la manija pierde el puntero al desplazar su tarjeta hacia abajo.
     listRef.current.setPointerCapture(event.pointerId);
-    drag.current = { original: ordered, current: ordered, note, y: event.clientY, x: event.clientX, frame: null };
+    drag.current = { original: ordered, current: ordered, note, y: event.clientY, frame: null };
     setDragging(note.id);
     const tick = () => {
       const state = drag.current;
@@ -129,15 +129,22 @@ export default function PendingNotesPage({ api, DetailModal, ClientForm, badge, 
       const bounds = list.getBoundingClientRect();
       if (state.y < bounds.top + 55) list.scrollTop -= Math.min(16, (bounds.top + 55 - state.y) / 3);
       else if (state.y > bounds.bottom - 55) list.scrollTop += Math.min(16, (state.y - bounds.bottom + 55) / 3);
-      const row = document.elementFromPoint(state.x, Math.max(bounds.top + 1, Math.min(bounds.bottom - 1, state.y)))?.closest("[data-note-id]");
-      if (row) {
-        const rect = row.getBoundingClientRect();
-        const targetId = Number(row.dataset.noteId);
-        const sourceIndex = state.current.findIndex(item => item.id === note.id);
-        const targetIndex = state.current.findIndex(item => item.id === targetId);
-        if ((targetIndex > sourceIndex && state.y > rect.top + rect.height / 2) ||
-          (targetIndex < sourceIndex && state.y < rect.top + rect.height / 2)) {
-          const next = moveNote(state.current, note.id, targetId);
+      const rows = [...list.querySelectorAll("[data-note-id]")];
+      const sourceRow = rows.find(row => Number(row.dataset.noteId) === note.id);
+      if (sourceRow) {
+        const sourceCenter = sourceRow.getBoundingClientRect().top + sourceRow.getBoundingClientRect().height / 2;
+        const candidates = rows.filter(row => {
+          const item = state.current.find(candidate => candidate.id === Number(row.dataset.noteId));
+          return item && item.id !== note.id && item.completed === note.completed && item.priority === note.priority;
+        });
+        const crossed = candidates.filter(row => {
+          const rect = row.getBoundingClientRect();
+          const center = rect.top + rect.height / 2;
+          return state.y > sourceCenter ? center > sourceCenter && state.y >= center : center < sourceCenter && state.y <= center;
+        });
+        const target = state.y > sourceCenter ? crossed[crossed.length - 1] : crossed[0];
+        if (target) {
+          const next = moveNote(state.current, note.id, Number(target.dataset.noteId));
           if (next !== state.current) { state.current = next; setNotes(next); }
         }
       }
@@ -187,7 +194,7 @@ export default function PendingNotesPage({ api, DetailModal, ClientForm, badge, 
       </form>
       {error && <div className="notes-error" role="alert">{error} <button type="button" className="secondary" onClick={load} disabled={busy || loading}>Volver a cargar</button></div>}
       <div className="notes-list" ref={listRef} role="region" aria-label="Lista de pendientes" tabIndex={0} aria-busy={loading || busy}
-        onPointerMove={event => { if (drag.current) { drag.current.y = event.clientY; drag.current.x = event.clientX; } }}
+        onPointerMove={event => { if (drag.current) drag.current.y = event.clientY; }}
         onPointerUp={() => finishDrag()} onPointerCancel={() => finishDrag(true)}
         onLostPointerCapture={() => finishDrag(true)}>
         {loading ? <p className="notes-empty">Cargando notas…</p> : notes.length === 0 ? <div className="notes-empty"><ListTodo size={32} /><p>Tu cuaderno está listo. Usá «Nueva nota» para agregar tu primer pendiente.</p></div> :
