@@ -1087,7 +1087,7 @@ def test_deposit_has_no_due_date_and_uses_paid_date(client):
 def test_operational_statuses(client):
     created = client.post("/api/clients", json={
         "name": "Cliente Operativo", "business_name": "Marca Operativa",
-        "signup_date": "2026-07-01", "country": "Argentina", "currency": "ARS",
+        "sale_date": "2026-07-01", "signup_date": "2026-07-01", "country": "Argentina", "currency": "ARS",
     }).get_json()["data"]
     detail = client.get(f'/api/clients/{created["id"]}').get_json()["data"]
     assert detail["google_analytics_status"] == "no"
@@ -1109,6 +1109,19 @@ def test_operational_statuses(client):
     assert updated["carousel_installed_status"] == "yes"
     assert updated["coupon_status"] == "yes"
     assert updated["best_sellers_status"] == "yes"
+
+
+def test_story_statuses_are_independent_and_preserve_legacy_status(client):
+    created = client.post("/api/clients", json={"name": "Historias", "business_name": "Marca", "sale_date": "2026-07-01", "signup_date": "2026-07-01", "country": "Argentina", "currency": "ARS", "story_status": "yes"}).get_json()["data"]
+    path = f'/api/clients/{created["id"]}'
+    assert client.get(path).get_json()["data"]["story_statuses"]["1"] == "yes"
+    updated = client.patch(path, json={"story_statuses": {"2": "yes"}}).get_json()["data"]
+    assert updated["story_statuses"] == {"1": "yes", "2": "yes"}
+    client.patch(path, json={"story_statuses": {"2": "no", "8": "yes"}})
+    assert client.get(path).get_json()["data"]["story_statuses"] == {"1": "yes", "2": "no", "8": "yes"}
+    assert client.patch(path, json={"story_statuses": {"9": "yes"}}).status_code == 422
+    assert client.patch(path, json={"story_statuses": {"1": "invalid"}}).status_code == 422
+    assert client.patch(path, json={"story_status": "no"}).get_json()["data"]["story_statuses"]["1"] == "no"
 
 def test_service_stage_changes_only_on_monthly_date():
     customer = Client(name="Etapas", business_name="Prueba", signup_date=date(2026, 1, 31), service_stage="second_month")

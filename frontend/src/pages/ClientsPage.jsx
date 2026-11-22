@@ -786,6 +786,34 @@ export function createClientsPage(dependencies) {
     );
   }
 
+  function StoryStatus({ statuses, onSave }) {
+    const [number, setNumber] = useState("1");
+    const [draft, setDraft] = useState(statuses["1"] || "no");
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+    const completed = Array.from({ length: 8 }, (_, i) => String(i + 1)).filter(id => statuses[id] === "yes");
+    async function save() {
+      setSaving(true);
+      setError("");
+      try { await onSave("story_statuses", { [number]: draft }); }
+      catch (e) { setError(e.message || "No se pudo guardar la historia."); }
+      finally { setSaving(false); }
+    }
+    return <div className="story-status">
+      <div className="editable-status story-status-row"><div><small>Historia</small></div>
+      <div className="status-editor story-status-controls">
+        <select aria-label="Número de historia" value={number} disabled={saving} onChange={event => { const next = event.target.value; setNumber(next); setDraft(statuses[next] || "no"); setError(""); }}>
+          {Array.from({ length: 8 }, (_, i) => <option key={i + 1} value={String(i + 1)}>{i + 1}</option>)}
+        </select>
+        <select aria-label={`Estado de historia ${number}`} value={draft} disabled={saving} onChange={event => setDraft(event.target.value)}><option value="no">No</option><option value="yes">Sí</option></select>
+        <button type="button" className="icon-btn" aria-label={`Guardar historia ${number}`} title="Guardar historia" disabled={saving} onClick={save}><Check /></button>
+      </div>
+      </div>
+      {completed.length > 0 && <ul className="story-status-list" aria-label="Historias listas">{completed.map(id => <li key={id}>Historia {id} · Lista</li>)}</ul>}
+      {error && <span className="story-status-error" role="alert">{error}</span>}
+    </div>;
+  }
+
   function EditableNumber({ label, field, value, onSave }) {
     const [editing, setEditing] = useState(false);
     const [current, setCurrent] = useState(value || 0);
@@ -1566,7 +1594,7 @@ export function createClientsPage(dependencies) {
           <h3>Estado operativo</h3>
           <div className="status-grid">
             <EditableStatus label="Link en bio" field="link_in_bio_status" value={client.link_in_bio_status} options={[["pending", "Pendiente"], ["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
-            <EditableStatus label="Historia" field="story_status" value={client.story_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
+            <StoryStatus statuses={client.story_statuses || { "1": client.story_status || "no" }} onSave={onUpdate} />
             <EditableStatus label="Precios" field="prices_status" value={client.prices_status} options={[["pending", "Pendiente"], ["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
             <EditableStatus label="Google Analytics" field="google_analytics_status" value={client.google_analytics_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />
             <EditableStatus label="QR generado" field="qr_generated_status" value={client.qr_generated_status || "no"} options={[["no", "No"], ["yes", "Sí"]]} onSave={onUpdate} />

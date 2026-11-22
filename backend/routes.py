@@ -332,10 +332,18 @@ def apply_client(client, data, partial=False):
         raise ValueError("Estado inválido")
     if data.get("traffic_light") and data["traffic_light"] not in ("red", "yellow", "green", "lilac"):
         raise ValueError("Semáforo inválido")
+    if "story_statuses" in data:
+        statuses = data["story_statuses"]
+        if not isinstance(statuses, dict) or any(key not in tuple(str(n) for n in range(1, 9)) or value not in ("yes", "no") for key, value in statuses.items()):
+            raise ValueError("Los estados de historias deben ser Sí o No para las historias 1 a 8.")
+        client.story_statuses = {"1": client.story_status or "no", **(client.story_statuses or {}), **statuses}
+        client.story_status = client.story_statuses["1"]
     text_fields = ["name", "business_name", "website_url", "instagram_username", "email", "phone", "country", "city", "acquisition_source", "currency", "status", "traffic_light", "service_stage", "page_status", "link_in_bio_status", "story_status", "prices_status", "images_status", "google_analytics_status", "qr_generated_status", "carousel_installed_status", "coupon_status", "best_sellers_status", "admin_load_status", "twelve_products_status", "domain_purchased_status", "notes_summary"]
     for field in text_fields:
         if field in data:
             setattr(client, field, data[field] or None)
+    if "story_status" in data and client.story_statuses is not None:
+        client.story_statuses = {**client.story_statuses, "1": client.story_status or "no"}
     for field in ["sale_date", "signup_date", "next_renewal_date", "cancelled_date"]:
         if field in data:
             setattr(client, field, parse_date(data[field]))

@@ -67,6 +67,7 @@ class Client(db.Model):
     page_status = db.Column(db.String(30), default="pending")
     link_in_bio_status = db.Column(db.String(20), default="pending")
     story_status = db.Column(db.String(10), default="no")
+    story_statuses = db.Column(db.JSON, nullable=True)
     prices_status = db.Column(db.String(20), default="pending")
     images_status = db.Column(db.String(30), default="pending")
     google_analytics_status = db.Column(db.String(10), default="no")
@@ -131,6 +132,7 @@ class Client(db.Model):
             "monthly_payment_indicator": self.monthly_payment_indicator(today),
             "service_stage": self.service_stage, "link_in_bio_status": self.link_in_bio_status,
             "story_status": self.story_status or "no",
+            "story_statuses": {"1": self.story_status or "no", **(self.story_statuses or {})},
             "service_stage_manual": bool(self.service_stage_manual),
             "prices_status": self.prices_status, "followers_count": self.followers_count or 0,
             "publications_count": self.publications_count or 0,
